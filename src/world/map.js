@@ -18,6 +18,11 @@ export class WorldMap {
     this.rows = Math.ceil(this.h / this.cell);
 
     this.collision = new Uint8Array(this.cols * this.rows);
+    const offset = CONFIG.collisionOffset ?? {};
+    this.collisionOffset = {
+      x: Number.isFinite(offset.x) ? offset.x : 0,
+      y: Number.isFinite(offset.y) ? offset.y : 0,
+    };
 
     // features par cellule (utiles au mode luminance)
     this._bright = new Float32Array(this.cols * this.rows);
@@ -125,8 +130,14 @@ export class WorldMap {
     const softRadiusPx = opts.softRadius || 220;
     const W = this.cols, H = this.rows, id = (x, y) => y * W + x;
 
-    const sx = Math.max(0, Math.min(W - 1, Math.floor(px / this.cell)));
-    const sy = Math.max(0, Math.min(H - 1, Math.floor(py / this.cell)));
+    const sx = Math.max(
+      0,
+      Math.min(W - 1, Math.floor((px - this.collisionOffset.x) / this.cell))
+    );
+    const sy = Math.max(
+      0,
+      Math.min(H - 1, Math.floor((py - this.collisionOffset.y) / this.cell))
+    );
     const r2 = (softRadiusPx / this.cell) ** 2;
 
     const visited = new Uint8Array(W * H);
@@ -164,8 +175,8 @@ export class WorldMap {
 
   // ---------- API ----------
   isBlocked(px, py) {
-    const rx = Math.floor(px / this.cell);
-    const ry = Math.floor(py / this.cell);
+    const rx = Math.floor((px - this.collisionOffset.x) / this.cell);
+    const ry = Math.floor((py - this.collisionOffset.y) / this.cell);
     if (rx < 0 || ry < 0 || rx >= this.cols || ry >= this.rows) return true;
     return this.collision[ry * this.cols + rx] === 1;
   }
@@ -180,8 +191,9 @@ export class WorldMap {
   }
 
   nearestOpen(px, py, r) {
-    const sx = Math.floor(px / this.cell);
-    const sy = Math.floor(py / this.cell);
+    const clamp = (value, max) => Math.max(0, Math.min(max, value));
+    const sx = clamp(Math.floor((px - this.collisionOffset.x) / this.cell), this.cols - 1);
+    const sy = clamp(Math.floor((py - this.collisionOffset.y) / this.cell), this.rows - 1);
     const seen = new Uint8Array(this.cols * this.rows);
     const q = [[sx, sy]];
     const id = (x, y) => y * this.cols + x;
@@ -190,8 +202,8 @@ export class WorldMap {
     const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
     while (q.length) {
       const [x, y] = q.shift();
-      const cx = x * this.cell + this.cell * 0.5;
-      const cy = y * this.cell + this.cell * 0.5;
+      const cx = x * this.cell + this.cell * 0.5 + this.collisionOffset.x;
+      const cy = y * this.cell + this.cell * 0.5 + this.collisionOffset.y;
       if (this.circleFree(cx, cy, r)) return { x: cx, y: cy };
       for (const [dx, dy] of dirs) {
         const nx = x + dx, ny = y + dy;
@@ -256,15 +268,22 @@ export class WorldMap {
     ctx.save();
     ctx.globalAlpha = 0.25;
     ctx.fillStyle = "#ff4d4d";
-    const x0 = Math.floor(camX / this.cell);
-    const y0 = Math.floor(camY / this.cell);
-    const x1 = Math.ceil((camX + viewW) / this.cell);
-    const y1 = Math.ceil((camY + viewH) / this.cell);
+    const ox = this.collisionOffset.x;
+    const oy = this.collisionOffset.y;
+    const x0 = Math.floor((camX - ox) / this.cell);
+    const y0 = Math.floor((camY - oy) / this.cell);
+    const x1 = Math.ceil((camX + viewW - ox) / this.cell);
+    const y1 = Math.ceil((camY + viewH - oy) / this.cell);
     for (let y = y0; y < y1; y++) {
       for (let x = x0; x < x1; x++) {
         if (x<0||y<0||x>=this.cols||y>=this.rows) continue;
         if (this.collision[y*this.cols+x] === 1) {
-          ctx.fillRect(x*this.cell - camX, y*this.cell - camY, this.cell, this.cell);
+          ctx.fillRect(
+            x * this.cell + ox - camX,
+            y * this.cell + oy - camY,
+            this.cell,
+            this.cell
+          );
         }
       }
     }

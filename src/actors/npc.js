@@ -1,3 +1,4 @@
+import { CONFIG } from "../config.js";
 import { Animator } from "../utils/animator.js";
 
 export class NPC {
@@ -14,6 +15,8 @@ export class NPC {
     this.animator = new Animator(animations ?? {}, this.idleAction);
     this.fallbackImage = opts.fallback ?? null;
     this.facing = opts.facing ?? "right";
+    const baseRadius = CONFIG.actorRadius ?? 12;
+    this.hitRadius = opts.hitRadius ?? opts.radius ?? baseRadius;
   }
 
   update(dt, target, world) {

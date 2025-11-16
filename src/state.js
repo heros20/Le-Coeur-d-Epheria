@@ -8,8 +8,13 @@ export const State = {
 
   player: null,
   kael: null,
+  boss: null,
+  bossCheckpoint: null,
+  bossRetryShown: false,
+  paused: false,
   princess: { x: 512, y: 240, freed: false },
   map: null,
+  pointer: { x: 0, y: 0 },
   dialogue: null,
   inventory: null,
   flags: {

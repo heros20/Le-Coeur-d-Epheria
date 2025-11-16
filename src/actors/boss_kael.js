@@ -7,8 +7,11 @@ export class BossKael {
     this.y = y;
     this.hp = CONFIG.kael.hp;
     this.alive = true;
-    this.animator = new Animator(animations ?? {}, "idle");
+    const baseAnimations = filterBossAnimations(animations);
+    this.animator = new Animator(baseAnimations, "idle");
     this.scale = opts.scale ?? 0.35;
+    const baseRadius = (CONFIG.actorRadius ?? 12) * (this.scale / 0.35);
+    this.hitRadius = opts.hitRadius ?? opts.radius ?? Math.max(12, baseRadius * 1.5);
     this.facing = "right";
 
     const cfg = CONFIG.kael ?? {};
@@ -36,7 +39,7 @@ export class BossKael {
     this.fissureWidth = cfg.fissureWidth ?? 42;
     this.fissureDamage = cfg.fissureDamage ?? 32;
 
-    this.cooldownTimer = 0;
+    this.cooldownTimer = this.attackCooldown * 0.5;
     this.windupTimer = 0;
     this.dashTimer = 0;
     this.dashVector = { x: 0, y: 0 };
@@ -74,13 +77,13 @@ export class BossKael {
         const progress = 1 - this.windupTimer / this.windupDuration;
         this.telegraph.progress = progress;
       }
-      this.animator.setBase("attack");
+      this.animator.setBase("idle");
       if (this.windupTimer <= 0) this._beginDash();
     } else if (this.dashTimer > 0) {
       const step = this.dashSpeed * dt;
       moved = this._move(world, this.dashVector.x * step, this.dashVector.y * step) || moved;
       this.dashTimer -= dt;
-      this.animator.setBase("attack");
+      this.animator.setBase(this._directionalAction("run"));
       const currentDist = Math.hypot(player.x - this.x, player.y - this.y);
       if (!this.dashHit && currentDist < 42) {
         player.applyDamage(this.dashDamage);
@@ -111,7 +114,8 @@ export class BossKael {
       const step = this.speed * (dist < closeThreshold ? 0.8 : 1) * dt;
       moved = this._move(world, moveX * step, moveY * step);
 
-      if (dist <= this.attackRange && this.cooldownTimer <= 0) {
+      const readyForDash = this.cooldownTimer <= 0 && !this.windupTimer && !this.dashTimer;
+      if (readyForDash) {
         this._startWindup(player);
       }
     }
@@ -147,6 +151,27 @@ export class BossKael {
       this._spawnFissure(player);
       this.fissureTimer = this.fissureCooldown;
     }
+  }
+
+  resetForFight(spawn = {}) {
+    if (spawn && typeof spawn === "object") {
+      if (Number.isFinite(spawn.x)) this.x = spawn.x;
+      if (Number.isFinite(spawn.y)) this.y = spawn.y;
+    }
+    this.hp = CONFIG.kael.hp;
+    this.alive = true;
+    this.cooldownTimer = this.attackCooldown * 0.5;
+    this.windupTimer = 0;
+    this.dashTimer = 0;
+    this.dashVector = { x: 0, y: 0 };
+    this.lastTarget = { x: this.x, y: this.y };
+    this.telegraph = null;
+    this.dashHit = false;
+    this.orbTimer = this.orbCooldown * 0.5;
+    this.orbs = [];
+    this.fissureTimer = this.fissureCooldown * 0.7;
+    this.fissures = [];
+    this.animator.setBase("idle");
   }
 
   hit(amount = 10, source = null) {
@@ -205,7 +230,7 @@ export class BossKael {
       progress: 0,
     };
     this.lastTarget = { x: player.x, y: player.y };
-    this.animator.play("attack", { force: true });
+    this.animator.setBase("idle");
   }
 
   _beginDash() {
@@ -429,4 +454,21 @@ export class BossKael {
     const vy = py - ly;
     return (vx * -dy + vy * dx);
   }
+}
+
+function filterBossAnimations(animations = {}) {
+  const result = {};
+  if (!animations) return result;
+  const allowedBase = new Set(["idle", "jump", "hurt", "dead"]);
+  for (const [key, value] of Object.entries(animations)) {
+    if (!value) continue;
+    if (key.startsWith("walk") || key.startsWith("run")) {
+      result[key] = value;
+      continue;
+    }
+    if (allowedBase.has(key)) {
+      result[key] = value;
+    }
+  }
+  return result;
 }

@@ -6,6 +6,11 @@ export const CONFIG = {
 
   // cellule de collision plus large pour lisser la texture brique
   collisionCell: 6,
+  collisionOffset: { x: 15, y: 0 },
+
+  playerAttackRadius: 22,
+  playerAttackDuration: 0.28,
+  playerMouseDeadzone: 18,
 
   kael: {
     hp: 320,

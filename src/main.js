@@ -1,7 +1,7 @@
 // src/main.js
 import { CONFIG } from "./config.js";
 import { State } from "./state.js";
-import { setupKeyboard, endFrame, consume } from "./input.js";
+import { setupKeyboard, setupPointer, endFrame, consume, consumePointer, Pointer } from "./input.js";
 import { loadWorldMap } from "./world/map.js";
 import { applyLighting } from "./world/lighting.js";
 import { FogOfWar } from "./world/fog.js";
@@ -45,11 +45,6 @@ const KAEL_ANIMATION_SOURCES = {
   walk_left: ["./assets/Kael/walk/Walk_left.png"],
   walk_right: ["./assets/Kael/walk/Walk_right.png"],
   run: ["./assets/Kael/run/Run.png"],
-  attack: [
-    "./assets/Kael/attack/Attack_1.png",
-    "./assets/Kael/attack/Attack_2.png",
-    "./assets/Kael/attack/Attack_3.png",
-  ],
   jump: ["./assets/Kael/jump/Jump.png"],
   hurt: ["./assets/Kael/hurt/Hurt.png"],
   dead: ["./assets/Kael/dead/Dead.png"],
@@ -242,6 +237,7 @@ function syncDialogueOverlay() {
     keepDistance: 70,
     moveAction: "walk",
     idleAction: "idle",
+    hitRadius: PLAYER_RADIUS,
   });
   State.kael.follow = false;
   State.flags.kaelMet = false;
@@ -252,15 +248,22 @@ function syncDialogueOverlay() {
     keepDistance: 55,
     moveAction: "walk",
     idleAction: "idle",
+    hitRadius: PLAYER_RADIUS,
   });
   State.princess.follow = false;
   State.princess.freed = false;
-  State.boss = new BossKael(kaelAnimations, kaelStart.x, kaelStart.y, { scale: ACTOR_SCALE });
+  State.boss = new BossKael(kaelAnimations, kaelStart.x, kaelStart.y, {
+    scale: ACTOR_SCALE,
+    hitRadius: PLAYER_RADIUS * 2.2,
+  });
+  State.bossCheckpoint = null;
+  State.bossRetryShown = false;
 
   State.fog = new FogOfWar(world.w, world.h);
   State.fog.reveal(State.player.x, State.player.y, 180);
 
   setupKeyboard();
+  setupPointer($canvas);
 
   // Boucle principale
   function frame(ts) {
@@ -283,16 +286,55 @@ function syncDialogueOverlay() {
   function update(dt) {
     const { player, map } = State;
 
+    const camera = State.camera;
+    let pointerWorld = null;
+    if (Pointer.hasPosition && camera) {
+      pointerWorld = {
+        x: Pointer.x + (camera?.x ?? 0),
+        y: Pointer.y + (camera?.y ?? 0),
+      };
+      Pointer.worldX = pointerWorld.x;
+      Pointer.worldY = pointerWorld.y;
+    }
+    const pointerData = pointerWorld ?? null;
+    State.pointer = pointerData;
+    let mouseMoveVector = null;
+    if (pointerData) {
+      const dx = pointerData.x - player.x;
+      const dy = pointerData.y - player.y;
+      mouseMoveVector = { x: dx, y: dy, dist: Math.hypot(dx, dy) };
+    }
+
     if (consume("r")) State.mode = State.mode === "LIGHT" ? "SHADOW" : "LIGHT";
-    const attackPressed = consume(" ");
+    const attackPressed = consumePointer(0) || consume(" ");
     const jumpPressed = consume("j");
     const interactPressed = consume("e");
 
     // E pour interagir uniquement si aucun dialogue en cours
+    if (State.paused) {
+      State.dialogue.update({ dt: 0 });
+      syncDialogueOverlay();
+      hud.update({
+        hp: player.hp,
+        mode: State.mode,
+        torch: player.torchOn,
+        stamina: player.stamina,
+        staminaMax: player.staminaMax,
+      });
+      return;
+    }
+
     if (!State.dialogue.isOpen() && interactPressed) tryInteract();
 
     // Mouvements joueur
-    player.update(dt, map, State.mode, { attack: attackPressed, jump: jumpPressed });
+    player.update(dt, map, State.mode, {
+      attack: attackPressed,
+      jump: jumpPressed,
+      aim: pointerData,
+      aimValid: Boolean(pointerData),
+      moveVector: mouseMoveVector,
+      pointerDeadzone: CONFIG.playerMouseDeadzone,
+    });
 
     // NPC/Princess
     if (
@@ -313,10 +355,14 @@ function syncDialogueOverlay() {
     // Combat (après trahison)
     if (!State.dialogue.isOpen() && State.flags.betrayalHappened && !State.flags.kaelDefeated) {
       State.boss.update(dt, player, map);
-      if (attackPressed) {
-        if (Math.hypot(player.x - State.boss.x, player.y - State.boss.y) < 70) {
-          State.boss.hit(15, { x: player.x, y: player.y });
-        }
+      const attackRange = player.attackRadius ?? 70;
+      if (
+        player.canDealAttackDamage?.() &&
+        Math.hypot(player.x - State.boss.x, player.y - State.boss.y) < attackRange &&
+        player.isTargetInAttackArc?.(State.boss.x, State.boss.y)
+      ) {
+        State.boss.hit(15);
+        player.confirmAttackHit?.();
       }
       if (!State.boss.alive) {
         State.flags.kaelDefeated = true;
@@ -330,7 +376,14 @@ function syncDialogueOverlay() {
       }
     }
 
-    if (player.hp <= 0) renderDeath();
+    if (player.hp <= 0) {
+      if (State.flags.betrayalHappened && !State.flags.kaelDefeated) {
+        renderBossGameOver();
+      } else {
+        renderDeath();
+      }
+      return;
+    }
 
     // >>> MISE À JOUR DU DIALOGUE (auto-fermeture si rien à dire)
     State.dialogue.update({ dt });
@@ -381,10 +434,11 @@ function syncDialogueOverlay() {
     if (State.flags.betrayalHappened) return;
     State.flags.betrayalHappened = true;
     State.kael.follow = false;
-    State.boss.x = State.kael.x;
-    State.boss.y = State.kael.y;
-    State.boss.hp = CONFIG.kael.hp;
-    State.boss.alive = true;
+    State.boss.resetForFight({ x: State.kael.x, y: State.kael.y });
+    State.bossCheckpoint = {
+      player: { x: State.player.x, y: State.player.y },
+      boss: { x: State.boss.x, y: State.boss.y },
+    };
     State.dialogue.show([
       { speaker: "Kael", text: "Te voilà face à son innocence. Chaque décision porte une ombre." },
       { speaker: "Kael", text: "Je suis le prix de tes choix, Lioran. Tu ne quitteras pas ce labyrinthe indemne." },
@@ -418,10 +472,53 @@ function syncDialogueOverlay() {
     }
     State.player.draw(ctx);
 
-    // Debug collisions si besoin :
-    // State.map.drawCollisionDebug(ctx, camX, camY, camera.w, camera.h);
+    const drawHitCircle = (entity, radius, color = "#4DFF9A") => {
+      if (!entity || !radius) return;
+      ctx.save();
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(entity.x, entity.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.9;
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = color;
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    drawHitCircle(State.player, State.player?.r, "#4DFF9A");
+    if (State.player?.isAttackActive?.()) {
+      const facing = State.player?.facing === "left" ? Math.PI : 0;
+      const arcStart = facing - Math.PI / 2;
+      const arcEnd = facing + Math.PI / 2;
+      ctx.save();
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = "#FFE266";
+      ctx.beginPath();
+      ctx.moveTo(State.player.x, State.player.y);
+      ctx.arc(State.player.x, State.player.y, State.player.attackRadius, arcStart, arcEnd);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 0.9;
+      ctx.strokeStyle = "#FFE266";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(State.player.x, State.player.y, State.player.attackRadius, arcStart, arcEnd);
+      ctx.stroke();
+      ctx.restore();
+    }
+    if (!State.flags.betrayalHappened) drawHitCircle(State.kael, State.kael?.hitRadius, "#FFD966");
+    drawHitCircle(State.princess, State.princess?.hitRadius, "#A5B4FC");
+    if (State.flags.betrayalHappened && !State.flags.kaelDefeated) {
+      drawHitCircle(State.boss, State.boss?.hitRadius, "#FF6B6B");
+    }
 
     ctx.restore();
+
+    if (State.map?.drawCollisionDebug) {
+      State.map.drawCollisionDebug(ctx, camX, camY, camera.w, camera.h);
+    }
 
     // post-processing
     applyLighting(ctx, State.mode, State.player.x - camX, State.player.y - camY, State.player.torchOn);
@@ -433,6 +530,57 @@ function syncDialogueOverlay() {
 
     // Aide UI
    
+  }
+
+  function renderBossGameOver() {
+    if (State.bossRetryShown) return;
+    const el = document.getElementById("ending");
+    if (!el) return;
+    State.bossRetryShown = true;
+    State.paused = true;
+    el.classList.remove("hidden");
+    el.innerHTML = `
+      <div class="card">
+        <h2>Game Over</h2>
+        <p>Kael t'a vaincu. Relance le duel et reprends le dessus.</p>
+        <div class="choices">
+          <button data-retry-boss>Retenter le combat</button>
+          <button data-abandon>Abandonner</button>
+        </div>
+      </div>`;
+    el.querySelector("[data-retry-boss]")?.addEventListener("click", () => retryBossFight());
+    el.querySelector("[data-abandon]")?.addEventListener("click", () => goToTitle());
+  }
+
+  function retryBossFight() {
+    const el = document.getElementById("ending");
+    if (el) {
+      el.classList.add("hidden");
+      el.innerHTML = "";
+    }
+    State.bossRetryShown = false;
+    State.paused = false;
+    const checkpoint = State.bossCheckpoint;
+    if (checkpoint?.player) {
+      State.player.x = checkpoint.player.x;
+      State.player.y = checkpoint.player.y;
+    }
+    State.player.hp = State.player.maxHp ?? 100;
+    State.player.stamina = State.player.staminaMax;
+    State.player.resetCombatState?.();
+    State.player.animator?.setBase("idle");
+    const bossSpawn = checkpoint?.boss ? { x: checkpoint.boss.x, y: checkpoint.boss.y } : undefined;
+    State.boss.resetForFight(bossSpawn);
+    State.flags.kaelDefeated = false;
+    State.dialogue.close();
+    clampCameraToPlayer(State.player.x, State.player.y);
+    State.fog.reveal(State.player.x, State.player.y, 170);
+  }
+
+  function goToTitle() {
+    State.paused = false;
+    State.started = false;
+    location.reload();
   }
 
   function renderDeath() {

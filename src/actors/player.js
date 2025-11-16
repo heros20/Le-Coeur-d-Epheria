@@ -14,6 +14,12 @@ export class Player {
     this.r = CONFIG.actorRadius ?? 8;
     this.speed = CONFIG.speed;
     this.hp = 100;
+    this.maxHp = this.hp;
+    const baseAttackRadius = opts.attackRadius ?? CONFIG.playerAttackRadius ?? this.r * 2.2;
+    this.attackRadius = baseAttackRadius;
+    this.attackActiveDuration = opts.attackActiveDuration ?? CONFIG.playerAttackDuration ?? 0.25;
+    this._attackTimer = 0;
+    this._attackCanHit = false;
 
     this.staminaMax = CONFIG.staminaMax ?? 100;
     this.stamina = this.staminaMax;
@@ -35,23 +41,45 @@ export class Player {
     this._tickCooldowns(dt);
     const attack = Boolean(inputs.attack);
     const jump = Boolean(inputs.jump);
+    const aim = inputs.aim;
+    const hasAim =
+      Boolean(inputs.aimValid) && Boolean(aim && Number.isFinite(aim.x) && Number.isFinite(aim.y));
+    const moveVector = inputs.moveVector;
+    const pointerMove = moveVector && Number.isFinite(moveVector.x) && Number.isFinite(moveVector.y);
+
+    if (hasAim) this._setFacingTowards(aim.x, aim.y);
 
     if (this.hp <= 0) {
       this.animator.play("dead", { sticky: true });
     } else {
-      if (attack) this.animator.play("attack");
+      if (attack) {
+        this.animator.play("attack");
+        this._attackTimer = this.attackActiveDuration;
+        this._attackCanHit = true;
+      }
       if (jump) this.animator.play("jump");
     }
 
     let vx = 0;
     let vy = 0;
-    if (Keys.has("z") || Keys.has("arrowup")) vy -= 1;
-    if (Keys.has("s") || Keys.has("arrowdown")) vy += 1;
-    if (Keys.has("q") || Keys.has("arrowleft")) vx -= 1;
-    if (Keys.has("d") || Keys.has("arrowright")) vx += 1;
-    const mag = Math.hypot(vx, vy) || 1;
-    vx /= mag;
-    vy /= mag;
+    let usingMouseMove = false;
+    const keyboardX =
+      (Keys.has("d") || Keys.has("arrowright") ? 1 : 0) -
+      (Keys.has("q") || Keys.has("arrowleft") ? 1 : 0);
+    const keyboardY =
+      (Keys.has("s") || Keys.has("arrowdown") ? 1 : 0) -
+      (Keys.has("z") || Keys.has("arrowup") ? 1 : 0);
+    const pointerDeadzone = inputs.pointerDeadzone ?? CONFIG.playerMouseDeadzone ?? 18;
+    if (pointerMove && moveVector.dist > pointerDeadzone) {
+      usingMouseMove = true;
+      const dist = moveVector.dist || Math.hypot(moveVector.x, moveVector.y) || 1;
+      vx = moveVector.x / dist;
+      vy = moveVector.y / dist;
+    } else if (keyboardX !== 0 || keyboardY !== 0) {
+      const mag = Math.hypot(keyboardX, keyboardY) || 1;
+      vx = keyboardX / mag;
+      vy = keyboardY / mag;
+    }
 
     let sp = this.speed * (mode === "SHADOW" ? this.shadowPenalty : 1);
     const canSprint = this.stamina > 0.1 && this.recoveryCooldown <= 0;
@@ -87,7 +115,7 @@ export class Player {
       this.y = ny;
 
       const moved = this.x !== prevX || this.y !== prevY;
-      if (moved) {
+      if (moved && !(hasAim || usingMouseMove)) {
         const dxMoved = this.x - prevX;
         if (Math.abs(dxMoved) > 0.5) {
           this.facing = dxMoved > 0 ? "right" : "left";
@@ -173,12 +201,65 @@ export class Player {
     if (this._torchCooldown > 0) this._torchCooldown -= dt;
     if (this.recoveryCooldown > 0) this.recoveryCooldown -= dt;
     if (this.hurtCooldown > 0) this.hurtCooldown -= dt;
+    if (this._attackTimer > 0) {
+      this._attackTimer = Math.max(0, this._attackTimer - dt);
+      if (this._attackTimer === 0) this._attackCanHit = false;
+    }
   }
 
   _pickDirectionalAction(action) {
     if (action !== "walk" && action !== "run") return action;
     const directional = `${action}_${this.facing}`;
     return this.animator.animations[directional] ? directional : action;
+  }
+
+  _setFacingTowards(tx, ty) {
+    if (!Number.isFinite(tx) || !Number.isFinite(ty)) return;
+    const dx = tx - this.x;
+    if (Math.abs(dx) < 0.5) return;
+    this.facing = dx >= 0 ? "right" : "left";
+  }
+
+  _getFacingVector() {
+    return this.facing === "left" ? { x: -1, y: 0 } : { x: 1, y: 0 };
+  }
+
+  isAttackActive() {
+    return this._attackTimer > 0;
+  }
+
+  canDealAttackDamage() {
+    return this._attackTimer > 0 && this._attackCanHit;
+  }
+
+  confirmAttackHit() {
+    this._attackCanHit = false;
+  }
+
+  resetCombatState() {
+    this._attackTimer = 0;
+    this._attackCanHit = false;
+    this.hurtCooldown = 0;
+    this.recoveryCooldown = 0;
+    if (this.animator) {
+      this.animator.setBase("idle");
+      this.animator.reset();
+      if (this.animator.blocking) this.animator.blocking = null;
+    }
+  }
+  isTargetInAttackArc(tx, ty) {
+    const dx = tx - this.x;
+    const dy = ty - this.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist === 0) return true;
+    const facingVec = this._getFacingVector();
+    const nx = dx / dist;
+    const ny = dy / dist;
+    return nx * facingVec.x + ny * facingVec.y >= 0;
+  }
+
+  _getFacingVector() {
+    return this.facing === "left" ? { x: -1, y: 0 } : { x: 1, y: 0 };
   }
 }
 
