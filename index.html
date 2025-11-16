@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1"
+    />
+    <title>Le Cœur d’Éphéria</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="boot">
+      <h1>Le Cœur d’Éphéria</h1>
+      <p class="tag">
+        « Celui qui cherche la sortie oublie toujours pourquoi il est entré. »
+      </p>
+
+      <section class="hero-select">
+        <h2>Choisis ton avatar</h2>
+        <div class="grid">
+          <button class="hero-card" data-src="./assets/hero1.png">
+            <img src="./assets/hero1.png" alt="Héros" />
+            <span>Lioran — Veilleur du Labyrinthe</span>
+          </button>
+          
+          
+        </div>
+        
+        <button id="startBtn" disabled>Démarrer</button>
+      </section>
+
+      <section class="help">
+        <h3>Commandes</h3>
+        <ul>
+          <li>🕹️ Déplacer: ZQSD / ↑←↓→</li>
+          <li>💡 Torche: T</li>
+          <li>🌗 Changer de réalité: SHIFT (Lumière ↔ Ombre)</li>
+          <li>🎒 Inventaire: I — Utiliser: 1..9</li>
+          <li>💬 Interagir / Lire: E</li>
+        </ul>
+      </section>
+    </div>
+
+    <div id="game" class="hidden">
+      <canvas id="gameCanvas" width="1024" height="768"></canvas>
+      <div id="hud"></div>
+      <div id="dialogue" class="dialogue hidden">
+        <div class="box">
+          <div id="dialogueSpeaker"></div>
+          <div id="dialogueText"></div>
+          <button id="dialogueNext">⮕</button>
+        </div>
+      </div>
+      <div id="ending" class="ending hidden"></div>
+    </div>
+
+    <script type="module" src="./src/main.js"></script>
+
+  </body>
+</html>

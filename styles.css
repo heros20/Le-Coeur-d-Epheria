@@ -1,0 +1,39 @@
+* { box-sizing:border-box; }
+html,body { margin:0; height:100%; background:#0c0c0f; color:#e8e8ea; font-family:system-ui,Segoe UI,Roboto,Inter,sans-serif; }
+h1,h2,h3 { margin:0.2rem 0 0.6rem; letter-spacing:0.5px; }
+#boot { max-width:980px; margin:2rem auto; padding:1.5rem; background:#121218; border:1px solid #252533; border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,.4); }
+.tag { opacity:.8; margin-bottom:1.25rem; }
+.hero-select .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:10px 0 16px; }
+.hero-card { padding:8px; background:#1a1a24; border:1px solid #2a2a3a; border-radius:12px; cursor:pointer; display:flex; flex-direction:column; gap:6px; align-items:center; justify-content:center; transition:.2s ease; }
+.hero-card img { max-width:180px; max-height:180px; object-fit:contain; filter:drop-shadow(0 6px 12px rgba(0,0,0,.45)); }
+.hero-card:hover { transform:translateY(-2px); border-color:#5cf2ff55; box-shadow:0 8px 24px rgba(0,20,50,.35); }
+.hero-card.selected { outline:2px solid #7de6ff; }
+#startBtn { padding:10px 18px; border-radius:10px; background:#00d0ff; color:#051318; border:none; font-weight:700; letter-spacing:.3px; cursor:pointer; }
+#startBtn:disabled { opacity:.45; cursor:not-allowed; }
+.help ul { margin:0.6rem 0 0; padding-left:1rem; opacity:.9; }
+
+.hidden { display:none; }
+
+#game { position:relative; width:1024px; margin:0 auto; }
+#gameCanvas { width:1024px; height:768px; image-rendering:pixelated; background:#000; border:1px solid #2a2a3a; border-radius:10px; }
+#hud { position:absolute; left:0; right:0; top:0; padding:8px; display:flex; gap:8px; justify-content:space-between; pointer-events:none; }
+
+.hud-card { pointer-events:auto; background:rgba(10,10,14,.6); border:1px solid #27273a; padding:8px 10px; border-radius:10px; backdrop-filter:blur(4px); }
+.stat { margin-right:8px; }
+
+.dialogue, .ending { position:absolute; inset:0; display:flex; align-items:flex-end; justify-content:center; background:linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.6) 100%); }
+.dialogue .box { width:min(860px, 95%); background:#11121a; border:1px solid #34344a; border-radius:12px; padding:12px 14px; margin:18px; display:grid; grid-template-columns:auto 1fr auto; gap:10px; }
+#dialogueSpeaker { color:#98f7ff; font-weight:700; }
+#dialogueText { line-height:1.4; }
+#dialogueNext { padding:6px 10px; border-radius:8px; background:#00d0ff; border:none; cursor:pointer; }
+
+.ending .card { width:min(860px, 95%); margin:auto; background:#101016; border:1px solid #34344a; border-radius:14px; padding:20px; text-align:center; }
+.ending .choices { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; margin-top:12px; }
+.ending button { padding:10px 14px; border-radius:10px; background:#2a2a3a; color:#e8e8ea; border:1px solid #3a3a4a; cursor:pointer; }
+.ending button:hover { background:#00d0ff; color:#081218; border-color:#00d0ff; }
+.hud-card .row { display: flex; align-items: center; gap: 8px; }
+.bar { width: 180px; height: 10px; border-radius: 8px; background: #1f2630; border:1px solid #334; overflow: hidden; }
+.bar .fill { height: 100%; background: linear-gradient(90deg,#00d0ff,#00ffa6); }
+/* cachée par défaut, visible seulement quand un dialogue est ouvert */
+[data-ui="dialogue-overlay"] { display: none; }
+.ui--dialogue-open [data-ui="dialogue-overlay"] { display: block; }
