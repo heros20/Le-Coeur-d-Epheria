@@ -149,9 +149,6 @@ function bindHoldButton(el, key) {
   const MOUSE_ID = "mouse";
   const getPointerId = (id) => (Number.isFinite(id) ? id : MOUSE_ID);
 
-  const MOUSE_ID = "mouse";
-  const getPointerId = (id) => (Number.isFinite(id) ? id : MOUSE_ID);
-
   if ("PointerEvent" in window) {
     el.addEventListener(
       "pointerdown",
