@@ -129,33 +129,94 @@ export function createHUD() {
 
 function bindHoldButton(el, key) {
   if (!el) return;
+  const activePointers = new Set();
 
-  const down = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setVirtualKey(key, true);
-    el.classList.add("btn-active");
+  const press = () => {
+    if (activePointers.size === 1) {
+      setVirtualKey(key, true);
+      el.classList.add("btn-active");
+    }
   };
 
-  const up = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setVirtualKey(key, false);
-    el.classList.remove("btn-active");
+  const release = (id) => {
+    if (activePointers.has(id)) activePointers.delete(id);
+    if (activePointers.size === 0) {
+      setVirtualKey(key, false);
+      el.classList.remove("btn-active");
+    }
   };
 
-  // Souris
-  el.addEventListener("mousedown", down);
-  el.addEventListener("mouseup", up);
-  el.addEventListener("mouseleave", up);
+  const MOUSE_ID = "mouse";
+  const getPointerId = (id) => (Number.isFinite(id) ? id : MOUSE_ID);
 
-  // Touch
-  el.addEventListener("touchstart", down, { passive: false });
-  el.addEventListener("touchend", up, { passive: false });
-  el.addEventListener("touchcancel", up, { passive: false });
+  if ("PointerEvent" in window) {
+    el.addEventListener(
+      "pointerdown",
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const id = getPointerId(e.pointerId);
+        if (!activePointers.has(id)) {
+          activePointers.add(id);
+          press();
+        }
+        el.setPointerCapture?.(e.pointerId);
+      },
+      { passive: false }
+    );
+    el.addEventListener(
+      "pointerup",
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        release(getPointerId(e.pointerId));
+      },
+      { passive: false }
+    );
+    el.addEventListener(
+      "pointercancel",
+      (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        release(getPointerId(e.pointerId));
+      },
+      { passive: false }
+    );
+    el.addEventListener(
+      "pointerleave",
+      (e) => {
+        if (!activePointers.size) return;
+        e.preventDefault();
+        e.stopPropagation();
+        release(getPointerId(e.pointerId));
+      },
+      { passive: false }
+    );
+  } else {
+    const down = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = typeof e.identifier === "number" ? e.identifier : MOUSE_ID;
+      activePointers.add(id);
+      press();
+    };
+    const up = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const id = typeof e.identifier === "number" ? e.identifier : MOUSE_ID;
+      release(id);
+    };
+    el.addEventListener("mousedown", down);
+    el.addEventListener("mouseup", up);
+    el.addEventListener("mouseleave", up);
+    el.addEventListener("touchstart", down, { passive: false });
+    el.addEventListener("touchend", up, { passive: false });
+    el.addEventListener("touchcancel", up, { passive: false });
+  }
 
   el.style.userSelect = "none";
   el.style.webkitUserSelect = "none";
+  el.style.touchAction = "none";
 }
 
 function bindTapButton(el, key, onTap) {
