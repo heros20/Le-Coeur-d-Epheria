@@ -117,9 +117,43 @@ export function createHUD() {
     `;
   }
 
-  // On branche les contrôles mobiles si présents dans le DOM
+  // branche les contrôles mobiles si présents
   setupMobileControls();
+// Ajoute un effet visuel sur tous les boutons mobiles
+function addButtonFeedback(el) {
+  if (!el) return;
 
+  const down = (e) => {
+    e.preventDefault();
+    el.classList.add("btn-active");
+  };
+
+  const up = (e) => {
+    e.preventDefault();
+    el.classList.remove("btn-active");
+  };
+
+  el.addEventListener("mousedown", down);
+  el.addEventListener("mouseup", up);
+  el.addEventListener("mouseleave", up);
+
+  el.addEventListener("touchstart", down, { passive: false });
+  el.addEventListener("touchend", up, { passive: false });
+  el.addEventListener("touchcancel", up, { passive: false });
+}
+
+// On appelle ce feedback pour chaque bouton mobile :
+(function setupButtonVisualDebug() {
+  const ids = [
+    "btn-up", "btn-down", "btn-left", "btn-right",
+    "btn-attack", "btn-dash", "btn-interact"
+  ];
+
+  ids.forEach(id => {
+    const el = document.getElementById(id);
+    addButtonFeedback(el);
+  });
+})();
   return { update };
 }
 
@@ -127,43 +161,65 @@ export function createHUD() {
 // Contrôles mobiles
 // ------------------------
 
-function bindHoldButton(el, key) {
+function addHoldListeners(el, key) {
   if (!el) return;
 
-  const down = (e) => {
+  const start = (e) => {
     e.preventDefault();
-    setVirtualKey(key, true);
+    e.stopPropagation();
+    setVirtualKey(key, true); // rester appuyé tant que le doigt est dessus
   };
 
-  const up = (e) => {
+  const end = (e) => {
     e.preventDefault();
+    e.stopPropagation();
     setVirtualKey(key, false);
   };
 
-  el.addEventListener("pointerdown", down);
-  el.addEventListener("pointerup", up);
-  el.addEventListener("pointerleave", up);
-  el.addEventListener("pointercancel", up);
+  // Souris
+  el.addEventListener("mousedown", start);
+  el.addEventListener("mouseup", end);
+  el.addEventListener("mouseleave", end);
+
+  // Touch
+  el.addEventListener("touchstart", start, { passive: false });
+  el.addEventListener("touchend", end, { passive: false });
+  el.addEventListener("touchcancel", end, { passive: false });
+
+  // Limite le comportement par défaut (sélection texte, scroll chelou)
+  el.style.userSelect = "none";
+  el.style.webkitUserSelect = "none";
 }
 
-function bindTapButton(el, key) {
+function addTapListener(el, key) {
   if (!el) return;
 
   const tap = (e) => {
     e.preventDefault();
-    // press ponctuel : touche "juste pressée" ce frame
+    e.stopPropagation();
+    // "once" = press ponctuel, consommé par consume()
     setVirtualKey(key, true, true);
   };
 
-  el.addEventListener("pointerdown", tap);
+  // Souris + clic classique
+  el.addEventListener("click", tap);
+  el.addEventListener("mousedown", tap);
+
+  // Touch
+  el.addEventListener("touchstart", tap, { passive: false });
+
+  el.style.userSelect = "none";
+  el.style.webkitUserSelect = "none";
 }
 
 function setupMobileControls() {
-  // Conteneur optionnel, pour pouvoir lui appliquer touch-action:none
   const root = document.getElementById("mobile-controls");
-  if (root) {
-    root.style.touchAction = "none";
-  }
+  if (!root) return;
+
+  // bloque les gestes par défaut dans la zone
+  root.style.touchAction = "none";
+  root.style.userSelect = "none";
+  root.style.webkitUserSelect = "none";
 
   const btnUp = document.getElementById("btn-up");
   const btnDown = document.getElementById("btn-down");
@@ -174,18 +230,17 @@ function setupMobileControls() {
   const btnAttack = document.getElementById("btn-attack");
   const btnInteract = document.getElementById("btn-interact");
 
-  // Déplacements : adaptés au schéma ZQSD de ton joueur
-  bindHoldButton(btnUp, "z");
-  bindHoldButton(btnDown, "s");
-  bindHoldButton(btnLeft, "q");
-  bindHoldButton(btnRight, "d");
+  // Déplacements : ZQSD (à adapter si ton Player lit autre chose)
+  addHoldListeners(btnUp, "z");
+  addHoldListeners(btnDown, "s");
+  addHoldListeners(btnLeft, "q");
+  addHoldListeners(btnRight, "d");
 
   // Dash / attaque / interaction
-  // Dash et attaque sont branchés sur la barre espace " "
-  // (à adapter si ton Player utilise autre chose pour l'attaque)
-  bindTapButton(btnDash, " ");
-  bindTapButton(btnAttack, " ");
+  // Dash et Attaque : barre espace " "
+  addTapListener(btnDash, " ");
+  addTapListener(btnAttack, " ");
 
   // Interagir = "e"
-  bindTapButton(btnInteract, "e");
+  addTapListener(btnInteract, "e");
 }
