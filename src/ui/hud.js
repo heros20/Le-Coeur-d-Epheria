@@ -480,6 +480,7 @@ function setupMobileControls() {
   const btnDash = document.getElementById("btn-dash");
   const btnAttack = document.getElementById("btn-attack");
   const btnInteract = document.getElementById("btn-interact");
+  const btnSprint = document.getElementById("btn-sprint");
 
   // Déplacements : ZQSD
   const dpadEntries = [
@@ -501,5 +502,10 @@ function setupMobileControls() {
     if (touchControls) touchControls.dashQueued = true;
   });
   bindAttackButton(btnAttack);
-  bindTapButton(btnInteract, "e");
+  bindTapButton(btnInteract, "e", () => {
+    if (State.dialogue?.isOpen?.()) {
+      State.dialogue.next?.();
+    }
+  });
+  bindHoldButton(btnSprint, "shift");
 }

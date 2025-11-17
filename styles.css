@@ -645,6 +645,7 @@ h3 {
   gap: 0.3rem;
   align-items: center;
   justify-items: center;
+  transform: translateX(-20%);
 }
 
 /* Boutons d’action = ronds façon manette */
@@ -683,6 +684,11 @@ h3 {
 .action-right {
   grid-row: 2 / 3;
   grid-column: 3 / 4;
+}
+
+.action-bottom {
+  grid-row: 3 / 4;
+  grid-column: 2 / 3;
 }
 /* Texte interne compact */
 .action-btn .btn-label {
