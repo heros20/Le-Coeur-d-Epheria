@@ -354,6 +354,12 @@ function bindDirectionalPad(container, entries) {
   const getEntryFromTarget = (target) =>
     entryList.find((entry) => entry.el === target || entry.el.contains(target));
 
+  const getEntryFromPoint = (x, y) => {
+    const el = document.elementFromPoint(x, y);
+    if (!el) return null;
+    return getEntryFromTarget(el);
+  };
+
   const activate = (entry) => {
     if (!entry) return;
     entry.activeCount += 1;
@@ -401,10 +407,22 @@ function bindDirectionalPad(container, entries) {
     assignPointer(getPointerId(e.pointerId), entry);
   };
 
-  const handlePointerMove = (e) => {
+  const handleLocalPointerMove = (e) => {
     if (!(e.buttons & 1)) return;
-    const entry = getEntryFromTarget(e.target);
     const id = getPointerId(e.pointerId);
+    const entry = getEntryFromTarget(e.target);
+    if (entry) assignPointer(id, entry);
+    else releasePointer(id);
+  };
+
+  const handleGlobalPointerMove = (e) => {
+    const id = getPointerId(e.pointerId);
+    if (!pointerAssignments.has(id)) return;
+    if (!(e.buttons & 1)) {
+      releasePointer(id);
+      return;
+    }
+    const entry = getEntryFromPoint(e.clientX, e.clientY);
     if (entry) assignPointer(id, entry);
     else releasePointer(id);
   };
@@ -421,8 +439,9 @@ function bindDirectionalPad(container, entries) {
     entry.el.addEventListener("pointerenter", handlePointerEnter(entry), { passive: false });
   });
 
-  container.addEventListener("pointermove", handlePointerMove, { passive: false });
+  container.addEventListener("pointermove", handleLocalPointerMove, { passive: false });
   container.addEventListener("pointerleave", releaseFromEvent, { passive: false });
+  window.addEventListener("pointermove", handleGlobalPointerMove, { passive: false });
   window.addEventListener("pointerup", releaseFromEvent, { passive: false });
   window.addEventListener("pointercancel", releaseFromEvent, { passive: false });
 }
