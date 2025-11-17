@@ -11,6 +11,16 @@ export const CONFIG = {
   playerAttackRadius: 22,
   playerAttackDuration: 0.28,
   playerMouseDeadzone: 18,
+  dashDistance: 140,
+  dashCooldown: 1.05,
+  dashStaminaCost: 18,
+  dashDuration: 0.25,
+  comboDoubleTapWindow: 0.28,
+  heavyHoldTime: 0.45,
+  lightAttackDamage: 15,
+  heavyAttackDamage: 32,
+  comboAttackDamage: 22,
+  comboWindowDuration: 0.35,
 
   kael: {
     hp: 320,

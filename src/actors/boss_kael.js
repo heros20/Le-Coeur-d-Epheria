@@ -51,6 +51,7 @@ export class BossKael {
     this.orbs = [];
     this.fissureTimer = this.fissureCooldown * 0.7;
     this.fissures = [];
+    this.onPlaySound = typeof opts.onPlaySound === "function" ? opts.onPlaySound : null;
   }
 
   update(dt, player, world) {
@@ -231,6 +232,7 @@ export class BossKael {
     };
     this.lastTarget = { x: player.x, y: player.y };
     this.animator.setBase("idle");
+    this._playSound("kaelJump");
   }
 
   _beginDash() {
@@ -300,6 +302,7 @@ export class BossKael {
         color: `hsla(${(i / count) * 360}, 70%, 60%, 0.9)`,
       });
     }
+    this._playSound("kaelOrbCast");
   }
 
   _updateOrbs(dt, player) {
@@ -318,6 +321,7 @@ export class BossKael {
           orb.dirY = dy / d;
           orb.state = "launch";
           orb.timer = 2.5;
+          this._playSound("kaelOrbLaunch");
         }
       } else if (orb.state === "launch") {
         const step = this.orbLaunchSpeed * dt;
@@ -371,6 +375,7 @@ export class BossKael {
       active: false,
       completed: false,
     });
+    this._playSound("kaelFireCone");
   }
 
   _updateFissures(dt, player) {
@@ -453,6 +458,10 @@ export class BossKael {
     const vx = px - lx;
     const vy = py - ly;
     return (vx * -dy + vy * dx);
+  }
+
+  _playSound(name) {
+    if (this.onPlaySound) this.onPlaySound(name);
   }
 }
 
