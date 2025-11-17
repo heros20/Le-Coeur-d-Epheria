@@ -43,6 +43,7 @@ const TOUCH_DEVICE = detectTouchDevice();
 State.isMobile = TOUCH_DEVICE;
 let touchControlsInitialized = false;
 const SUPPORTS_POINTER_EVENTS = typeof window !== "undefined" && "PointerEvent" in window;
+const SUPPORTS_TOUCH_EVENTS = typeof window !== "undefined" && "ontouchstart" in window;
 
 function detectTouchDevice() {
   if (typeof window === "undefined") return false;
@@ -100,32 +101,33 @@ function setupTouchControls() {
       joystickThumb.style.transform = `translate(-50%, -50%) translate(${dx}px, ${dy}px)`;
       touchControlState.moveVector = { x: dx, y: dy, dist: Math.hypot(dx, dy) };
     };
+    const handlePointerDown = (e) => {
+      if (joystickState.pointerId !== null) return;
+      joystickState.pointerId = e.pointerId ?? 0;
+      joystickBase.setPointerCapture?.(e.pointerId);
+      e.preventDefault();
+      updateFromEvent(e.clientX, e.clientY);
+    };
+    const handlePointerMove = (e) => {
+      if (joystickState.pointerId !== (e.pointerId ?? -1)) return;
+      e.preventDefault();
+      updateFromEvent(e.clientX, e.clientY);
+    };
+    const handlePointerUp = (e) => {
+      if (joystickState.pointerId !== (e.pointerId ?? -1)) return;
+      joystickBase.releasePointerCapture?.(e.pointerId);
+      joystickState.pointerId = null;
+      e.preventDefault();
+      centerThumb();
+    };
     if (SUPPORTS_POINTER_EVENTS) {
-      const handleDown = (e) => {
-        if (joystickState.pointerId !== null) return;
-        joystickState.pointerId = e.pointerId ?? 0;
-        joystickBase.setPointerCapture?.(e.pointerId);
-        e.preventDefault();
-        updateFromEvent(e.clientX, e.clientY);
-      };
-      const handleMove = (e) => {
-        if (joystickState.pointerId !== (e.pointerId ?? -1)) return;
-        e.preventDefault();
-        updateFromEvent(e.clientX, e.clientY);
-      };
-      const handleUp = (e) => {
-        if (joystickState.pointerId !== (e.pointerId ?? -1)) return;
-        joystickBase.releasePointerCapture?.(e.pointerId);
-        joystickState.pointerId = null;
-        e.preventDefault();
-        centerThumb();
-      };
-      joystickBase.addEventListener("pointerdown", handleDown);
-      joystickBase.addEventListener("pointermove", handleMove);
+      joystickBase.addEventListener("pointerdown", handlePointerDown);
+      joystickBase.addEventListener("pointermove", handlePointerMove);
       ["pointerup", "pointerleave", "pointercancel"].forEach((evt) => {
-        joystickBase.addEventListener(evt, handleUp);
+        joystickBase.addEventListener(evt, handlePointerUp);
       });
-    } else {
+    }
+    if (SUPPORTS_TOUCH_EVENTS) {
       const getTouchById = (touchList, id) => {
         if (!touchList) return null;
         for (let i = 0; i < touchList.length; i++) {
@@ -185,40 +187,35 @@ function setupTouchControls() {
 
 function bindTouchButton(el, { onPress, onRelease } = {}) {
   let activePointer = null;
+  const pointerPress = (e) => {
+    if (activePointer !== null) return;
+    activePointer = e.pointerId ?? 0;
+    el.setPointerCapture?.(e.pointerId);
+    el.classList.add("pressed");
+    if (onPress) onPress(e);
+  };
+  const pointerRelease = (e) => {
+    if (activePointer !== (e.pointerId ?? 0)) return;
+    el.releasePointerCapture?.(e.pointerId);
+    el.classList.remove("pressed");
+    activePointer = null;
+    if (onRelease) onRelease(e);
+  };
   if (SUPPORTS_POINTER_EVENTS) {
-    const press = (e) => {
-      if (activePointer !== null) return;
-      activePointer = e.pointerId ?? 0;
-      el.setPointerCapture?.(e.pointerId);
-      el.classList.add("pressed");
-      if (onPress) onPress(e);
-    };
-    const release = (e) => {
-      if (activePointer !== (e.pointerId ?? 0)) return;
-      el.releasePointerCapture?.(e.pointerId);
-      el.classList.remove("pressed");
-      activePointer = null;
-      if (onRelease) onRelease(e);
-    };
     el.addEventListener("pointerdown", (e) => {
       e.preventDefault();
-      press(e);
+      pointerPress(e);
     });
     ["pointerup", "pointercancel", "pointerleave"].forEach((evt) => {
       el.addEventListener(evt, (e) => {
         if (activePointer === null) return;
         e.preventDefault();
-        release(e);
+        pointerRelease(e);
       });
     });
-  } else {
-    const press = (id, e) => {
-      if (activePointer !== null) return;
-      activePointer = id;
-      el.classList.add("pressed");
-      if (onPress) onPress(e);
-    };
-    const release = (id, e) => {
+  }
+  if (SUPPORTS_TOUCH_EVENTS) {
+    const releaseTouchId = (id, e) => {
       if (activePointer !== id) return;
       el.classList.remove("pressed");
       activePointer = null;
@@ -227,11 +224,14 @@ function bindTouchButton(el, { onPress, onRelease } = {}) {
     el.addEventListener(
       "touchstart",
       (e) => {
+        if (activePointer !== null) return;
         if (!e.changedTouches || e.changedTouches.length === 0) return;
         const touch = e.changedTouches[0];
         if (!touch) return;
         e.preventDefault();
-        press(touch.identifier, e);
+        activePointer = touch.identifier;
+        el.classList.add("pressed");
+        if (onPress) onPress(e);
       },
       { passive: false }
     );
@@ -244,7 +244,7 @@ function bindTouchButton(el, { onPress, onRelease } = {}) {
             const touch = e.changedTouches[i];
             if (touch.identifier === activePointer) {
               e.preventDefault();
-              release(touch.identifier, e);
+              releaseTouchId(touch.identifier, e);
               break;
             }
           }
