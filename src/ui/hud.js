@@ -1,5 +1,6 @@
 // src/ui/hud.js
 import { setVirtualKey } from "../input.js";
+import { State } from "../state.js";
 
 function escapeHtml(text = "") {
   return text
@@ -157,7 +158,7 @@ function bindHoldButton(el, key) {
   el.style.webkitUserSelect = "none";
 }
 
-function bindTapButton(el, key) {
+function bindTapButton(el, key, onTap) {
   if (!el) return;
 
   const tap = (e) => {
@@ -171,6 +172,7 @@ function bindTapButton(el, key) {
 
     // press ponctuel
     setVirtualKey(key, true, true);
+    if (typeof onTap === "function") onTap();
   };
 
   // Souris
@@ -190,19 +192,25 @@ function simulateCanvasAttack() {
   const rect = canvas.getBoundingClientRect();
   const x = rect.left + rect.width / 2;
   const y = rect.top + rect.height / 2;
-  const opts = {
+  const baseOpts = {
     bubbles: true,
     cancelable: true,
     clientX: x,
     clientY: y,
     button: 0,
+    buttons: 1,
+    pointerId: 999,
+    pointerType: "touch",
+    width: 1,
+    height: 1,
   };
-  const down = new MouseEvent("mousedown", opts);
-  const up = new MouseEvent("mouseup", opts);
+  const hasPointer = typeof PointerEvent !== "undefined";
+  const down = hasPointer ? new PointerEvent("pointerdown", baseOpts) : new MouseEvent("mousedown", baseOpts);
+  const up = hasPointer ? new PointerEvent("pointerup", baseOpts) : new MouseEvent("mouseup", baseOpts);
   canvas.dispatchEvent(down);
   setTimeout(() => {
     canvas.dispatchEvent(up);
-    canvas.dispatchEvent(new MouseEvent("click", opts));
+    canvas.dispatchEvent(new MouseEvent("click", baseOpts));
   }, 60);
 }
 
@@ -213,13 +221,36 @@ function bindAttackButton(el) {
     e.stopPropagation();
     el.classList.add("btn-active");
     simulateCanvasAttack();
-    setTimeout(() => el.classList.remove("btn-active"), 120);
+    const touchControls = State.touchControls;
+    if (touchControls) {
+      touchControls.attack.justPressed = true;
+      touchControls.attack.held = true;
+    }
+    setTimeout(() => {
+      el.classList.remove("btn-active");
+    }, 120);
   };
   if ("PointerEvent" in window) {
     el.addEventListener("pointerdown", trigger);
+    el.addEventListener("pointerup", () => {
+      const touchControls = State.touchControls;
+      if (touchControls) touchControls.attack.held = false;
+    });
+    el.addEventListener("pointercancel", () => {
+      const touchControls = State.touchControls;
+      if (touchControls) touchControls.attack.held = false;
+    });
   } else {
     el.addEventListener("touchstart", trigger, { passive: false });
     el.addEventListener("mousedown", trigger);
+    const release = () => {
+      const touchControls = State.touchControls;
+      if (touchControls) touchControls.attack.held = false;
+    };
+    el.addEventListener("touchend", release);
+    el.addEventListener("touchcancel", release);
+    el.addEventListener("mouseup", release);
+    el.addEventListener("mouseleave", release);
   }
   el.style.userSelect = "none";
   el.style.webkitUserSelect = "none";
@@ -249,7 +280,10 @@ function setupMobileControls() {
   bindHoldButton(btnRight, "d");
 
   // Dash / attaque / interagir
-  bindTapButton(btnDash, " ");
+  bindTapButton(btnDash, " ", () => {
+    const touchControls = State.touchControls;
+    if (touchControls) touchControls.dashQueued = true;
+  });
   bindAttackButton(btnAttack);
   bindTapButton(btnInteract, "e");
 }
