@@ -4,8 +4,12 @@
     <meta charset="utf-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1, maximum-scale=1"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
     />
+    <meta name="screen-orientation" content="landscape" />
+    <meta name="x5-orientation" content="landscape" />
+    <meta name="x5-fullscreen" content="true" />
+    <meta name="full-screen" content="yes" />
     <title>Le Cœur d’Éphéria</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
@@ -49,17 +53,17 @@
                 <!-- Boutons d’action -->
                 <div class="touch-buttons actions-pad">
                   <button
-                    id="btn-attack"
-                    class="touch-btn touch-attack action-btn action-top"
+                    id="btn-interact"
+                    class="touch-btn touch-interact action-btn action-top"
                   >
-                    <span class="btn-label">Attaque</span>
+                    <span class="btn-label">Interagir</span>
                   </button>
 
                   <button
-                    id="btn-interact"
-                    class="touch-btn touch-interact action-btn action-left"
+                    id="btn-attack"
+                    class="touch-btn touch-attack action-btn action-left"
                   >
-                    <span class="btn-label">Interagir</span>
+                    <span class="btn-label">Attaque</span>
                   </button>
 
                   <button
@@ -126,6 +130,13 @@
           </div>
 
         </div>
+      </div>
+    </div>
+
+    <div class="orientation-warning">
+      <div class="orientation-message">
+        <h2>Tourne ton appareil</h2>
+        <p>Ce jeu se joue en mode paysage. Merci de pivoter ton téléphone.</p>
       </div>
     </div>
 

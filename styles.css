@@ -980,3 +980,44 @@ body {
   }
 }
 
+.orientation-warning {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at center, rgba(10, 12, 20, 0.95), rgba(3, 4, 10, 0.98));
+  color: #f0f0f5;
+  text-align: center;
+  padding: 1.5rem;
+  z-index: 9999;
+}
+
+.orientation-message {
+  max-width: 420px;
+  background: rgba(7, 10, 18, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 18px;
+  padding: 1.5rem;
+  box-shadow: 0 20px 45px rgba(0, 0, 0, 0.45);
+}
+
+.orientation-message h2 {
+  margin: 0 0 0.6rem;
+  font-size: 1.4rem;
+}
+
+.orientation-message p {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+@media (orientation: portrait) and (max-width: 1024px) {
+  .console-root {
+    display: none;
+  }
+  .orientation-warning {
+    display: flex;
+  }
+}
