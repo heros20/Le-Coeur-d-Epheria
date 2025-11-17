@@ -184,6 +184,47 @@ function bindTapButton(el, key) {
   el.style.webkitUserSelect = "none";
 }
 
+function simulateCanvasAttack() {
+  const canvas = document.getElementById("gameCanvas");
+  if (!canvas) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = rect.left + rect.width / 2;
+  const y = rect.top + rect.height / 2;
+  const opts = {
+    bubbles: true,
+    cancelable: true,
+    clientX: x,
+    clientY: y,
+    button: 0,
+  };
+  const down = new MouseEvent("mousedown", opts);
+  const up = new MouseEvent("mouseup", opts);
+  canvas.dispatchEvent(down);
+  setTimeout(() => {
+    canvas.dispatchEvent(up);
+    canvas.dispatchEvent(new MouseEvent("click", opts));
+  }, 60);
+}
+
+function bindAttackButton(el) {
+  if (!el) return;
+  const trigger = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    el.classList.add("btn-active");
+    simulateCanvasAttack();
+    setTimeout(() => el.classList.remove("btn-active"), 120);
+  };
+  if ("PointerEvent" in window) {
+    el.addEventListener("pointerdown", trigger);
+  } else {
+    el.addEventListener("touchstart", trigger, { passive: false });
+    el.addEventListener("mousedown", trigger);
+  }
+  el.style.userSelect = "none";
+  el.style.webkitUserSelect = "none";
+}
+
 function setupMobileControls() {
   const root = document.getElementById("mobile-controls");
   if (!root) return;
@@ -209,6 +250,6 @@ function setupMobileControls() {
 
   // Dash / attaque / interagir
   bindTapButton(btnDash, " ");
-  bindTapButton(btnAttack, " ");
+  bindAttackButton(btnAttack);
   bindTapButton(btnInteract, "e");
 }
