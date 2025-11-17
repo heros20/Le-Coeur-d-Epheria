@@ -149,6 +149,9 @@ function bindHoldButton(el, key) {
   const MOUSE_ID = "mouse";
   const getPointerId = (id) => (Number.isFinite(id) ? id : MOUSE_ID);
 
+  const MOUSE_ID = "mouse";
+  const getPointerId = (id) => (Number.isFinite(id) ? id : MOUSE_ID);
+
   if ("PointerEvent" in window) {
     el.addEventListener(
       "pointerdown",
@@ -160,7 +163,20 @@ function bindHoldButton(el, key) {
           activePointers.add(id);
           press();
         }
-        el.setPointerCapture?.(e.pointerId);
+      },
+      { passive: false }
+    );
+    el.addEventListener(
+      "pointerenter",
+      (e) => {
+        if (!(e.buttons & 1)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const id = getPointerId(e.pointerId);
+        if (!activePointers.has(id)) {
+          activePointers.add(id);
+          press();
+        }
       },
       { passive: false }
     );
@@ -185,7 +201,6 @@ function bindHoldButton(el, key) {
     el.addEventListener(
       "pointerleave",
       (e) => {
-        if (!activePointers.size) return;
         e.preventDefault();
         e.stopPropagation();
         release(getPointerId(e.pointerId));
@@ -197,8 +212,10 @@ function bindHoldButton(el, key) {
       e.preventDefault();
       e.stopPropagation();
       const id = typeof e.identifier === "number" ? e.identifier : MOUSE_ID;
-      activePointers.add(id);
-      press();
+      if (!activePointers.has(id)) {
+        activePointers.add(id);
+        press();
+      }
     };
     const up = (e) => {
       e.preventDefault();
