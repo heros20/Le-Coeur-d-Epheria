@@ -1,7 +1,16 @@
 // src/main.js
 import { CONFIG } from "./config.js";
 import { State } from "./state.js";
-import { setupKeyboard, setupPointer, endFrame, consume, consumePointer, Pointer, pointerDown } from "./input.js";
+import {
+  setupKeyboard,
+  setupPointer,
+  endFrame,
+  consume,
+  consumePointer,
+  Pointer,
+  pointerDown,
+  Keys,
+} from "./input.js";
 import { loadWorldMap } from "./world/map.js";
 import { applyLighting } from "./world/lighting.js";
 import { FogOfWar } from "./world/fog.js";
@@ -813,10 +822,20 @@ function syncDialogueOverlay() {
     });
     handlePickups();
     if (dashPressed) {
-      const dashDir = pointerData
+      const keyboardVector = getKeyboardMoveVector();
+      const pointerVector = pointerData
         ? { x: pointerData.x - player.x, y: pointerData.y - player.y }
-        : moveVectorInput && (Math.abs(moveVectorInput.x) > 0.01 || Math.abs(moveVectorInput.y) > 0.01)
+        : null;
+      const pointerValid =
+        pointerVector && (Math.abs(pointerVector.x) > 0.01 || Math.abs(pointerVector.y) > 0.01);
+      const moveVectorValid =
+        moveVectorInput && (Math.abs(moveVectorInput.x) > 0.01 || Math.abs(moveVectorInput.y) > 0.01);
+      const dashDir = pointerValid
+        ? pointerVector
+        : moveVectorValid
         ? { x: moveVectorInput.x, y: moveVectorInput.y }
+        : keyboardVector
+        ? keyboardVector
         : { x: player.facing === "left" ? -1 : 1, y: 0 };
       player.tryDash(map, dashDir);
     }
@@ -1129,3 +1148,12 @@ function resetGameOverSound() {
 setupBoot();
 setupTouchControls();
 window.addEventListener("resize", () => setupTouchControls());
+function getKeyboardMoveVector() {
+  let x =
+    (Keys.has("d") || Keys.has("arrowright") ? 1 : 0) - (Keys.has("q") || Keys.has("arrowleft") ? 1 : 0);
+  let y =
+    (Keys.has("s") || Keys.has("arrowdown") ? 1 : 0) - (Keys.has("z") || Keys.has("arrowup") ? 1 : 0);
+  if (x === 0 && y === 0) return null;
+  const mag = Math.hypot(x, y);
+  return { x: x / mag || 0, y: y / mag || 0 };
+}

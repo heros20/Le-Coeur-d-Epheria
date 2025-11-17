@@ -38,37 +38,37 @@
                   id="mobile-controls"
                   class="touch-controls"
                 >
-                  <!-- D-Pad -->
-                  <div class="touch-dpad">
-                    <button id="btn-up" class="touch-btn dpad-btn">▲</button>
-                    <div class="touch-dpad-row">
-                      <button id="btn-left" class="touch-btn dpad-btn">◀</button>
-                      <button id="btn-down" class="touch-btn dpad-btn">▼</button>
-                      <button id="btn-right" class="touch-btn dpad-btn">▶</button>
-                    </div>
-                  </div>
+                <!-- D-Pad en croix, sans cercle central -->
+                <div class="touch-dpad">
+                  <button id="btn-up" class="touch-btn dpad-btn dpad-up"></button>
+                  <button id="btn-left" class="touch-btn dpad-btn dpad-left"></button>
+                  <button id="btn-right" class="touch-btn dpad-btn dpad-right"></button>
+                  <button id="btn-down" class="touch-btn dpad-btn dpad-down"></button>
+                </div>
 
                   <!-- Boutons d’action -->
-                  <div class="touch-buttons">
-                    <button
-                      id="btn-attack"
-                      class="touch-btn touch-attack"
-                    >
-                      Attaque
-                    </button>
-                    <button
-                      id="btn-dash"
-                      class="touch-btn touch-dash"
-                    >
-                      Dash
-                    </button>
-                    <button
-                      id="btn-interact"
-                      class="touch-btn touch-interact"
-                    >
-                      Interagir
-                    </button>
-                  </div>
+                 <div class="touch-buttons actions-pad">
+  <button
+    id="btn-attack"
+    class="touch-btn touch-attack action-btn action-top"
+  >
+    <span class="btn-label">Attaque</span>
+  </button>
+  <button
+    id="btn-dash"
+    class="touch-btn touch-dash action-btn action-mid"
+  >
+    <span class="btn-label">Dash</span>
+    <span class="cooldown-text" aria-hidden="true"></span>
+  </button>
+  <button
+    id="btn-interact"
+    class="touch-btn touch-interact action-btn action-bottom"
+  >
+    <span class="btn-label">Interagir</span>
+  </button>
+</div>
+                  <!-- Fin Boutons d’action -->
                 </div>
               </div>
 

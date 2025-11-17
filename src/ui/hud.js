@@ -27,6 +27,8 @@ export function createHUD() {
   const vitals = makeCard("hud-vitals");
   const inventory = makeCard("hud-inventory");
   const helper = makeCard("hud-helper");
+  const dashCooldownButton = document.getElementById("btn-dash");
+  const dashCooldownText = dashCooldownButton?.querySelector(".cooldown-text");
 
   const bar = (percent, cls) => {
     const p = Math.max(0, Math.min(100, percent));
@@ -119,6 +121,22 @@ export function createHUD() {
         <span>Mobile: use on-screen joystick & buttons</span>
       </div>
     `;
+
+    if (dashCooldownButton) {
+      const max = Math.max(0.0001, dashCooldownMax || 0.0001);
+      const ratio = Math.min(1, Math.max(0, dashCooldown / max));
+      dashCooldownButton.style.setProperty("--cooldown-fill", String(ratio));
+      if (ratio > 0.01 && dashCooldown > 0.01) {
+        dashCooldownButton.classList.add("on-cooldown");
+        if (dashCooldownText) {
+          const precision = dashCooldown >= 1 ? 1 : 2;
+          dashCooldownText.textContent = dashCooldown.toFixed(precision);
+        }
+      } else {
+        dashCooldownButton.classList.remove("on-cooldown");
+        if (dashCooldownText) dashCooldownText.textContent = "";
+      }
+    }
   }
 
   setupMobileControls();
