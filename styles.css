@@ -1,128 +1,667 @@
-* { box-sizing:border-box; }
-html,body { margin:0; height:100%; background:#0c0c0f; color:#e8e8ea; font-family:system-ui,Segoe UI,Roboto,Inter,sans-serif; }
-h1,h2,h3 { margin:0.2rem 0 0.6rem; letter-spacing:0.5px; }
-#boot { max-width:980px; margin:2rem auto; padding:1.5rem; background:#121218; border:1px solid #252533; border-radius:14px; box-shadow:0 10px 30px rgba(0,0,0,.4); }
-.tag { opacity:.8; margin-bottom:1.25rem; }
-.hero-select .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin:10px 0 16px; }
-.hero-card { padding:8px; background:#1a1a24; border:1px solid #2a2a3a; border-radius:12px; cursor:pointer; display:flex; flex-direction:column; gap:6px; align-items:center; justify-content:center; transition:.2s ease; }
-.hero-card img { max-width:180px; max-height:180px; object-fit:contain; filter:drop-shadow(0 6px 12px rgba(0,0,0,.45)); }
-.hero-card:hover { transform:translateY(-2px); border-color:#5cf2ff55; box-shadow:0 8px 24px rgba(0,20,50,.35); }
-.hero-card.selected { outline:2px solid #7de6ff; }
-#startBtn { padding:10px 18px; border-radius:10px; background:#00d0ff; color:#051318; border:none; font-weight:700; letter-spacing:.3px; cursor:pointer; }
-#startBtn:disabled { opacity:.45; cursor:not-allowed; }
-.help ul { margin:0.6rem 0 0; padding-left:1rem; opacity:.9; }
-
-.hidden { display:none; }
-
-#game { position:relative; width:1024px; margin:0 auto; }
-#gameCanvas { width:1024px; height:768px; image-rendering:pixelated; background:#000; border:1px solid #2a2a3a; border-radius:10px; }
-#hud { position:absolute; right:12px; top:12px; padding:0; display:flex; flex-direction:column; gap:8px; pointer-events:none; align-items:flex-end; }
-
-.hud-card { pointer-events:auto; background:rgba(8,10,20,.82); border:1px solid #2f3242; padding:10px 12px; border-radius:12px; backdrop-filter:blur(8px); box-shadow:0 8px 20px rgba(0,0,0,.35); width:240px; font-size:0.75rem; }
-.hud-vitals, .hud-inventory, .hud-helper { width:240px; }
-.hud-vitals { display:flex; flex-direction:column; gap:6px; }
-.hud-vitals .vital-row { display:flex; justify-content:space-between; font-size:0.78rem; letter-spacing:.2px; }
-.hud-vitals .value { font-weight:600; }
-.vital-bar { width:100%; height:10px; border-radius:999px; background:#151923; border:1px solid #23283a; overflow:hidden; position:relative; }
-.vital-bar.health .fill { background:linear-gradient(90deg,#ff5f6d,#ffc371); }
-.vital-bar.stamina .fill { background:linear-gradient(90deg,#3bc6ff,#7cffc9); }
-.vital-bar .fill { position:absolute; left:0; top:0; bottom:0; border-radius:999px; transition:width .15s ease; }
-.chips { display:flex; gap:6px; flex-wrap:wrap; margin-top:2px; }
-.chip { font-size:0.7rem; padding:3px 8px; border-radius:999px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); }
-.chip.chip-alert { background:rgba(255,120,80,0.25); border-color:rgba(255,120,80,0.6); color:#ffd6c6; }
-
-.hud-inventory { display:flex; flex-direction:column; gap:8px; }
-.inventory-title { text-transform:uppercase; font-size:0.72rem; letter-spacing:.8px; opacity:0.75; }
-.inventory-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; }
-.inventory-slot { border:1px dashed rgba(255,255,255,0.15); border-radius:10px; height:56px; display:flex; flex-direction:column; align-items:center; justify-content:center; font-size:0.7rem; opacity:0.75; background:rgba(12,15,26,.6); }
-.inventory-slot.filled { border-style:solid; border-color:#5cf2ff66; opacity:1; background:rgba(14,20,34,.9); }
-.inventory-slot .icon { margin-bottom:2px; }
-.inventory-slot .icon img { width:26px; height:26px; object-fit:contain; display:block; }
-.inventory-slot .item-name { font-size:0.68rem; text-align:center; opacity:0.85; }
-.status-line { font-size:0.7rem; min-height:1em; opacity:0.85; color:#b5f5ff; }
-
-.hud-helper { }
-.helper-title { text-transform:uppercase; letter-spacing:.8px; font-size:0.72rem; opacity:0.75; margin-bottom:4px; }
-.helper-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:4px 12px; font-size:0.7rem; opacity:0.8; }
-
-.dialogue, .ending { position:absolute; inset:0; display:flex; align-items:flex-end; justify-content:center; background:linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.6) 100%); }
-.dialogue .box { width:min(860px, 95%); background:#11121a; border:1px solid #34344a; border-radius:12px; padding:12px 14px; margin:18px; display:grid; grid-template-columns:auto 1fr auto; gap:10px; }
-#dialogueSpeaker { color:#98f7ff; font-weight:700; }
-#dialogueText { line-height:1.4; }
-#dialogueNext { padding:6px 10px; border-radius:8px; background:#00d0ff; border:none; cursor:pointer; }
-
-.ending .card { width:min(860px, 95%); margin:auto; background:#101016; border:1px solid #34344a; border-radius:14px; padding:20px; text-align:center; }
-.ending .choices { display:flex; flex-wrap:wrap; gap:12px; justify-content:center; margin-top:12px; }
-.ending button { padding:10px 14px; border-radius:10px; background:#2a2a3a; color:#e8e8ea; border:1px solid #3a3a4a; cursor:pointer; }
-.ending button:hover { background:#00d0ff; color:#081218; border-color:#00d0ff; }
-/* cachée par défaut, visible seulement quand un dialogue est ouvert */
-[data-ui="dialogue-overlay"] { display: none; }
-.ui--dialogue-open [data-ui="dialogue-overlay"] { display: block; }
-
-@media (max-width: 900px) {
-  #game { width:100%; }
-  #gameCanvas { width:100%; height:auto; }
-  #hud { right:8px; top:8px; transform-origin:top right; transform:scale(0.9); }
+* {
+  box-sizing: border-box;
 }
 
-#touchControls { position:absolute; inset:0; pointer-events:none; display:none; }
-.touch-joystick, .touch-buttons { pointer-events:auto; }
-.touch-joystick { position:absolute; left:16px; bottom:16px; }
-.joystick-base { width:150px; height:150px; border-radius:50%; border:1px solid rgba(255,255,255,0.12); background:rgba(6,8,18,0.6); box-shadow:0 8px 16px rgba(0,0,0,0.5); position:relative; touch-action:none; }
-.joystick-thumb { width:70px; height:70px; border-radius:50%; border:1px solid rgba(255,255,255,0.25); background:rgba(80,180,255,0.45); position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); transition:transform .05s linear; backdrop-filter:blur(4px); }
-.touch-buttons { position:absolute; right:18px; bottom:24px; display:flex; flex-direction:column; gap:14px; align-items:flex-end; }
-.touch-btn { width:110px; height:110px; border-radius:50%; border:1px solid rgba(255,255,255,0.15); background:rgba(8,12,22,0.75); color:#e5f8ff; letter-spacing:1px; font-weight:600; font-size:0.8rem; text-transform:uppercase; touch-action:none; backdrop-filter:blur(6px); box-shadow:0 6px 14px rgba(0,0,0,0.45); }
-.touch-btn:active, .touch-btn.pressed { background:rgba(0,208,255,0.35); border-color:#00d0ff; color:#041018; }
-body.touch-mode #touchControls { display:block; }
+/* ====== LAYOUT GLOBAL : ÉCRAN DE CONSOLE ====== */
 
-@media (max-width: 640px) {
-  .joystick-base { width:120px; height:120px; }
-  .touch-btn { width:90px; height:90px; font-size:0.72rem; }
-  .touch-buttons { right:12px; bottom:18px; gap:10px; }
-}
-/* Effet visuel quand on appuie sur un bouton mobile */
-#mobile-controls .touch-btn,
-#mobile-controls .dpad-btn {
-  transition: transform 0.08s ease, background 0.1s ease;
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: radial-gradient(circle at top, #111321 0, #020208 55%, #000 100%);
+  color: #e8e8ea;
+  font-family: system-ui, Segoe UI, Roboto, Inter, sans-serif;
 }
 
-#mobile-controls .btn-active {
-  transform: scale(0.88);
-  background: rgba(255, 255, 255, 0.25);
-  box-shadow: 0 0 8px #fff inset;
+body {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
 }
-/* Visuel des boutons mobiles */
+
+/* Coque de console */
+.console-root {
+  width: 100%;
+  max-width: 1200px;
+  max-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.console-shell {
+  position: relative;
+  width: 100%;
+  max-width: 1100px;
+  aspect-ratio: 16 / 9;
+  border-radius: 32px;
+  padding: 0.75rem 1rem 1rem;
+  background:
+    radial-gradient(circle at 20% 0%, #2d3450 0, transparent 45%),
+    radial-gradient(circle at 80% 100%, #23263b 0, transparent 45%),
+    #060610;
+  box-shadow:
+    0 22px 50px rgba(0, 0, 0, 0.8),
+    0 0 0 2px #181a26,
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Écran interne de la console */
+.console-screen {
+  flex: 1;
+  border-radius: 22px;
+  padding: 0.55rem;
+  background: radial-gradient(circle at top, #141826 0, #050711 65%);
+  box-shadow:
+    inset 0 0 30px rgba(0, 0, 0, 0.9),
+    0 0 0 2px rgba(255, 255, 255, 0.05);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ====== LOGIQUE BOOT/GAME ====== */
+
+.hidden {
+  display: none !important;
+}
+
+/* Si le jeu est affiché (#game sans .hidden), on force le boot en display:none */
+#game:not(.hidden) ~ #boot {
+  display: none !important;
+}
+
+/* ====== TITRES, TEXTES ====== */
+
+h1,
+h2,
+h3 {
+  margin: 0.2rem 0 0.6rem;
+  letter-spacing: 0.5px;
+}
+
+/* ====== ÉCRAN DE BOOT ====== */
+
+#boot {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 1.25rem 1.5rem;
+  background: radial-gradient(circle at top, #15182a 0, #080915 70%);
+  border-radius: 18px;
+  border: 1px solid #252533;
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.7);
+  display: flex;
+  flex-direction: column;
+  gap: 1.2rem;
+  overflow: auto;
+}
+
+.boot-header {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.boot-portrait {
+  width: 96px;
+  height: 96px;
+  border-radius: 18px;
+  background: radial-gradient(circle at top, #2e3854 0, #121424 70%);
+  border: 1px solid #3c4762;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.boot-portrait img {
+  max-width: 90%;
+  max-height: 90%;
+  image-rendering: pixelated;
+}
+
+.boot-title h1 {
+  font-size: clamp(1.6rem, 2.4vw, 2.2rem);
+}
+
+.tag {
+  opacity: 0.8;
+  margin-bottom: 0.4rem;
+  font-size: 0.9rem;
+}
+
+.hero-select h2 {
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.85;
+}
+
+.hero-select .grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin: 10px 0 16px;
+}
+
+.hero-card {
+  padding: 8px;
+  background: #1a1a24;
+  border: 1px solid #2a2a3a;
+  border-radius: 12px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  transition: 0.2s ease;
+}
+
+.hero-card img {
+  max-width: 180px;
+  max-height: 180px;
+  object-fit: contain;
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.45));
+}
+
+.hero-card span {
+  font-size: 0.9rem;
+  opacity: 0.95;
+}
+
+.hero-card:hover {
+  transform: translateY(-2px);
+  border-color: #5cf2ff55;
+  box-shadow: 0 8px 24px rgba(0, 20, 50, 0.35);
+}
+
+.hero-card.selected {
+  outline: 2px solid #7de6ff;
+}
+
+#startBtn {
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: #00d0ff;
+  color: #051318;
+  border: none;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  font-size: 0.96rem;
+  margin-top: 0.3rem;
+  box-shadow: 0 10px 20px rgba(0, 180, 255, 0.35);
+}
+
+#startBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.help ul {
+  margin: 0.6rem 0 0.2rem;
+  padding-left: 1.1rem;
+  opacity: 0.9;
+  font-size: 0.86rem;
+}
+
+.help-note {
+  font-size: 0.8rem;
+  opacity: 0.8;
+}
+
+/* ====== ÉCRAN DE JEU ====== */
+
+#game {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+}
+
+/* Layout : zone de jeu + HUD à droite (desktop) / en colonne (mobile) */
+.game-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 2.4fr) 260px;
+  gap: 0.6rem;
+  width: 100%;
+  height: 100%;
+}
+
+/* Zone où le canvas est affiché */
+.game-viewport {
+  position: relative;
+  border-radius: 18px;
+  overflow: hidden;
+  background: #000;
+}
+
+/* Canvas en plein écran dans la zone de jeu, ratio respecté */
+#gameCanvas {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  image-rendering: pixelated;
+  background: #000;
+  border-radius: 18px;
+  border: 1px solid #2a2a3a;
+}
+
+/* HUD en colonne à droite */
+#hud {
+  padding: 0.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  align-items: stretch;
+  overflow: hidden;
+}
+
+.hud-card {
+  background: rgba(8, 10, 20, 0.92);
+  border: 1px solid #2f3242;
+  padding: 10px 12px;
+  border-radius: 12px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  width: 100%;
+  font-size: 0.75rem;
+}
+
+.hud-vitals,
+.hud-inventory,
+.hud-helper {
+  width: 100%;
+}
+
+.hud-vitals {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.hud-vitals .vital-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  letter-spacing: 0.2px;
+}
+
+.hud-vitals .value {
+  font-weight: 600;
+}
+
+.vital-bar {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  background: #151923;
+  border: 1px solid #23283a;
+  overflow: hidden;
+  position: relative;
+}
+
+.vital-bar.health .fill {
+  background: linear-gradient(90deg, #ff5f6d, #ffc371);
+}
+
+.vital-bar.stamina .fill {
+  background: linear-gradient(90deg, #3bc6ff, #7cffc9);
+}
+
+.vital-bar .fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 999px;
+  transition: width 0.15s ease;
+}
+
+.chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.chip {
+  font-size: 0.7rem;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.chip.chip-alert {
+  background: rgba(255, 120, 80, 0.25);
+  border-color: rgba(255, 120, 80, 0.6);
+  color: #ffd6c6;
+}
+
+.hud-inventory {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.inventory-title {
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.8px;
+  opacity: 0.75;
+}
+
+.inventory-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.inventory-slot {
+  border: 1px dashed rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.7rem;
+  opacity: 0.75;
+  background: rgba(12, 15, 26, 0.6);
+}
+
+.inventory-slot.filled {
+  border-style: solid;
+  border-color: #5cf2ff66;
+  opacity: 1;
+  background: rgba(14, 20, 34, 0.9);
+}
+
+.inventory-slot .icon {
+  margin-bottom: 2px;
+}
+
+.inventory-slot .icon img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  display: block;
+}
+
+.inventory-slot .item-name {
+  font-size: 0.68rem;
+  text-align: center;
+  opacity: 0.85;
+}
+
+.status-line {
+  font-size: 0.7rem;
+  min-height: 1em;
+  opacity: 0.85;
+  color: #b5f5ff;
+}
+
+.hud-helper {
+}
+
+.helper-title {
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-size: 0.72rem;
+  opacity: 0.75;
+  margin-bottom: 4px;
+}
+
+.helper-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
+  font-size: 0.7rem;
+  opacity: 0.8;
+}
+
+/* Dialogue et fin par-dessus le canvas */
+.dialogue,
+.ending {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: linear-gradient(
+    180deg,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.6) 100%
+  );
+}
+
+.dialogue .box {
+  width: min(860px, 95%);
+  background: #11121a;
+  border: 1px solid #34344a;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 18px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+}
+
+#dialogueSpeaker {
+  color: #98f7ff;
+  font-weight: 700;
+}
+
+#dialogueText {
+  line-height: 1.4;
+}
+
+#dialogueNext {
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: #00d0ff;
+  border: none;
+  cursor: pointer;
+}
+
+.ending .card {
+  width: min(860px, 95%);
+  margin: auto;
+  background: #101016;
+  border: 1px solid #34344a;
+  border-radius: 14px;
+  padding: 20px;
+  text-align: center;
+}
+
+.ending .choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+  margin-top: 12px;
+}
+
+.ending button {
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #2a2a3a;
+  color: #e8e8ea;
+  border: 1px solid #3a3a4a;
+  cursor: pointer;
+}
+
+.ending button:hover {
+  background: #00d0ff;
+  color: #081218;
+  border-color: #00d0ff;
+}
+
+/* ====== CONTRÔLES MOBILES (TYPE CONSOLE PORTABLE) ====== */
+
+/* Conteneur global des contrôles mobiles, placé dans la zone de jeu */
 #mobile-controls {
-  position: fixed;
-  inset: auto 0 1rem 0;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.4rem;
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
-  padding: 0 1rem;
-  pointer-events: auto;
-  z-index: 9999;
+  padding: 0 0.8rem;
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* Desktop : on cache les contrôles tactiles, on joue au clavier/souris */
+@media (min-width: 901px) {
+  #mobile-controls {
+    display: none;
+  }
 }
 
 #mobile-controls .touch-btn,
 #mobile-controls .dpad-btn {
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  background: rgba(0, 0, 0, 0.4);
+  pointer-events: auto;
+}
+
+/* Zone D-Pad */
+.touch-dpad {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.touch-dpad-row {
+  display: flex;
+  gap: 0.25rem;
+  justify-content: center;
+}
+
+/* Boutons d’actions */
+.touch-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  align-items: flex-end;
+}
+
+/* Style commun : look bouton de console portable */
+#mobile-controls .touch-btn,
+#mobile-controls .dpad-btn {
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  background: radial-gradient(circle at 30% 20%, #ffffff22 0, #000000aa 55%);
   color: #fff;
-  padding: 0.6rem 0.9rem;
+  padding: 0.55rem 0.9rem;
   border-radius: 999px;
-  font-size: 0.9rem;
-  min-width: 3rem;
-  min-height: 3rem;
+  font-size: 0.82rem;
+  min-width: 2.8rem;
+  min-height: 2.8rem;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(6px);
-  transition: transform 0.08s ease, background 0.08s ease, box-shadow 0.08s ease;
+  backdrop-filter: blur(8px);
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.7),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  transition:
+    transform 0.08s ease,
+    background 0.08s ease,
+    box-shadow 0.08s ease;
 }
 
-/* Etat pressé (ajouté par JS) */
+/* Effet visuel quand on appuie (classe ajoutée par JS) */
 #mobile-controls .btn-active {
-  transform: scale(0.85);
-  background: rgba(255, 255, 255, 0.3);
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.7);
+  transform: translateY(1px) scale(0.92);
+  background: radial-gradient(circle at 30% 20%, #ffffff55 0, #222244dd 55%);
+  box-shadow:
+    0 2px 6px rgba(0, 0, 0, 0.8),
+    inset 0 0 4px rgba(0, 0, 0, 0.8);
+}
+
+/* ====== RESPONSIVE ====== */
+
+/* Écrans < 900px : on passe en layout colonne (jeu + HUD dessous) */
+@media (max-width: 900px) {
+  .console-shell {
+    border-radius: 22px;
+    padding: 0.5rem;
+  }
+
+  .console-screen {
+    border-radius: 18px;
+    padding: 0.4rem;
+  }
+
+  .game-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+  }
+
+  .game-viewport {
+    flex: 1;
+    min-height: 0;
+  }
+
+  #hud {
+    flex: 0 0 auto;
+    max-height: 40%;
+    overflow-y: auto;
+    background: rgba(3, 5, 15, 0.92);
+    border-radius: 14px;
+    padding: 0.5rem;
+  }
+
+  .hud-card {
+    width: 100%;
+  }
+
+  #boot {
+    padding: 1rem;
+  }
+}
+
+/* Téléphone étroit : console en portrait, contrôles compacts */
+@media (max-width: 640px) {
+  .console-shell {
+    aspect-ratio: 9 / 16;
+  }
+
+  #boot {
+    padding: 0.8rem;
+    font-size: 0.9rem;
+  }
+
+  .hero-select .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .hero-card img {
+    max-width: 130px;
+    max-height: 130px;
+  }
+
+  #mobile-controls .touch-btn,
+  #mobile-controls .dpad-btn {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+    font-size: 0.78rem;
+  }
+
+  .touch-buttons {
+    gap: 0.25rem;
+  }
+
+  #hud {
+    max-height: 45%;
+  }
 }

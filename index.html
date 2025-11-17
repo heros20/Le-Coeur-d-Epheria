@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="fr">
   <head>
     <meta charset="utf-8" />
@@ -10,94 +10,116 @@
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
-    <div id="boot">
-      <h1>Le Cœur d’Éphéria</h1>
-      <p class="tag">
-        « Celui qui cherche la sortie oublie toujours pourquoi il est entré. »
-      </p>
+    <!-- COQUE DE CONSOLE -->
+    <div class="console-root">
+      <div class="console-shell">
+        <div class="console-screen">
 
-      <section class="hero-select">
-        <h2>Choisis ton avatar</h2>
-        <div class="grid">
-          <button class="hero-card" data-src="./assets/hero1.png">
-            <img src="./assets/hero1.png" alt="Héros" />
-            <span>Lioran — Veilleur du Labyrinthe</span>
-          </button>
-        </div>
+          <!-- ÉCRAN DE JEU (CACHÉ AU DÉBUT) -->
+          <div id="game" class="hidden">
+            <div class="game-layout">
+              <!-- Zone de jeu -->
+              <div class="game-viewport">
+                <canvas id="gameCanvas" width="1024" height="768"></canvas>
 
-        <button id="startBtn" disabled>Démarrer</button>
-      </section>
+                <!-- Overlays directement sur le canvas -->
+                <div id="dialogue" class="dialogue hidden">
+                  <div class="box">
+                    <div id="dialogueSpeaker"></div>
+                    <div id="dialogueText"></div>
+                    <button id="dialogueNext">⮕</button>
+                  </div>
+                </div>
 
-      <section class="help">
-        <h3>Commandes</h3>
-        <ul>
-          <li>🕹️ Déplacer: ZQSD / ↑←↓→</li>
-          <li>💡 Torche: T</li>
-          <li>🌗 Changer de réalité: SHIFT (Lumière ↔ Ombre)</li>
-          <li>🎒 Inventaire: I — Utiliser: 1..9</li>
-          <li>💬 Interagir / Lire: E</li>
-        </ul>
-      </section>
-    </div>
+                <div id="ending" class="ending hidden"></div>
 
-    <div id="game" class="hidden">
-      <canvas id="gameCanvas" width="1024" height="768"></canvas>
-      <div id="hud"></div>
+                <!-- CONTRÔLES MOBILES DANS LA ZONE DE JEU -->
+                <div
+                  id="mobile-controls"
+                  class="touch-controls"
+                >
+                  <!-- D-Pad -->
+                  <div class="touch-dpad">
+                    <button id="btn-up" class="touch-btn dpad-btn">▲</button>
+                    <div class="touch-dpad-row">
+                      <button id="btn-left" class="touch-btn dpad-btn">◀</button>
+                      <button id="btn-down" class="touch-btn dpad-btn">▼</button>
+                      <button id="btn-right" class="touch-btn dpad-btn">▶</button>
+                    </div>
+                  </div>
 
-      <div id="dialogue" class="dialogue hidden">
-        <div class="box">
-          <div id="dialogueSpeaker"></div>
-          <div id="dialogueText"></div>
-          <button id="dialogueNext">⮕</button>
+                  <!-- Boutons d’action -->
+                  <div class="touch-buttons">
+                    <button
+                      id="btn-attack"
+                      class="touch-btn touch-attack"
+                    >
+                      Attaque
+                    </button>
+                    <button
+                      id="btn-dash"
+                      class="touch-btn touch-dash"
+                    >
+                      Dash
+                    </button>
+                    <button
+                      id="btn-interact"
+                      class="touch-btn touch-interact"
+                    >
+                      Interagir
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- HUD sur le côté (desktop) / en dessous (mobile) -->
+              <aside id="hud"></aside>
+            </div>
+          </div>
+
+          <!-- ÉCRAN D’ACCUEIL / BOOT (VISIBLE AU DÉBUT) -->
+          <div id="boot">
+            <div class="boot-header">
+              <div class="boot-portrait">
+                <img src="./assets/hero1.png" alt="Héros" />
+              </div>
+              <div class="boot-title">
+                <h1>Le Cœur d’Éphéria</h1>
+                <p class="tag">
+                  « Celui qui cherche la sortie oublie toujours pourquoi il est entré. »
+                </p>
+              </div>
+            </div>
+
+            <section class="hero-select">
+              <h2>Choisis ton avatar</h2>
+              <div class="grid">
+                <button class="hero-card" data-src="./assets/hero1.png">
+                  <img src="./assets/hero1.png" alt="Héros" />
+                  <span>Lioran — Veilleur du Labyrinthe</span>
+                </button>
+              </div>
+
+              <button id="startBtn" disabled>Démarrer</button>
+            </section>
+
+            <section class="help">
+              <h3>Commandes</h3>
+              <ul>
+                <li>🕹️ Déplacer : ZQSD / ↑←↓→</li>
+                <li>💡 Torche : T</li>
+                <li>🌗 Changer de réalité : SHIFT (Lumière ↔ Ombre)</li>
+                <li>🎒 Inventaire : I — Utiliser : 1..9</li>
+                <li>💬 Interagir / Lire : E</li>
+              </ul>
+              <p class="help-note">
+                Sur mobile : joystick et boutons tactiles apparaîtront dans la console.
+              </p>
+            </section>
+          </div>
+
         </div>
       </div>
-
-      <!-- CONTROLES MOBILES PATCHÉS -->
-      <div
-        id="mobile-controls"
-        class="touch-controls"
-      >
-        <!-- Joystick visuel (pour plus tard si tu veux le rendre actif) -->
-        <div class="touch-joystick">
-          <div class="joystick-base" data-joystick-base>
-            <div class="joystick-thumb" data-joystick-thumb></div>
-          </div>
-        </div>
-
-        <!-- D-Pad boutons directionnels -->
-        <div class="touch-dpad">
-          <button id="btn-up" class="touch-btn dpad-btn">▲</button>
-          <div class="touch-dpad-row">
-            <button id="btn-left" class="touch-btn dpad-btn">◀</button>
-            <button id="btn-down" class="touch-btn dpad-btn">▼</button>
-            <button id="btn-right" class="touch-btn dpad-btn">▶</button>
-          </div>
-        </div>
-
-        <!-- Boutons d’action -->
-        <div class="touch-buttons">
-          <button
-            id="btn-attack"
-            class="touch-btn touch-attack"
-          >
-            Attaque
-          </button>
-          <button
-            id="btn-dash"
-            class="touch-btn touch-dash"
-          >
-            Dash
-          </button>
-          <button
-            id="btn-interact"
-            class="touch-btn touch-interact"
-          >
-            Interagir
-          </button>
-        </div>
-      </div>
-
-      <div id="ending" class="ending hidden"></div>
     </div>
 
     <script type="module" src="./src/main.js"></script>
