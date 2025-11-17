@@ -2,6 +2,9 @@
 import { setVirtualKey } from "../input.js";
 import { State } from "../state.js";
 
+const SUPPORTS_POINTER_EVENTS = typeof window !== "undefined" && "PointerEvent" in window;
+const POINTER_MOUSE_ID = "mouse";
+
 function escapeHtml(text = "") {
   return text
     .replace(/&/g, "&amp;")
@@ -127,13 +130,19 @@ export function createHUD() {
 // Contrôles mobiles + effet visuel
 // ------------------------
 
-function bindHoldButton(el, key) {
+const normalizeKeys = (keys) => (Array.isArray(keys) ? keys : [keys]);
+
+function setKeys(keys, down) {
+  normalizeKeys(keys).forEach((key) => setVirtualKey(key, down));
+}
+
+function bindHoldButton(el, keys) {
   if (!el) return;
   const activePointers = new Set();
 
   const press = () => {
     if (activePointers.size === 1) {
-      setVirtualKey(key, true);
+      setKeys(keys, true);
       el.classList.add("btn-active");
     }
   };
@@ -141,13 +150,12 @@ function bindHoldButton(el, key) {
   const release = (id) => {
     if (activePointers.has(id)) activePointers.delete(id);
     if (activePointers.size === 0) {
-      setVirtualKey(key, false);
+      setKeys(keys, false);
       el.classList.remove("btn-active");
     }
   };
 
-  const MOUSE_ID = "mouse";
-  const getPointerId = (id) => (Number.isFinite(id) ? id : MOUSE_ID);
+  const getPointerId = (id) => (Number.isFinite(id) ? id : POINTER_MOUSE_ID);
 
   if ("PointerEvent" in window) {
     el.addEventListener(
@@ -331,6 +339,94 @@ function bindAttackButton(el) {
   el.style.webkitUserSelect = "none";
 }
 
+function bindDirectionalPad(container, entries) {
+  if (!container) return;
+  const pointerAssignments = new Map();
+  const entryList = entries
+    .filter((entry) => entry?.el)
+    .map((entry) => ({
+      ...entry,
+      keys: normalizeKeys(entry.keys),
+      activeCount: 0,
+    }));
+
+  const getPointerId = (id) => (Number.isFinite(id) ? id : POINTER_MOUSE_ID);
+  const getEntryFromTarget = (target) =>
+    entryList.find((entry) => entry.el === target || entry.el.contains(target));
+
+  const activate = (entry) => {
+    if (!entry) return;
+    entry.activeCount += 1;
+    if (entry.activeCount === 1) {
+      setKeys(entry.keys, true);
+      entry.el.classList.add("btn-active");
+    }
+  };
+
+  const deactivate = (entry) => {
+    if (!entry) return;
+    entry.activeCount = Math.max(0, entry.activeCount - 1);
+    if (entry.activeCount === 0) {
+      setKeys(entry.keys, false);
+      entry.el.classList.remove("btn-active");
+    }
+  };
+
+  const assignPointer = (pointerId, entry) => {
+    if (!entry) return;
+    const current = pointerAssignments.get(pointerId);
+    if (current === entry) return;
+    if (current) deactivate(current);
+    pointerAssignments.set(pointerId, entry);
+    activate(entry);
+  };
+
+  const releasePointer = (pointerId) => {
+    const current = pointerAssignments.get(pointerId);
+    if (!current) return;
+    pointerAssignments.delete(pointerId);
+    deactivate(current);
+  };
+
+  const handlePointerDown = (entry) => (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    assignPointer(getPointerId(e.pointerId), entry);
+  };
+
+  const handlePointerEnter = (entry) => (e) => {
+    if (!(e.buttons & 1)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    assignPointer(getPointerId(e.pointerId), entry);
+  };
+
+  const handlePointerMove = (e) => {
+    if (!(e.buttons & 1)) return;
+    const entry = getEntryFromTarget(e.target);
+    const id = getPointerId(e.pointerId);
+    if (entry) assignPointer(id, entry);
+    else releasePointer(id);
+  };
+
+  const releaseFromEvent = (e) => {
+    releasePointer(getPointerId(e.pointerId));
+  };
+
+  entryList.forEach((entry) => {
+    entry.el.style.touchAction = "none";
+    entry.el.style.userSelect = "none";
+    entry.el.style.webkitUserSelect = "none";
+    entry.el.addEventListener("pointerdown", handlePointerDown(entry), { passive: false });
+    entry.el.addEventListener("pointerenter", handlePointerEnter(entry), { passive: false });
+  });
+
+  container.addEventListener("pointermove", handlePointerMove, { passive: false });
+  container.addEventListener("pointerleave", releaseFromEvent, { passive: false });
+  window.addEventListener("pointerup", releaseFromEvent, { passive: false });
+  window.addEventListener("pointercancel", releaseFromEvent, { passive: false });
+}
+
 function setupMobileControls() {
   const root = document.getElementById("mobile-controls");
   if (!root) return;
@@ -349,10 +445,18 @@ function setupMobileControls() {
   const btnInteract = document.getElementById("btn-interact");
 
   // Déplacements : ZQSD
-  bindHoldButton(btnUp, "z");
-  bindHoldButton(btnDown, "s");
-  bindHoldButton(btnLeft, "q");
-  bindHoldButton(btnRight, "d");
+  const dpadEntries = [
+    { el: btnUp, keys: ["z", "ArrowUp"] },
+    { el: btnDown, keys: ["s", "ArrowDown"] },
+    { el: btnLeft, keys: ["q", "ArrowLeft"] },
+    { el: btnRight, keys: ["d", "ArrowRight"] },
+  ];
+
+  if (SUPPORTS_POINTER_EVENTS) {
+    bindDirectionalPad(root.querySelector(".touch-dpad"), dpadEntries);
+  } else {
+    dpadEntries.forEach((entry) => bindHoldButton(entry.el, entry.keys));
+  }
 
   // Dash / attaque / interagir
   bindTapButton(btnDash, " ", () => {

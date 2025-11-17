@@ -665,3 +665,109 @@ h3 {
     max-height: 45%;
   }
 }
+/* ====== BOOST LISIBILITÉ & FULLSCREEN MOBILE ====== */
+
+/* Base un peu plus grande */
+html,
+body {
+  font-size: 16px;
+}
+
+/* Dialogues plus gros par défaut */
+.dialogue .box {
+  font-size: 0.95rem;
+}
+
+#dialogueSpeaker {
+  font-size: 1rem;
+}
+
+#dialogueText {
+  font-size: 0.95rem;
+}
+
+#dialogueNext {
+  font-size: 1rem;
+}
+
+/* Sur écrans < 900px : on augmente encore un peu tout */
+@media (max-width: 900px) {
+  html,
+  body {
+    font-size: 18px;
+  }
+
+  .dialogue .box {
+    font-size: 1.05rem;
+  }
+
+  #dialogueSpeaker {
+    font-size: 1.15rem;
+  }
+
+  #dialogueText {
+    font-size: 1.05rem;
+  }
+
+  /* HUD plus lisible */
+  .hud-card {
+    font-size: 0.85rem;
+  }
+
+  .hud-vitals .vital-row {
+    font-size: 0.9rem;
+  }
+
+  .inventory-slot {
+    font-size: 0.8rem;
+  }
+
+  .status-line,
+  .helper-grid {
+    font-size: 0.85rem;
+  }
+}
+
+/* Sur téléphone étroit : on vire la grosse coque, on met le jeu plein écran */
+@media (max-width: 640px) {
+  body {
+    padding: 0;
+  }
+
+  .console-root {
+    max-width: 100%;
+    max-height: 100vh;
+  }
+
+  .console-shell {
+    max-width: 100%;
+    height: 100vh;
+    aspect-ratio: auto;
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
+  }
+
+  .console-screen {
+    border-radius: 0;
+    padding: 0;
+  }
+
+  .game-viewport {
+    border-radius: 0;
+  }
+
+  #gameCanvas {
+    border-radius: 0;
+    border-width: 0;
+  }
+
+  /* Boîte de dialogue bien large */
+  .dialogue .box {
+    width: 100%;
+    margin: 10px;
+    padding: 14px 16px;
+    gap: 12px;
+  }
+}
+
