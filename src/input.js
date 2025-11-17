@@ -16,9 +16,20 @@ export const Pointer = {
 };
 
 const HANDLED = new Set([
-  "z", "q", "s", "d",
-  "arrowup", "arrowdown", "arrowleft", "arrowright",
-  "shift", "e", "t", "i", " ", "r",
+  "z",
+  "q",
+  "s",
+  "d",
+  "arrowup",
+  "arrowdown",
+  "arrowleft",
+  "arrowright",
+  "shift",
+  "e",
+  "t",
+  "i",
+  " ",
+  "r",
 ]);
 
 function norm(e) {
@@ -52,7 +63,7 @@ export function setupKeyboard() {
  * Permet aux contrôles virtuels (joystick / boutons mobiles)
  * de simuler une touche clavier.
  *
- * @param {string} key  - ex: "z", "q", " ", "e"...
+ * @param {string} key - ex: "z", "q", " ", "e"...
  * @param {boolean} down - true = appuyé, false = relâché
  * @param {boolean} once - si true, la touche sera "juste pressée" (consume)
  */
@@ -79,13 +90,13 @@ export function consume(k) {
 }
 
 // --- Pointeur / Souris / Touch ---
-
 export function setupPointer(target) {
   const el = target ?? document.body;
   const eventsTarget = window;
 
   const updateLocal = (clientX, clientY) => {
     if (!el) return false;
+
     const rect = el.getBoundingClientRect();
     if (
       clientX < rect.left ||
@@ -95,6 +106,7 @@ export function setupPointer(target) {
     ) {
       return false;
     }
+
     Pointer.x = clientX - rect.left;
     Pointer.y = clientY - rect.top;
     Pointer.hasPosition = true;
@@ -107,10 +119,13 @@ export function setupPointer(target) {
 
   const onDown = (e) => {
     if (e.button === undefined) return;
+
     const inside = updateLocal(e.clientX, e.clientY);
     if (!inside) return;
+
     Pointer.buttons.add(e.button);
     Pointer._just.add(e.button);
+
     if (e.button === 0) e.preventDefault();
   };
 

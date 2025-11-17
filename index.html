@@ -18,7 +18,6 @@
     <div class="console-root">
       <div class="console-shell">
         <div class="console-screen">
-
           <!-- ÉCRAN DE JEU (CACHÉ AU DÉBUT) -->
           <div id="game" class="hidden">
             <div class="game-layout">
@@ -38,50 +37,61 @@
                 <div id="ending" class="ending hidden"></div>
 
                 <!-- CONTRÔLES MOBILES DANS LA ZONE DE JEU -->
-                <div
-                  id="mobile-controls"
-                  class="touch-controls"
-                >
-                <!-- D-Pad en croix, sans cercle central -->
-                <div class="touch-dpad">
-                  <button id="btn-up" class="touch-btn dpad-btn dpad-up"></button>
-                  <button id="btn-left" class="touch-btn dpad-btn dpad-left"></button>
-                  <button id="btn-right" class="touch-btn dpad-btn dpad-right"></button>
-                  <button id="btn-down" class="touch-btn dpad-btn dpad-down"></button>
-                </div>
+                <div id="mobile-controls" class="touch-controls">
+                  <!-- D-Pad en croix, sans cercle central -->
+                  <div class="touch-dpad">
+                    <button
+                      id="btn-up"
+                      class="touch-btn dpad-btn dpad-up"
+                    ></button>
+                    <button
+                      id="btn-left"
+                      class="touch-btn dpad-btn dpad-left"
+                    ></button>
+                    <button
+                      id="btn-right"
+                      class="touch-btn dpad-btn dpad-right"
+                    ></button>
+                    <button
+                      id="btn-down"
+                      class="touch-btn dpad-btn dpad-down"
+                    ></button>
+                  </div>
 
-                <!-- Boutons d’action -->
-                <div class="touch-buttons actions-pad">
-                  <button
-                    id="btn-interact"
-                    class="touch-btn touch-interact action-btn action-top"
-                  >
-                    <span class="btn-label">Interagir</span>
-                  </button>
+                  <!-- Boutons d’action -->
+                  <div class="touch-buttons actions-pad">
+                    <button
+                      id="btn-interact"
+                      class="touch-btn touch-interact action-btn action-top"
+                    >
+                      <span class="btn-label">Interagir</span>
+                    </button>
 
-                  <button
-                    id="btn-attack"
-                    class="touch-btn touch-attack action-btn action-left"
-                  >
-                    <span class="btn-label">Attaque</span>
-                  </button>
+                    <button
+                      id="btn-attack"
+                      class="touch-btn touch-attack action-btn action-left"
+                    >
+                      <span class="btn-label">Attaque</span>
+                    </button>
 
-                  <button
-                    id="btn-dash"
-                    class="touch-btn touch-dash action-btn action-right"
-                  >
-                    <span class="btn-label">Dash</span>
-                    <span class="cooldown-text" aria-hidden="true"></span>
-                  </button>
+                    <button
+                      id="btn-dash"
+                      class="touch-btn touch-dash action-btn action-right"
+                    >
+                      <span class="btn-label">Dash</span>
+                      <span
+                        class="cooldown-text"
+                        aria-hidden="true"
+                      ></span>
+                    </button>
 
-                  <button
-                    id="btn-sprint"
-                    class="touch-btn touch-sprint action-btn action-bottom"
-                  >
-                    <span class="btn-label">Sprint</span>
-                  </button>
-                </div>
-
+                    <button
+                      id="btn-sprint"
+                      class="touch-btn touch-sprint action-btn action-bottom"
+                    >
+                      <span class="btn-label">Sprint</span>
+                    </button>
+                  </div>
                   <!-- Fin Boutons d’action -->
                 </div>
               </div>
@@ -100,7 +110,8 @@
               <div class="boot-title">
                 <h1>Le Cœur d’Éphéria</h1>
                 <p class="tag">
-                  « Celui qui cherche la sortie oublie toujours pourquoi il est entré. »
+                  « Celui qui cherche la sortie oublie toujours pourquoi il est
+                  entré. »
                 </p>
               </div>
             </div>
@@ -113,7 +124,6 @@
                   <span>Lioran — Veilleur du Labyrinthe</span>
                 </button>
               </div>
-
               <button id="startBtn" disabled>Démarrer</button>
             </section>
 
@@ -123,12 +133,9 @@
                 <li>🕹️ Déplacer : ZQSD / ↑←↓→</li>
                 <li>💬 Interagir / Lire : E</li>
               </ul>
-              <p class="help-note">
-                Sur mobile : Boutons tactiles.
-              </p>
+              <p class="help-note">Sur mobile : Boutons tactiles.</p>
             </section>
           </div>
-
         </div>
       </div>
     </div>

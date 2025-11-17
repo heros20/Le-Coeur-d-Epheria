@@ -23,6 +23,7 @@ body {
 }
 
 /* Coque de console */
+
 .console-root {
   width: 100%;
   max-width: 1200px;
@@ -52,6 +53,7 @@ body {
 }
 
 /* Écran interne de la console */
+
 .console-screen {
   flex: 1;
   border-radius: 22px;
@@ -72,6 +74,7 @@ body {
 }
 
 /* Si le jeu est affiché (#game sans .hidden), on force le boot en display:none */
+
 #game:not(.hidden) ~ #boot {
   display: none !important;
 }
@@ -228,6 +231,7 @@ h3 {
 }
 
 /* Layout : zone de jeu + HUD à droite (desktop) / en colonne (mobile) */
+
 .game-layout {
   display: grid;
   grid-template-columns: minmax(0, 2.4fr) 260px;
@@ -238,6 +242,7 @@ h3 {
 }
 
 /* Zone où le canvas est affiché */
+
 .game-viewport {
   position: relative;
   border-radius: 18px;
@@ -246,6 +251,7 @@ h3 {
 }
 
 /* Canvas en plein écran dans la zone de jeu, ratio respecté */
+
 #gameCanvas {
   width: 100%;
   height: 100%;
@@ -258,6 +264,7 @@ h3 {
 }
 
 /* HUD en colonne à droite */
+
 #hud {
   padding: 0.2rem;
   display: flex;
@@ -432,6 +439,7 @@ h3 {
 }
 
 /* Dialogue et fin par-dessus le canvas */
+
 .dialogue,
 .ending {
   position: absolute;
@@ -510,12 +518,13 @@ h3 {
 
 /* ====== CONTRÔLES MOBILES (TYPE CONSOLE PORTABLE) ====== */
 
-/* Conteneur global des contrôles mobiles */
+/* Conteneur global des contrôles mobiles, placé dans la zone de jeu */
+
 #mobile-controls {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0.6rem;
+  bottom: 0.4rem;
   display: flex;
   justify-content: space-between;
   align-items: flex-end;
@@ -525,73 +534,29 @@ h3 {
 }
 
 /* Desktop : on cache les contrôles tactiles */
+
 @media (min-width: 901px) {
   #mobile-controls {
     display: none;
   }
 }
 
-/* Tous les boutons tactiles gardent les événements */
 #mobile-controls .touch-btn {
   pointer-events: auto;
 }
 
-/* ========= JOYSTICK GAUCHE ========= */
+/* ====== D-PAD GAUCHE (GROS + COLLÉ, STYLE MANETTE) ====== */
 
-.touch-joystick {
+.touch-dpad {
   position: relative;
-  width: 6.5rem;
-  height: 6.5rem;
+  width: 6.8rem;
+  height: 6.8rem;
   touch-action: none;
-  pointer-events: auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
 
-/* Base du joystick (cercle fixe) */
-.joystick-base {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  border-radius: 999px;
-  background: radial-gradient(circle at 30% 20%, #ffffff22 0, #000000aa 55%);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  box-shadow:
-    0 8px 20px rgba(0, 0, 0, 0.75),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.09);
-}
+/* Skin commun manette pour D-pad + actions */
 
-/* Manche du joystick (cercle mobile) */
-.joystick-handle {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 3.3rem;
-  height: 3.3rem;
-  transform: translate(-50%, -50%);
-  border-radius: 999px;
-  background: radial-gradient(circle at 30% 20%, #ffffff44 0, #111325 60%);
-  border: 1px solid rgba(255, 255, 255, 0.65);
-  box-shadow:
-    0 6px 14px rgba(0, 0, 0, 0.9),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.2);
-}
-
-/* ========= BOUTONS D’ACTION DROITE ========= */
-
-.touch-actions {
-  position: relative;
-  width: 8rem;
-  height: 8rem;
-  pointer-events: none; /* on redonne les events seulement aux boutons */
-}
-
-.touch-actions .touch-btn {
-  pointer-events: auto;
-}
-
-/* Skin commun manette pour TOUS les boutons d’action */
+#mobile-controls .dpad-btn,
 #mobile-controls .action-btn {
   border: 1px solid rgba(255, 255, 255, 0.55);
   background: radial-gradient(circle at 30% 20%, #ffffff22 0, #000000aa 55%);
@@ -606,58 +571,145 @@ h3 {
     box-shadow 0.08s ease;
 }
 
-/* Bouton principal : Attaque (plus gros, en bas à droite) */
-.action-btn.action-main {
+/* Forme du D-pad */
+
+.touch-dpad .dpad-btn {
   position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 3.4rem;
-  height: 3.4rem;
+  min-width: 0;
+  min-height: 0;
+  width: 3.7rem;
+  height: 3.7rem;
   padding: 0;
-  border-radius: 999px;
+  border-radius: 1.2rem;
   border-width: 2px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-/* Anneau de boutons secondaires autour */
-.actions-ring {
-  position: absolute;
-  inset: 0;
+.dpad-up {
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -30%);
+  border-bottom-left-radius: 0.6rem;
+  border-bottom-right-radius: 0.6rem;
 }
 
-/* Dash : au-dessus de l’attaque */
-.action-btn.action-dash {
-  position: absolute;
-  right: 0.3rem;
-  top: 0.3rem;
-  width: 3rem;
-  height: 3rem;
-  border-radius: 999px;
-}
-
-/* Interagir : à gauche de l’attaque */
-.action-btn.action-interact {
-  position: absolute;
+.dpad-left {
   left: 0;
-  bottom: 1.7rem;
-  width: 3rem;
-  height: 3rem;
-  border-radius: 999px;
+  top: 50%;
+  transform: translate(-30%, -50%);
+  border-top-right-radius: 0.6rem;
+  border-bottom-right-radius: 0.6rem;
 }
 
-/* Sprint : en dessous / légèrement à gauche */
-.action-btn.action-sprint {
-  position: absolute;
-  left: 0.6rem;
-  bottom: 0.1rem;
-  width: 2.8rem;
-  height: 2.8rem;
+.dpad-right {
+  right: 0;
+  top: 50%;
+  transform: translate(30%, -50%);
+  border-top-left-radius: 0.6rem;
+  border-bottom-left-radius: 0.6rem;
+}
+
+.dpad-down {
+  bottom: 0;
+  left: 50%;
+  transform: translate(-50%, 30%);
+  border-top-left-radius: 0.6rem;
+  border-top-right-radius: 0.6rem;
+}
+
+/* Triangles du D-pad */
+
+.dpad-btn::before {
+  content: "";
+  display: block;
+  margin: auto;
+  width: 0;
+  height: 0;
+  border-style: solid;
+}
+
+.dpad-up::before {
+  border-width: 0 12px 18px 12px;
+  border-color: transparent transparent #ffffffee transparent;
+}
+
+.dpad-down::before {
+  border-width: 18px 12px 0 12px;
+  border-color: #ffffffee transparent transparent transparent;
+}
+
+.dpad-left::before {
+  border-width: 12px 18px 12px 0;
+  border-color: transparent #ffffffee transparent transparent;
+}
+
+.dpad-right::before {
+  border-width: 12px 0 12px 18px;
+  border-color: transparent transparent transparent #ffffffee;
+}
+
+/* ====== PAD D’ACTION DROITE (3 BOUTONS MANETTE) ====== */
+
+.actions-pad {
+  display: grid;
+  grid-template-rows: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
+  width: 8rem;
+  height: 8rem;
+  gap: 0.3rem;
+  align-items: center;
+  justify-items: center;
+  transform: translate(-20%, -20%);
+}
+
+/* Boutons d’action = ronds façon manette */
+
+.action-btn {
+  width: 3rem;
+  height: 3rem;
+  padding: 0;
   border-radius: 999px;
+  border-width: 2px;
+  border-style: solid;
+  border-color: rgba(255, 255, 255, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  background: radial-gradient(circle at 30% 20%, #ffffff22 0, #000000aa 55%);
+  box-shadow:
+    0 4px 10px rgba(0, 0, 0, 0.7),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 0.75rem;
+}
+
+/* Placement en croix */
+
+.action-top {
+  grid-row: 1 / 2;
+  grid-column: 2 / 3;
+}
+
+.action-left {
+  grid-row: 2 / 3;
+  grid-column: 1 / 2;
+}
+
+.action-right {
+  grid-row: 2 / 3;
+  grid-column: 3 / 4;
+}
+
+.action-bottom {
+  grid-row: 3 / 4;
+  grid-column: 2 / 3;
 }
 
 /* Texte interne compact */
+
 .action-btn .btn-label {
   pointer-events: none;
   font-size: 0.7rem;
@@ -667,6 +719,7 @@ h3 {
 }
 
 /* Cooldown au centre du bouton */
+
 .action-btn .cooldown-text {
   position: absolute;
   inset: 0;
@@ -684,7 +737,8 @@ h3 {
   transition: opacity 0.15s ease;
 }
 
-/* Overlay de cooldown  */
+/* Overlay de cooldown */
+
 .action-btn::after {
   content: "";
   position: absolute;
@@ -698,7 +752,9 @@ h3 {
   transform: scaleY(var(--cooldown-fill, 0));
   opacity: 0;
   pointer-events: none;
-  transition: transform 0.12s ease, opacity 0.12s ease;
+  transition:
+    transform 0.12s ease,
+    opacity 0.12s ease;
   z-index: 2;
 }
 
@@ -714,7 +770,8 @@ h3 {
   opacity: 1;
 }
 
-/* Effet visuel quand on appuie */
+/* Effet visuel quand on appuie (D-pad + actions) */
+
 #mobile-controls .btn-active {
   background: radial-gradient(circle at 30% 20%, #ffffff55 0, #222244dd 55%);
   box-shadow:
@@ -722,38 +779,35 @@ h3 {
     inset 0 0 4px rgba(0, 0, 0, 0.8);
 }
 
+.touch-dpad .dpad-btn.btn-active {
+  background: radial-gradient(circle at 50% 20%, #ffffff55 0, #1b1b2a 70%);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.9),
+    inset 0 0 6px rgba(255, 255, 255, 0.18);
+}
 
 /* ====== VARIANTE MOBILE TRÈS ÉTROITE ====== */
 
 @media (max-width: 640px) {
-  .touch-joystick {
-    width: 5.5rem;
-    height: 5.5rem;
-  }
-
-  .joystick-handle {
-    width: 3rem;
-    height: 3rem;
-  }
-
-  .touch-actions {
+  .actions-pad {
     width: 7rem;
     height: 7rem;
+    gap: 0.25rem;
   }
 
-  .action-btn.action-main {
-    width: 3.1rem;
-    height: 3.1rem;
+  .touch-dpad {
+    width: 5.8rem;
+    height: 5.8rem;
   }
 
-  .action-btn.action-dash,
-  .action-btn.action-interact,
-  .action-btn.action-sprint {
-    width: 2.6rem;
-    height: 2.6rem;
+  .touch-dpad .dpad-btn {
+    width: 3.3rem;
+    height: 3.3rem;
   }
 
   .action-btn {
+    width: 2.7rem;
+    height: 2.7rem;
     font-size: 0.7rem;
   }
 
@@ -762,11 +816,10 @@ h3 {
   }
 }
 
-
-
 /* ====== RESPONSIVE ====== */
 
 /* Écrans < 900px : on passe en layout colonne (jeu + HUD dessous) */
+
 @media (max-width: 900px) {
   .console-shell {
     border-radius: 22px;
@@ -808,6 +861,7 @@ h3 {
 }
 
 /* Téléphone étroit : console en portrait, contrôles compacts */
+
 @media (max-width: 640px) {
   .console-shell {
     aspect-ratio: 9 / 16;
@@ -842,15 +896,18 @@ h3 {
     max-height: 45%;
   }
 }
+
 /* ====== BOOST LISIBILITÉ & FULLSCREEN MOBILE ====== */
 
 /* Base un peu plus grande */
+
 html,
 body {
   font-size: 16px;
 }
 
 /* Dialogues plus gros par défaut */
+
 .dialogue .box {
   font-size: 0.95rem;
 }
@@ -868,6 +925,7 @@ body {
 }
 
 /* Sur écrans < 900px : on augmente encore un peu tout */
+
 @media (max-width: 900px) {
   html,
   body {
@@ -906,6 +964,7 @@ body {
 }
 
 /* Sur téléphone étroit : on vire la grosse coque, on met le jeu plein écran */
+
 @media (max-width: 640px) {
   body {
     padding: 0;
@@ -954,7 +1013,11 @@ body {
   display: none;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at center, rgba(10, 12, 20, 0.95), rgba(3, 4, 10, 0.98));
+  background: radial-gradient(
+    circle at center,
+    rgba(10, 12, 20, 0.95),
+    rgba(3, 4, 10, 0.98)
+  );
   color: #f0f0f5;
   text-align: center;
   padding: 1.5rem;
@@ -981,10 +1044,11 @@ body {
   line-height: 1.4;
 }
 
-@media (orientation: portrait) and (max-width: 1024px) and (pointer: coarse) {
+@media (orientation: portrait) and (max-width: 1024px) {
   .console-root {
     display: none;
   }
+
   .orientation-warning {
     display: flex;
   }
