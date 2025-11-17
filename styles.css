@@ -981,7 +981,7 @@ body {
   line-height: 1.4;
 }
 
-@media (orientation: portrait) and (max-width: 1024px) {
+@media (orientation: portrait) and (max-width: 1024px) and (pointer: coarse) {
   .console-root {
     display: none;
   }

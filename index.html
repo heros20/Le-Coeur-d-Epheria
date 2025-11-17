@@ -36,61 +36,58 @@
                 </div>
 
                 <div id="ending" class="ending hidden"></div>
-              </div>
 
-              <!-- HUD sur le côté (desktop) / en dessous (mobile) -->
-              <aside id="hud"></aside>
-
-              <!-- CONTRÔLES MOBILES (EN DEHORS DE LA ZONE DE JEU) -->
-              <div
-                id="mobile-controls"
-                class="touch-controls"
-                aria-hidden="true"
-              >
-                <!-- Joystick de direction (bas gauche) -->
-                <div class="touch-joystick">
-                  <div class="joystick-base">
-                    <div class="joystick-handle"></div>
-                  </div>
+                <!-- CONTRÔLES MOBILES DANS LA ZONE DE JEU -->
+                <div
+                  id="mobile-controls"
+                  class="touch-controls"
+                >
+                <!-- D-Pad en croix, sans cercle central -->
+                <div class="touch-dpad">
+                  <button id="btn-up" class="touch-btn dpad-btn dpad-up"></button>
+                  <button id="btn-left" class="touch-btn dpad-btn dpad-left"></button>
+                  <button id="btn-right" class="touch-btn dpad-btn dpad-right"></button>
+                  <button id="btn-down" class="touch-btn dpad-btn dpad-down"></button>
                 </div>
 
-                <!-- Boutons d’action (bas droite) -->
-                <div class="touch-actions actions-pad">
-                  <!-- Bouton principal : Attaque -->
+                <!-- Boutons d’action -->
+                <div class="touch-buttons actions-pad">
+                  <button
+                    id="btn-interact"
+                    class="touch-btn touch-interact action-btn action-top"
+                  >
+                    <span class="btn-label">Interagir</span>
+                  </button>
+
                   <button
                     id="btn-attack"
-                    class="touch-btn action-btn action-main"
+                    class="touch-btn touch-attack action-btn action-left"
                   >
                     <span class="btn-label">Attaque</span>
                   </button>
 
-                  <!-- Anneau de boutons secondaires -->
-                  <div class="actions-ring">
-                    <button
-                      id="btn-dash"
-                      class="touch-btn action-btn action-dash"
-                    >
-                      <span class="btn-label">Dash</span>
-                      <span class="cooldown-text" aria-hidden="true"></span>
-                    </button>
+                  <button
+                    id="btn-dash"
+                    class="touch-btn touch-dash action-btn action-right"
+                  >
+                    <span class="btn-label">Dash</span>
+                    <span class="cooldown-text" aria-hidden="true"></span>
+                  </button>
 
-                    <button
-                      id="btn-interact"
-                      class="touch-btn action-btn action-interact"
-                    >
-                      <span class="btn-label">Interagir</span>
-                    </button>
+                  <button
+                    id="btn-sprint"
+                    class="touch-btn touch-sprint action-btn action-bottom"
+                  >
+                    <span class="btn-label">Sprint</span>
+                  </button>
+                </div>
 
-                    <button
-                      id="btn-sprint"
-                      class="touch-btn action-btn action-sprint"
-                    >
-                      <span class="btn-label">Sprint</span>
-                    </button>
-                  </div>
+                  <!-- Fin Boutons d’action -->
                 </div>
               </div>
-              <!-- FIN CONTRÔLES MOBILES -->
+
+              <!-- HUD sur le côté (desktop) / en dessous (mobile) -->
+              <aside id="hud"></aside>
             </div>
           </div>
 
