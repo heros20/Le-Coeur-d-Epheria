@@ -117,91 +117,63 @@ export function createHUD() {
     `;
   }
 
-  // branche les contrôles mobiles si présents
   setupMobileControls();
-// Ajoute un effet visuel sur tous les boutons mobiles
-function addButtonFeedback(el) {
+
+  return { update };
+}
+
+// ------------------------
+// Contrôles mobiles + effet visuel
+// ------------------------
+
+function bindHoldButton(el, key) {
   if (!el) return;
 
   const down = (e) => {
     e.preventDefault();
+    e.stopPropagation();
+    setVirtualKey(key, true);
     el.classList.add("btn-active");
   };
 
   const up = (e) => {
     e.preventDefault();
+    e.stopPropagation();
+    setVirtualKey(key, false);
     el.classList.remove("btn-active");
   };
 
+  // Souris
   el.addEventListener("mousedown", down);
   el.addEventListener("mouseup", up);
   el.addEventListener("mouseleave", up);
 
+  // Touch
   el.addEventListener("touchstart", down, { passive: false });
   el.addEventListener("touchend", up, { passive: false });
   el.addEventListener("touchcancel", up, { passive: false });
-}
 
-// On appelle ce feedback pour chaque bouton mobile :
-(function setupButtonVisualDebug() {
-  const ids = [
-    "btn-up", "btn-down", "btn-left", "btn-right",
-    "btn-attack", "btn-dash", "btn-interact"
-  ];
-
-  ids.forEach(id => {
-    const el = document.getElementById(id);
-    addButtonFeedback(el);
-  });
-})();
-  return { update };
-}
-
-// ------------------------
-// Contrôles mobiles
-// ------------------------
-
-function addHoldListeners(el, key) {
-  if (!el) return;
-
-  const start = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setVirtualKey(key, true); // rester appuyé tant que le doigt est dessus
-  };
-
-  const end = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setVirtualKey(key, false);
-  };
-
-  // Souris
-  el.addEventListener("mousedown", start);
-  el.addEventListener("mouseup", end);
-  el.addEventListener("mouseleave", end);
-
-  // Touch
-  el.addEventListener("touchstart", start, { passive: false });
-  el.addEventListener("touchend", end, { passive: false });
-  el.addEventListener("touchcancel", end, { passive: false });
-
-  // Limite le comportement par défaut (sélection texte, scroll chelou)
   el.style.userSelect = "none";
   el.style.webkitUserSelect = "none";
 }
 
-function addTapListener(el, key) {
+function bindTapButton(el, key) {
   if (!el) return;
 
   const tap = (e) => {
     e.preventDefault();
     e.stopPropagation();
-    // "once" = press ponctuel, consommé par consume()
+    // petit flash visuel
+    el.classList.add("btn-active");
+    setTimeout(() => {
+      el.classList.remove("btn-active");
+    }, 100);
+
+    // press ponctuel
     setVirtualKey(key, true, true);
   };
 
-  // Souris + clic classique
+  // Souris
   el.addEventListener("click", tap);
   el.addEventListener("mousedown", tap);
 
@@ -216,7 +188,6 @@ function setupMobileControls() {
   const root = document.getElementById("mobile-controls");
   if (!root) return;
 
-  // bloque les gestes par défaut dans la zone
   root.style.touchAction = "none";
   root.style.userSelect = "none";
   root.style.webkitUserSelect = "none";
@@ -230,17 +201,14 @@ function setupMobileControls() {
   const btnAttack = document.getElementById("btn-attack");
   const btnInteract = document.getElementById("btn-interact");
 
-  // Déplacements : ZQSD (à adapter si ton Player lit autre chose)
-  addHoldListeners(btnUp, "z");
-  addHoldListeners(btnDown, "s");
-  addHoldListeners(btnLeft, "q");
-  addHoldListeners(btnRight, "d");
+  // Déplacements : ZQSD
+  bindHoldButton(btnUp, "z");
+  bindHoldButton(btnDown, "s");
+  bindHoldButton(btnLeft, "q");
+  bindHoldButton(btnRight, "d");
 
-  // Dash / attaque / interaction
-  // Dash et Attaque : barre espace " "
-  addTapListener(btnDash, " ");
-  addTapListener(btnAttack, " ");
-
-  // Interagir = "e"
-  addTapListener(btnInteract, "e");
+  // Dash / attaque / interagir
+  bindTapButton(btnDash, " ");
+  bindTapButton(btnAttack, " ");
+  bindTapButton(btnInteract, "e");
 }
