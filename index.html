@@ -23,10 +23,8 @@
             <img src="./assets/hero1.png" alt="Héros" />
             <span>Lioran — Veilleur du Labyrinthe</span>
           </button>
-          
-          
         </div>
-        
+
         <button id="startBtn" disabled>Démarrer</button>
       </section>
 
@@ -45,6 +43,7 @@
     <div id="game" class="hidden">
       <canvas id="gameCanvas" width="1024" height="768"></canvas>
       <div id="hud"></div>
+
       <div id="dialogue" class="dialogue hidden">
         <div class="box">
           <div id="dialogueSpeaker"></div>
@@ -52,21 +51,55 @@
           <button id="dialogueNext">⮕</button>
         </div>
       </div>
-      <div id="touchControls" class="touch-controls hidden">
+
+      <!-- CONTROLES MOBILES PATCHÉS -->
+      <div
+        id="mobile-controls"
+        class="touch-controls"
+      >
+        <!-- Joystick visuel (pour plus tard si tu veux le rendre actif) -->
         <div class="touch-joystick">
           <div class="joystick-base" data-joystick-base>
             <div class="joystick-thumb" data-joystick-thumb></div>
           </div>
         </div>
+
+        <!-- D-Pad boutons directionnels -->
+        <div class="touch-dpad">
+          <button id="btn-up" class="touch-btn dpad-btn">▲</button>
+          <div class="touch-dpad-row">
+            <button id="btn-left" class="touch-btn dpad-btn">◀</button>
+            <button id="btn-down" class="touch-btn dpad-btn">▼</button>
+            <button id="btn-right" class="touch-btn dpad-btn">▶</button>
+          </div>
+        </div>
+
+        <!-- Boutons d’action -->
         <div class="touch-buttons">
-          <button class="touch-btn touch-attack" data-touch-attack>Attaque</button>
-          <button class="touch-btn touch-dash" data-touch-dash>Dash</button>
+          <button
+            id="btn-attack"
+            class="touch-btn touch-attack"
+          >
+            Attaque
+          </button>
+          <button
+            id="btn-dash"
+            class="touch-btn touch-dash"
+          >
+            Dash
+          </button>
+          <button
+            id="btn-interact"
+            class="touch-btn touch-interact"
+          >
+            Interagir
+          </button>
         </div>
       </div>
+
       <div id="ending" class="ending hidden"></div>
     </div>
 
     <script type="module" src="./src/main.js"></script>
-
   </body>
 </html>

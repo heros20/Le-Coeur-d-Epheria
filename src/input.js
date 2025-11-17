@@ -1,6 +1,10 @@
+// src/input.js
+
+// --- Clavier ---
 export const Keys = new Set();
 let _just = new Set();
 
+// --- Pointeur (souris / tactile) ---
 export const Pointer = {
   x: 0,
   y: 0,
@@ -12,29 +16,74 @@ export const Pointer = {
 };
 
 const HANDLED = new Set([
-  "z","q","s","d",
-  "arrowup","arrowdown","arrowleft","arrowright",
-  "shift","e","t","i"," ","r"   // ← ajouté "r"
+  "z", "q", "s", "d",
+  "arrowup", "arrowdown", "arrowleft", "arrowright",
+  "shift", "e", "t", "i", " ", "r",
 ]);
 
-function norm(e){ return (e.key || "").toLowerCase(); }
+function norm(e) {
+  return (e.key || "").toLowerCase();
+}
 
-export function setupKeyboard(){
-  const onDown = (e)=>{
+// Initialise les entrées clavier physiques
+export function setupKeyboard() {
+  const onDown = (e) => {
     const k = norm(e);
     if (HANDLED.has(k)) e.preventDefault();
-    Keys.add(k); _just.add(k);
+    Keys.add(k);
+    _just.add(k);
   };
-  const onUp = (e)=> Keys.delete(norm(e));
-  window.addEventListener("keydown", onDown, { passive:false });
-  window.addEventListener("keyup", onUp, { passive:false });
-  return ()=>{ window.removeEventListener("keydown", onDown); window.removeEventListener("keyup", onUp); };
-}
-export function consume(k){ k=k.toLowerCase(); if(_just.has(k)){ _just.delete(k); return true; } return false; }
 
-export function setupPointer(target){
+  const onUp = (e) => {
+    Keys.delete(norm(e));
+  };
+
+  window.addEventListener("keydown", onDown, { passive: false });
+  window.addEventListener("keyup", onUp, { passive: false });
+
+  // retourne un cleanup si un jour on en a besoin
+  return () => {
+    window.removeEventListener("keydown", onDown);
+    window.removeEventListener("keyup", onUp);
+  };
+}
+
+/**
+ * Permet aux contrôles virtuels (joystick / boutons mobiles)
+ * de simuler une touche clavier.
+ *
+ * @param {string} key  - ex: "z", "q", " ", "e"...
+ * @param {boolean} down - true = appuyé, false = relâché
+ * @param {boolean} once - si true, la touche sera "juste pressée" (consume)
+ */
+export function setVirtualKey(key, down, once = false) {
+  const k = (key || "").toLowerCase();
+  if (!k) return;
+
+  if (down) {
+    Keys.add(k);
+    if (once) _just.add(k);
+  } else {
+    Keys.delete(k);
+  }
+}
+
+// Consomme une touche "pressée ce frame"
+export function consume(k) {
+  k = k.toLowerCase();
+  if (_just.has(k)) {
+    _just.delete(k);
+    return true;
+  }
+  return false;
+}
+
+// --- Pointeur / Souris / Touch ---
+
+export function setupPointer(target) {
   const el = target ?? document.body;
   const eventsTarget = window;
+
   const updateLocal = (clientX, clientY) => {
     if (!el) return false;
     const rect = el.getBoundingClientRect();
@@ -51,9 +100,11 @@ export function setupPointer(target){
     Pointer.hasPosition = true;
     return true;
   };
+
   const onMove = (e) => {
     updateLocal(e.clientX, e.clientY);
   };
+
   const onDown = (e) => {
     if (e.button === undefined) return;
     const inside = updateLocal(e.clientX, e.clientY);
@@ -62,23 +113,30 @@ export function setupPointer(target){
     Pointer._just.add(e.button);
     if (e.button === 0) e.preventDefault();
   };
+
   const onUp = (e) => {
     if (e.button === undefined) return;
     Pointer.buttons.delete(e.button);
   };
+
   const onLeave = () => {
     Pointer.buttons.clear();
   };
+
   eventsTarget.addEventListener("pointermove", onMove);
   eventsTarget.addEventListener("pointerdown", onDown);
   eventsTarget.addEventListener("pointerup", onUp);
   eventsTarget.addEventListener("pointerleave", onLeave);
+
   const onContext = (e) => e.preventDefault();
   el.addEventListener("contextmenu", onContext);
+
   const rect = el.getBoundingClientRect();
   Pointer.x = rect.width * 0.5;
   Pointer.y = rect.height * 0.5;
   Pointer.hasPosition = true;
+
+  // cleanup si besoin
   return () => {
     eventsTarget.removeEventListener("pointermove", onMove);
     eventsTarget.removeEventListener("pointerdown", onDown);
@@ -100,7 +158,8 @@ export function consumePointer(button = 0) {
   return false;
 }
 
-export function endFrame(){
+// Appelé à chaque fin de frame dans main.js
+export function endFrame() {
   _just = new Set();
   Pointer._just.clear();
 }

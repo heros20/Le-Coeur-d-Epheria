@@ -1,3 +1,6 @@
+// src/ui/hud.js
+import { setVirtualKey } from "../input.js";
+
 function escapeHtml(text = "") {
   return text
     .replace(/&/g, "&amp;")
@@ -109,9 +112,80 @@ export function createHUD() {
         <span>E (2): Potion</span>
         <span>R: Reality shift</span>
         <span>T: Torch</span>
+        <span>Mobile: use on-screen joystick & buttons</span>
       </div>
     `;
   }
 
+  // On branche les contrôles mobiles si présents dans le DOM
+  setupMobileControls();
+
   return { update };
+}
+
+// ------------------------
+// Contrôles mobiles
+// ------------------------
+
+function bindHoldButton(el, key) {
+  if (!el) return;
+
+  const down = (e) => {
+    e.preventDefault();
+    setVirtualKey(key, true);
+  };
+
+  const up = (e) => {
+    e.preventDefault();
+    setVirtualKey(key, false);
+  };
+
+  el.addEventListener("pointerdown", down);
+  el.addEventListener("pointerup", up);
+  el.addEventListener("pointerleave", up);
+  el.addEventListener("pointercancel", up);
+}
+
+function bindTapButton(el, key) {
+  if (!el) return;
+
+  const tap = (e) => {
+    e.preventDefault();
+    // press ponctuel : touche "juste pressée" ce frame
+    setVirtualKey(key, true, true);
+  };
+
+  el.addEventListener("pointerdown", tap);
+}
+
+function setupMobileControls() {
+  // Conteneur optionnel, pour pouvoir lui appliquer touch-action:none
+  const root = document.getElementById("mobile-controls");
+  if (root) {
+    root.style.touchAction = "none";
+  }
+
+  const btnUp = document.getElementById("btn-up");
+  const btnDown = document.getElementById("btn-down");
+  const btnLeft = document.getElementById("btn-left");
+  const btnRight = document.getElementById("btn-right");
+
+  const btnDash = document.getElementById("btn-dash");
+  const btnAttack = document.getElementById("btn-attack");
+  const btnInteract = document.getElementById("btn-interact");
+
+  // Déplacements : adaptés au schéma ZQSD de ton joueur
+  bindHoldButton(btnUp, "z");
+  bindHoldButton(btnDown, "s");
+  bindHoldButton(btnLeft, "q");
+  bindHoldButton(btnRight, "d");
+
+  // Dash / attaque / interaction
+  // Dash et attaque sont branchés sur la barre espace " "
+  // (à adapter si ton Player utilise autre chose pour l'attaque)
+  bindTapButton(btnDash, " ");
+  bindTapButton(btnAttack, " ");
+
+  // Interagir = "e"
+  bindTapButton(btnInteract, "e");
 }
