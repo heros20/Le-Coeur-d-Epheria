@@ -906,6 +906,7 @@ function syncDialogueOverlay() {
       pointerDeadzone: CONFIG.playerMouseDeadzone,
       colliders: [...(State.puzzleOrbs ?? []), ...(State.pickups?.filter((p) => p.blocking) ?? [])],
     });
+    enforcePreKaelBoundary(player);
     handlePickups();
     maybeTriggerPrincessHint();
     if (dashPressed) {
@@ -1383,6 +1384,25 @@ function syncDialogueOverlay() {
     startBossMusic();
   }
 
+  function enforcePreKaelBoundary(player) {
+    if (State.flags.kaelMet || !player) return;
+    const spawn = State.spawnPoint;
+    if (!spawn) return;
+    const limit = spawn.y + 300;
+    if (player.y > limit) {
+      player.y = limit - 5;
+      clampCameraToPlayer(player.x, player.y);
+      pauseForDialogue(
+        [
+          {
+            speaker: "Moi",
+            text: "Je devrais aller parler a Kael avant toute chose.",
+          },
+        ]
+      );
+    }
+  }
+
   function updatePromptFocus() {
     if (!orbPromptState.buttons.length) return;
     orbPromptState.buttons.forEach((btn, idx) => {
@@ -1478,9 +1498,13 @@ function syncDialogueOverlay() {
 
     ctx.restore();
     ctx.restore();
+    drawAtmosphericFog(ctx, $canvas.width, $canvas.height);
 
     const playerScreenX = (player.x - camX) * scaleX;
     const playerScreenY = (player.y - camY) * scaleY;
+    if (!State.flags.betrayalHappened || State.flags.kaelDefeated) {
+      drawHeroShroud(ctx, playerScreenX, playerScreenY);
+    }
 
     // post-processing
     applyLighting(ctx, State.mode, playerScreenX, playerScreenY, player.torchOn);
@@ -1679,6 +1703,33 @@ function drawBossHpBar(ctx, boss) {
   ctx.strokeStyle = "rgba(255,255,255,0.6)";
   ctx.lineWidth = 1.5;
   ctx.strokeRect(barX, barY, barWidth, barHeight);
+  ctx.restore();
+}
+
+function drawAtmosphericFog(ctx, width, height) {
+  if (!ctx) return;
+  ctx.save();
+  const gradient = ctx.createRadialGradient(width * 0.5, height * 0.35, width * 0.08, width * 0.5, height * 0.6, width * 0.8);
+  gradient.addColorStop(0, "rgba(8, 10, 25, 0.25)");
+  gradient.addColorStop(0.5, "rgba(4, 6, 18, 0.35)");
+  gradient.addColorStop(1, "rgba(0, 0, 0, 0.55)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
+}
+
+function drawHeroShroud(ctx, x, y) {
+  if (!ctx || !Number.isFinite(x) || !Number.isFinite(y)) return;
+  ctx.save();
+  ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+  const maxDim = Math.max(ctx.canvas.width, ctx.canvas.height);
+  const gradient = ctx.createRadialGradient(x, y, 55, x, y, maxDim * 0.85);
+  gradient.addColorStop(0, "rgba(0,0,0,0)");
+  gradient.addColorStop(0.2, "rgba(0,0,0,0.9)");
+  gradient.addColorStop(0.45, "rgba(0,0,0,0.99)");
+  gradient.addColorStop(1, "rgba(0,0,0,1)");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   ctx.restore();
 }
   function showPickupPrompt(pickup) {
