@@ -24,12 +24,15 @@ const HANDLED = new Set([
   "arrowdown",
   "arrowleft",
   "arrowright",
-  "shift",
+  "1",
+  "2",
+  "3",
+  "&",
+  "\u00E9",
+  "p",
   "e",
-  "t",
   "i",
   " ",
-  "r",
 ]);
 
 function norm(e) {

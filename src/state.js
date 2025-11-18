@@ -25,11 +25,16 @@ export const State = {
   inventory: null,
   touchControls: null,
   isMobile: false,
+  puzzleOrbs: [],
+  orbPromptOpen: false,
+  princessHint: null,
+  bossMusicPending: false,
+  activeBossTrack: null,
   flags: {
-    torchOn: true,
     foundShrine: 0,
     betrayalHappened: false,
     kaelDefeated: false,
     visited: new Set(),
+    princessUnlocked: false,
   }
 };

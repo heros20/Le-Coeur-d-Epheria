@@ -6,6 +6,7 @@ export class BossKael {
     this.x = x;
     this.y = y;
     this.hp = CONFIG.kael.hp;
+    this.maxHp = this.hp;
     this.alive = true;
     const baseAnimations = filterBossAnimations(animations);
     this.animator = new Animator(baseAnimations, "idle");
@@ -46,12 +47,14 @@ export class BossKael {
     this.lastTarget = { x, y };
     this.telegraph = null;
     this.dashHit = false;
+    this.dashCanDamage = true;
     this._lastWorld = null;
-    this.orbTimer = this.orbCooldown * 0.5;
     this.orbs = [];
-    this.fissureTimer = this.fissureCooldown * 0.7;
     this.fissures = [];
     this.onPlaySound = typeof opts.onPlaySound === "function" ? opts.onPlaySound : null;
+    this.currentAction = null;
+    this.lastAction = null;
+    this.lastMoveVector = { x: 0, y: 0 };
   }
 
   update(dt, player, world) {
@@ -72,6 +75,8 @@ export class BossKael {
     const dirY = dy / dist;
     let moved = false;
 
+    let stuckAgainstWall = false;
+
     if (this.windupTimer > 0) {
       this.windupTimer -= dt;
       if (this.telegraph) {
@@ -86,13 +91,13 @@ export class BossKael {
       this.dashTimer -= dt;
       this.animator.setBase(this._directionalAction("run"));
       const currentDist = Math.hypot(player.x - this.x, player.y - this.y);
-      if (!this.dashHit && currentDist < 42) {
+      if (!this.dashHit && currentDist < 42 && this.dashCanDamage) {
         player.applyDamage(this.dashDamage);
         this.dashHit = true;
       }
       if (this.dashTimer <= 0) {
-        this.cooldownTimer = this.attackCooldown;
         this.telegraph = null;
+        this._finishAction("dash");
       }
     } else {
       let moveX = 0;
@@ -113,11 +118,10 @@ export class BossKael {
       moveX /= norm;
       moveY /= norm;
       const step = this.speed * (dist < closeThreshold ? 0.8 : 1) * dt;
+      this.lastMoveVector = { x: moveX, y: moveY };
       moved = this._move(world, moveX * step, moveY * step);
-
-      const readyForDash = this.cooldownTimer <= 0 && !this.windupTimer && !this.dashTimer;
-      if (readyForDash) {
-        this._startWindup(player);
+      if (!moved && dist < this.hitRadius + 20) {
+        stuckAgainstWall = true;
       }
     }
 
@@ -128,30 +132,11 @@ export class BossKael {
 
     this._updateOrbs(dt, player);
     this._updateFissures(dt, player);
-
-    this.orbTimer = Math.max(0, this.orbTimer - dt);
-    this.fissureTimer = Math.max(0, this.fissureTimer - dt);
-
-    if (
-      this.orbTimer <= 0 &&
-      this.orbs.length === 0 &&
-      this.windupTimer <= 0 &&
-      this.dashTimer <= 0 &&
-      this.alive
-    ) {
-      this._spawnOrbs(player);
-      this.orbTimer = this.orbCooldown;
+    this._cleanupActions();
+    if (stuckAgainstWall && !this.windupTimer && !this.dashTimer) {
+      this._escapeFromWall(world, player);
     }
-
-    if (
-      this.fissureTimer <= 0 &&
-      this.windupTimer <= 0 &&
-      this.dashTimer <= 0 &&
-      this.alive
-    ) {
-      this._spawnFissure(player);
-      this.fissureTimer = this.fissureCooldown;
-    }
+    this._tryScheduleAction(player);
   }
 
   resetForFight(spawn = {}) {
@@ -159,7 +144,8 @@ export class BossKael {
       if (Number.isFinite(spawn.x)) this.x = spawn.x;
       if (Number.isFinite(spawn.y)) this.y = spawn.y;
     }
-    this.hp = CONFIG.kael.hp;
+    this.maxHp = CONFIG.kael.hp;
+    this.hp = this.maxHp;
     this.alive = true;
     this.cooldownTimer = this.attackCooldown * 0.5;
     this.windupTimer = 0;
@@ -168,11 +154,11 @@ export class BossKael {
     this.lastTarget = { x: this.x, y: this.y };
     this.telegraph = null;
     this.dashHit = false;
-    this.orbTimer = this.orbCooldown * 0.5;
     this.orbs = [];
-    this.fissureTimer = this.fissureCooldown * 0.7;
     this.fissures = [];
     this.animator.setBase("idle");
+    this.currentAction = null;
+    this.lastAction = null;
   }
 
   hit(amount = 10, source = null) {
@@ -242,19 +228,29 @@ export class BossKael {
     this.dashVector = { x: dx / len, y: dy / len };
     this.dashTimer = this.dashDuration;
     this.dashHit = false;
+    this.dashCanDamage = true;
   }
 
   _move(world, mx, my) {
     if (!world) return false;
     let moved = false;
+    let collided = false;
     const prevX = this.x;
-    if (!world.isBlocked(this.x + mx, this.y)) {
-      this.x += mx;
-      moved = true;
+    if (mx !== 0) {
+      if (!world.isBlocked(this.x + mx, this.y)) {
+        this.x += mx;
+        moved = true;
+      } else {
+        collided = true;
+      }
     }
-    if (!world.isBlocked(this.x, this.y + my)) {
-      this.y += my;
-      moved = true;
+    if (my !== 0) {
+      if (!world.isBlocked(this.x, this.y + my)) {
+        this.y += my;
+        moved = true;
+      } else {
+        collided = true;
+      }
     }
     if (moved) {
       const deltaX = this.x - prevX;
@@ -263,6 +259,9 @@ export class BossKael {
       } else if (mx !== 0) {
         this.facing = mx > 0 ? "right" : "left";
       }
+    }
+    if (collided) {
+      this._handleCollisionResponse(mx, my);
     }
     return moved;
   }
@@ -415,6 +414,112 @@ export class BossKael {
       }
     }
     this.fissures = this.fissures.filter((f) => !f.completed);
+  }
+
+  _cleanupActions() {
+    if (this.currentAction === "dash" && this.windupTimer <= 0 && this.dashTimer <= 0) {
+      this._finishAction("dash");
+    }
+    if (this.currentAction === "orb" && this.orbs.length === 0) {
+      this._finishAction("orb");
+    }
+    if (this.currentAction === "fissure" && !this._hasActiveFissures()) {
+      this._finishAction("fissure");
+    }
+  }
+
+  _hasActiveFissures() {
+    return this.fissures.some((f) => !f.completed);
+  }
+
+  _finishAction(name) {
+    if (this.currentAction !== name) return;
+    this.currentAction = null;
+    this.lastAction = name;
+    this.cooldownTimer = this.attackCooldown;
+    this.dashCanDamage = true;
+  }
+
+  _tryScheduleAction(player) {
+    if (this.currentAction || !this.alive) return;
+    if (this.cooldownTimer > 0) return;
+    if (this.windupTimer > 0 || this.dashTimer > 0) return;
+    if (this.orbs.length > 0 || this._hasActiveFissures()) return;
+    const actions = ["dash", "orb", "fissure"];
+    const pool = actions.filter((a) => a !== this.lastAction);
+    const choicePool = pool.length ? pool : actions;
+    const action = choicePool[Math.floor(Math.random() * choicePool.length)];
+    switch (action) {
+      case "dash":
+        this.currentAction = "dash";
+        this._startWindup(player);
+        break;
+      case "orb":
+        this._spawnOrbs(player);
+        this.currentAction = "orb";
+        break;
+      case "fissure":
+        this._spawnFissure(player);
+        this.currentAction = "fissure";
+        break;
+    }
+  }
+
+  _escapeFromWall(world, player) {
+    if (!world) return;
+    const offset = (this.hitRadius ?? 20) + 6;
+    const tests = [
+      { x: 1, y: 0, blocked: world.isBlocked(this.x + offset, this.y) },
+      { x: -1, y: 0, blocked: world.isBlocked(this.x - offset, this.y) },
+      { x: 0, y: 1, blocked: world.isBlocked(this.x, this.y + offset) },
+      { x: 0, y: -1, blocked: world.isBlocked(this.x, this.y - offset) },
+    ];
+    let escapeDir = null;
+    for (const test of tests) {
+      if (test.blocked) {
+        escapeDir = { x: -test.x, y: -test.y };
+        break;
+      }
+    }
+    if (!escapeDir) {
+      if (player) {
+        escapeDir = { x: this.x - player.x, y: this.y - player.y };
+      } else if (this.lastMoveVector) {
+        escapeDir = { x: -this.lastMoveVector.x, y: -this.lastMoveVector.y };
+      } else {
+        escapeDir = { x: Math.random() - 0.5, y: Math.random() - 0.5 };
+      }
+    }
+    this._forceEscapeDash(escapeDir, 200, false, false);
+  }
+
+  _handleCollisionResponse(mx, my) {
+    if (this.dashTimer > 0 || this.windupTimer > 0) return;
+    let dirX = mx;
+    let dirY = my;
+    if (Math.hypot(dirX, dirY) < 0.01) {
+      dirX = this.lastMoveVector?.x ?? (this.facing === "left" ? -1 : 1);
+      dirY = this.lastMoveVector?.y ?? 0;
+    }
+    if (Math.hypot(dirX, dirY) < 0.01) {
+      dirX = Math.random() - 0.5;
+      dirY = Math.random() - 0.5;
+    }
+    this._forceEscapeDash({ x: dirX, y: dirY }, 200, false, false);
+  }
+
+  _forceEscapeDash(direction, distance = null, markAction = true, canDamage = true) {
+    if (!direction) return;
+    const len = Math.hypot(direction.x, direction.y) || 1;
+    const dashLength = distance ?? this.dashSpeed * this.dashDuration;
+    const duration = Math.max(0.1, dashLength / Math.max(1, this.dashSpeed));
+    if (markAction) this.currentAction = "dash";
+    this.windupTimer = 0;
+    this.telegraph = null;
+    this.dashTimer = duration;
+    this.dashVector = { x: direction.x / len, y: direction.y / len };
+    this.dashHit = false;
+    this.dashCanDamage = canDamage;
   }
 
   _drawFissures(ctx) {

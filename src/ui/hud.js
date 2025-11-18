@@ -40,8 +40,6 @@ export function createHUD() {
   function update({
     hp = 0,
     hpMax = 100,
-    mode = "LIGHT",
-    torch = true,
     stamina = 0,
     staminaMax = 100,
     inventory: items = [],
@@ -71,8 +69,6 @@ export function createHUD() {
       </div>
       ${bar(stamPct, "stamina")}
       <div class="chips">
-        <span class="chip">${mode === "LIGHT" ? "Reality: Light" : "Reality: Shadow"}</span>
-        <span class="chip">Torch: ${torch ? "On" : "Off"}</span>
         <span class="chip">${dashText}</span>
         ${combo > 0 ? '<span class="chip chip-alert">Combo window</span>' : ""}
       </div>
@@ -108,19 +104,51 @@ export function createHUD() {
     `;
 
     helper.innerHTML = `
-      <div class="helper-title">Controls</div>
-      <div class="helper-grid">
-        <span>Mouse move: Travel</span>
-        <span>Left click: Attack</span>
-        <span>Shift: Sprint</span>
-        <span>Space: Dash</span>
-        <span>E: Interact</span>
-        <span>E (2): Potion</span>
-        <span>R: Reality shift</span>
-        <span>T: Torch</span>
-        <span>Mobile: use on-screen joystick & buttons</span>
+      <div class="helper-title">Commandes</div>
+      <div class="helper-grid helper-grid-rpg">
+        <div class="helper-group">
+          <div class="helper-group-label">Déplacement</div>
+          <div class="helper-keys">
+            <span class="key">Z</span>
+            <span class="key">Q</span>
+            <span class="key">S</span>
+            <span class="key">D</span>
+          </div>
+          <div class="helper-desc">Se déplacer dans le labyrinthe</div>
+        </div>
+
+        <div class="helper-group">
+          <div class="helper-group-label">Clavier</div>
+          <div class="helper-keys">
+            <span class="key">1</span>
+            <span class="helper-desc-inline">Attaquer</span>
+          </div>
+          <div class="helper-keys">
+            <span class="key">2</span>
+            <span class="helper-desc-inline">Sprint</span>
+          </div>
+          <div class="helper-keys">
+            <span class="key">3</span>
+            <span class="helper-desc-inline">Utiliser un objet</span>
+          </div>
+          
+          <div class="helper-keys">
+            <span class="key">Space</span>
+            <span class="helper-desc-inline">Dash</span>
+          </div>
+        </div>
+
+        <div class="helper-group">
+          <div class="helper-group-label">Interaction</div>
+          <div class="helper-keys">
+            <span class="key">E</span>
+            <span class="helper-desc-inline">Parler / Interagir</span>
+          </div>
+          <div class="helper-desc">NPC, leviers, orbes et autres mauvaises idées</div>
+        </div>
       </div>
     `;
+
 
     if (dashCooldownButton) {
       const max = Math.max(0.0001, dashCooldownMax || 0.0001);
@@ -507,5 +535,5 @@ function setupMobileControls() {
       State.dialogue.next?.();
     }
   });
-  bindHoldButton(btnSprint, "shift");
+  bindHoldButton(btnSprint, ["2", "\u00E9"]);
 }

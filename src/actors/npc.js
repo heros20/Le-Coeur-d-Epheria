@@ -28,15 +28,30 @@ export class NPC {
       dx = target.x - this.x;
       dy = target.y - this.y;
       const dist = Math.hypot(dx, dy) || 1;
-      if (dist > this.keepDistance) {
-        const step = this.speed * dt;
+      const desiredDist = this.keepDistance * 0.35;
+      if (dist > desiredDist) {
+        const step = this.speed * dt * 1.25;
         const mx = (dx / dist) * step;
         const my = (dy / dist) * step;
-        let nx = this.x + mx;
-        let ny = this.y + my;
-        if (!world.isBlocked(nx, this.y)) this.x = nx;
-        if (!world.isBlocked(this.x, ny)) this.y = ny;
-        moving = true;
+        const nx = this.x + mx;
+        const ny = this.y + my;
+        let movedX = false;
+        let movedY = false;
+        if (!world.isBlocked(nx, this.y)) {
+          this.x = nx;
+          movedX = true;
+        }
+        if (!world.isBlocked(this.x, ny)) {
+          this.y = ny;
+          movedY = true;
+        }
+        moving = movedX || movedY;
+        if (!moving) {
+          this._tryUnstuck(world);
+        }
+      } else if (dist < desiredDist * 0.6 && !world.isBlocked(this.x - dx, this.y - dy)) {
+        this.x -= (dx / dist) * this.speed * dt;
+        this.y -= (dy / dist) * this.speed * dt;
       }
     }
     if (moving) {
@@ -89,5 +104,28 @@ export class NPC {
       if (this.animator.animations[fallbackWalk]) return fallbackWalk;
     }
     return action;
+  }
+
+  _tryUnstuck(world) {
+    const attempts = [
+      { x: 1, y: 0 },
+      { x: -1, y: 0 },
+      { x: 0, y: 1 },
+      { x: 0, y: -1 },
+      { x: 1, y: 1 },
+      { x: -1, y: -1 },
+      { x: 1, y: -1 },
+      { x: -1, y: 1 },
+    ];
+    for (const dir of attempts) {
+      const step = 12;
+      const nx = this.x + dir.x * step;
+      const ny = this.y + dir.y * step;
+      if (!world.isBlocked(nx, ny)) {
+        this.x = nx;
+        this.y = ny;
+        break;
+      }
+    }
   }
 }

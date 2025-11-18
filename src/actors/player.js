@@ -1,6 +1,8 @@
 import { CONFIG } from "../config.js";
-import { Keys, consume } from "../input.js";
+import { Keys } from "../input.js";
 import { Animator } from "../utils/animator.js";
+
+const SPRINT_KEYS = ["2", "\u00E9"];
 
 export class Player {
   constructor(img, x, y, animations = {}, opts = {}) {
@@ -53,7 +55,6 @@ export class Player {
     this.recoveryDelay = CONFIG.staminaDelay ?? 0.6;
 
     this.torchOn = true;
-    this._torchCooldown = 0;
 
     this.hurtCooldown = 0;
   }
@@ -65,7 +66,11 @@ export class Player {
     const hasAim =
       Boolean(inputs.aimValid) && Boolean(aim && Number.isFinite(aim.x) && Number.isFinite(aim.y));
     const moveVector = inputs.moveVector;
-    const pointerMove = moveVector && Number.isFinite(moveVector.x) && Number.isFinite(moveVector.y);
+    const colliders = Array.isArray(inputs.colliders) ? inputs.colliders : [];
+    const moveVectorSource = inputs.moveVectorSource ?? moveVector?.source ?? null;
+    const hasMoveVector = moveVector && Number.isFinite(moveVector.x) && Number.isFinite(moveVector.y);
+    const pointerMove = Boolean(hasMoveVector && moveVectorSource !== "keyboard");
+    const analogMove = Boolean(hasMoveVector && !pointerMove);
     const attackHeld = Boolean(inputs.attackHeld);
     const attackReleased = Boolean(inputs.attackReleased);
     const attackDoubleTap = Boolean(inputs.attackDoubleTap);
@@ -110,6 +115,10 @@ export class Player {
       const dist = moveVector.dist || Math.hypot(moveVector.x, moveVector.y) || 1;
       vx = moveVector.x / dist;
       vy = moveVector.y / dist;
+    } else if (analogMove) {
+      const dist = moveVector.dist || Math.hypot(moveVector.x, moveVector.y) || 1;
+      vx = moveVector.x / dist;
+      vy = moveVector.y / dist;
     } else if (keyboardX !== 0 || keyboardY !== 0) {
       const mag = Math.hypot(keyboardX, keyboardY) || 1;
       vx = keyboardX / mag;
@@ -118,7 +127,7 @@ export class Player {
 
     let sp = this.speed * (mode === "SHADOW" ? this.shadowPenalty : 1);
     const canSprint = this.stamina > 0.1 && this.recoveryCooldown <= 0;
-    const wantsSprint = Keys.has("shift") && canSprint;
+    const wantsSprint = SPRINT_KEYS.some((key) => Keys.has(key)) && canSprint;
     if (wantsSprint) sp *= this.sprintMult;
 
     const prevX = this.x;
@@ -135,6 +144,22 @@ export class Player {
       this._dashActive = Math.max(0, this._dashActive - dt);
     }
 
+    const collidesWithOrbs = (x, y, radius) => {
+      if (!colliders.length) return false;
+      const r = Math.max(0, radius);
+      for (const orb of colliders) {
+        if (!orb) continue;
+        const or = Math.max(0, orb.radius ?? 0);
+        const dx = x - (orb.x ?? 0);
+        const dy = y - (orb.y ?? 0);
+        if (Math.hypot(dx, dy) < r + or) {
+          return true;
+        }
+      }
+      return false;
+    };
+    const canOccupy = (px, py, radius) => circleFree(world, px, py, radius) && !collidesWithOrbs(px, py, radius);
+
     if (this.hp > 0) {
       const dx = vx * sp * dt;
       const dy = vy * sp * dt;
@@ -148,12 +173,12 @@ export class Player {
       for (let i = 0; i < steps; i++) {
         const sx = dx / steps;
         const sy = dy / steps;
-        if (circleFree(world, nx + sx, ny + sy, this.r)) {
+        if (canOccupy(nx + sx, ny + sy, this.r)) {
           nx += sx;
           ny += sy;
         } else {
-          if (circleFree(world, nx + sx, ny, this.r)) nx += sx;
-          if (circleFree(world, nx, ny + sy, this.r)) ny += sy;
+          if (canOccupy(nx + sx, ny, this.r)) nx += sx;
+          if (canOccupy(nx, ny + sy, this.r)) ny += sy;
         }
       }
 
@@ -189,15 +214,25 @@ export class Player {
 
     this._updateAttackQueue(dt);
 
-    if (!circleFree(world, this.x, this.y, this.r * 0.9)) {
+    if (!canOccupy(this.x, this.y, this.r * 0.9)) {
       const p = world.nearestOpen(this.x, this.y, this.r);
       this.x = p.x;
       this.y = p.y;
-    }
-
-    if (consume("t") && this._torchCooldown <= 0) {
-      this.torchOn = !this.torchOn;
-      this._torchCooldown = 0.2;
+      if (collidesWithOrbs(this.x, this.y, this.r)) {
+        for (const orb of colliders) {
+          if (!orb) continue;
+          const dx = this.x - (orb.x ?? 0);
+          const dy = this.y - (orb.y ?? 0);
+          const or = Math.max(0, orb.radius ?? 0);
+          const dist = Math.hypot(dx, dy);
+          const minDist = this.r + or;
+          if (dist < minDist && dist > 0) {
+            const push = minDist - dist + 1;
+            this.x += (dx / dist) * push;
+            this.y += (dy / dist) * push;
+          }
+        }
+      }
     }
 
     this.animator.update(dt);
@@ -246,7 +281,6 @@ export class Player {
   }
 
   _tickCooldowns(dt) {
-    if (this._torchCooldown > 0) this._torchCooldown -= dt;
     if (this.recoveryCooldown > 0) this.recoveryCooldown -= dt;
     if (this.hurtCooldown > 0) this.hurtCooldown -= dt;
     if (this._attackTimer > 0) {
