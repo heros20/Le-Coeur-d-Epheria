@@ -12,6 +12,7 @@ import { Inventory } from "./systems/inventory.js";
 import { createDialogueLayer } from "./systems/dialogue.js";
 import { showEndings, renderEpilogue } from "./systems/endings.js";
 import { vignette, strokeText } from "./utils/draw.js";
+import { Animator } from "./utils/animator.js";
 import { createHUD } from "./ui/hud.js";
 
 const $boot = document.getElementById("boot");
@@ -479,6 +480,25 @@ const KAEL_DRAGON_ANIMATION_SOURCES = {
   ],
 };
 
+function buildGhostAnimationPaths(folder, stem, count = 20) {
+  const frames = [];
+  for (let i = 0; i < count; i++) {
+    const idx = String(i).padStart(3, "0");
+    frames.push({ src: `./assets/ghost/${folder}/${stem}_${idx}.png`, sheet: false });
+  }
+  return frames;
+}
+
+const GHOST_ANIMATION_SOURCES = {
+  idle: buildGhostAnimationPaths("idle", "9_enemies_1_idle"),
+  walk_left: buildGhostAnimationPaths("walk", "9_enemies_1_walk"),
+  walk_right: buildGhostAnimationPaths("walk", "9_enemies_1_walk"),
+  run: buildGhostAnimationPaths("run", "9_enemies_1_run"),
+  attack: buildGhostAnimationPaths("attack", "9_enemies_1_attack"),
+  hurt: buildGhostAnimationPaths("hurt", "9_enemies_1_hurt"),
+  dead: buildGhostAnimationPaths("dead", "9_enemies_1_die"),
+};
+
 const PRINCESS_ANIMATION_SOURCES = {
   idle: ["./assets/Princesse/idle/Idle.png", "./assets/Princesse/idle/Idle_2.png"],
   walk_left: ["./assets/Princesse/walk/Walk_left.png"],
@@ -570,10 +590,25 @@ async function loadAnimations(sourceMap) {
   const anims = {};
   await Promise.all(
     entries.map(async ([action, files]) => {
-      const images = await Promise.all(files.map((src) => loadImage(src)));
+      const normalized = files.map((entry) => {
+        if (typeof entry === "string") return { src: entry, sheet: true };
+        if (entry && typeof entry === "object") {
+          return {
+            src: entry.src,
+            sheet: entry.sheet !== false,
+          };
+        }
+        return { src: String(entry ?? ""), sheet: true };
+      });
+      const images = await Promise.all(normalized.map((item) => loadImage(item.src)));
       const frames = [];
-      images.forEach((img) => {
-        frames.push(...sliceSheet(img));
+      images.forEach((img, idx) => {
+        const meta = normalized[idx];
+        if (meta.sheet === false) {
+          frames.push({ image: img, sx: 0, sy: 0, sw: img.width, sh: img.height });
+        } else {
+          frames.push(...sliceSheet(img));
+        }
       });
       if (frames.length === 0) return;
       const defaults = ANIMATION_DEFAULTS[action] ?? {};
@@ -639,6 +674,7 @@ function syncDialogueOverlay() {
     kaelAnimations,
     dragonKaelAnimations,
     princessAnimations,
+    ghostAnimations,
     potionImage,
     soundBank,
   ] = await Promise.all([
@@ -649,6 +685,7 @@ function syncDialogueOverlay() {
     loadAnimations(KAEL_ANIMATION_SOURCES),
     loadAnimations(KAEL_DRAGON_ANIMATION_SOURCES),
     loadAnimations(PRINCESS_ANIMATION_SOURCES),
+    loadAnimations(GHOST_ANIMATION_SOURCES),
     loadImage(POTION_SPRITE),
     loadAudios(SOUND_SOURCES),
   ]);
@@ -770,6 +807,7 @@ function syncDialogueOverlay() {
   State.bossRetryShown = false;
   State.pickups = [];
   spawnPotion(start.x - 280, start.y - 10);
+  State.ghosts = spawnGhosts(world, start, ghostAnimations, 5);
 
   State.fog = new FogOfWar(world.w, world.h);
   State.fog.reveal(State.player.x, State.player.y, 180);
@@ -1005,10 +1043,11 @@ function syncDialogueOverlay() {
     ) {
       State.princess.follow = true;
     }
-    State.kael.update(dt, player, map);
+  State.kael.update(dt, player, map);
   if (State.flags.princessUnlocked) {
     State.princess.update(dt, player, map);
   }
+  updateGhosts(dt);
 
     // Camera & fog
     clampCameraToPlayer(player.x, player.y);
@@ -1066,6 +1105,7 @@ function syncDialogueOverlay() {
         }
       }
     }
+    damageGhostsFromPlayer();
 
     if (State.flags.kaelDefeated && State.princess.follow && !State.flags.endingPending) {
       if (Math.hypot(player.x - entrance.x, player.y - entrance.y) < entrance.r) {
@@ -1663,6 +1703,172 @@ function syncDialogueOverlay() {
     });
   }
 
+  function spawnGhosts(world, spawnPoint, animations, count = 5) {
+    if (!world || !animations) return [];
+    const ghosts = [];
+    const spawnY = (spawnPoint?.y ?? 0) + 300;
+    const minY = Math.min(Math.max(40, spawnY), Math.max(40, world.h - 60));
+    const usableHeight = Math.max(60, world.h - minY - 40);
+    for (let i = 0; i < count; i++) {
+      let pos = null;
+      for (let attempt = 0; attempt < 30; attempt++) {
+        const randX = 40 + Math.random() * Math.max(40, world.w - 80);
+        const randY = minY + Math.random() * usableHeight;
+        const candidate = world.nearestOpen(randX, randY, PLAYER_RADIUS);
+        if (candidate && candidate.y >= minY) {
+          pos = candidate;
+          break;
+        }
+      }
+      if (!pos) {
+        pos = {
+          x: (spawnPoint?.x ?? world.w / 2) + (i - count / 2) * 30,
+          y: minY + i * 35,
+        };
+      }
+      ghosts.push(createGhost(pos.x, pos.y, animations));
+    }
+    return ghosts;
+  }
+
+  function createGhost(x, y, animations) {
+    const animator = new Animator(animations, "idle");
+    return {
+      x,
+      y,
+      hp: 55,
+      maxHp: 55,
+      speed: 60,
+      chaseSpeed: 115,
+      attackRange: 26,
+      attackDamage: 8,
+      attackCooldown: 0,
+      hurtTimer: 0,
+      dead: false,
+      scale: 0.128,
+      animator,
+    };
+  }
+
+  function updateGhosts(dt) {
+    const ghosts = State.ghosts;
+    const player = State.player;
+    const map = State.map;
+    if (!Array.isArray(ghosts) || !player || !map) return;
+    for (const ghost of ghosts) {
+      if (!ghost) continue;
+      ghost.attackCooldown = Math.max(0, (ghost.attackCooldown ?? 0) - dt);
+      ghost.hurtTimer = Math.max(0, (ghost.hurtTimer ?? 0) - dt);
+      if (ghost.dead) {
+        ghost.animator?.update?.(dt);
+        continue;
+      }
+      const dx = player.x - ghost.x;
+      const dy = player.y - ghost.y;
+      const dist = Math.hypot(dx, dy) || 1;
+      let baseAction = "idle";
+      if (dist < 50) {
+        const step = ghost.chaseSpeed * dt;
+        moveGhost(ghost, (dx / dist) * step, (dy / dist) * step, map);
+        baseAction = "run";
+        if (dist < ghost.attackRange && ghost.attackCooldown <= 0) {
+          player.applyDamage(ghost.attackDamage);
+          ghost.attackCooldown = 1.35;
+          ghost.animator?.play?.("attack", { force: true });
+        }
+      }
+      ghost.animator?.setBase?.(baseAction);
+      ghost.animator?.update?.(dt);
+    }
+  }
+
+  function damageGhostsFromPlayer() {
+    const ghosts = State.ghosts;
+    const player = State.player;
+    if (!player || !Array.isArray(ghosts)) return;
+    if (!player.canDealAttackDamage?.()) return;
+    const attackRange = player.attackRadius ?? 70;
+    let registeredHit = false;
+    ghosts.forEach((ghost) => {
+      if (!ghost || ghost.dead) return;
+      const dist = Math.hypot(player.x - ghost.x, player.y - ghost.y);
+      if (dist > attackRange) return;
+      if (player.isTargetInAttackArc?.(ghost.x, ghost.y) === false) return;
+      const damage = player.getCurrentAttackDamage?.() ?? 12;
+      ghost.hp = Math.max(0, ghost.hp - damage);
+      ghost.hurtTimer = 0.25;
+      ghost.animator?.play?.("hurt", { force: true });
+      if (!registeredHit) {
+        player.confirmAttackHit?.();
+        registeredHit = true;
+      }
+      if (ghost.hp === 0 && !ghost.dead) {
+        ghost.dead = true;
+        ghost.animator?.play?.("dead", { sticky: true, force: true });
+      }
+    });
+  }
+
+  function moveGhost(ghost, mx, my, world) {
+    if (!world) {
+      ghost.x += mx;
+      ghost.y += my;
+      return true;
+    }
+    let moved = false;
+    if (mx !== 0) {
+      const nextX = ghost.x + mx;
+      if (!world.isBlocked(nextX, ghost.y)) {
+        ghost.x = nextX;
+        moved = true;
+      }
+    }
+    if (my !== 0) {
+      const nextY = ghost.y + my;
+      if (!world.isBlocked(ghost.x, nextY)) {
+        ghost.y = nextY;
+        moved = true;
+      }
+    }
+    return moved;
+  }
+
+  function drawGhosts(ctx) {
+    const ghosts = State.ghosts;
+    if (!Array.isArray(ghosts)) return;
+    ghosts.forEach((ghost) => {
+      if (!ghost) return;
+      const frame = ghost.animator?.getFrame?.();
+      if (frame) {
+        const scale = ghost.scale ?? 0.32;
+        const dw = frame.sw * scale;
+        const dh = frame.sh * scale;
+        ctx.drawImage(
+          frame.image,
+          frame.sx,
+          frame.sy,
+          frame.sw,
+          frame.sh,
+          Math.round(ghost.x - dw / 2),
+          Math.round(ghost.y - dh / 2),
+          dw,
+          dh
+        );
+      }
+      if (!ghost.dead) {
+        const width = 34;
+        const height = 4;
+        const ratio = Math.max(0, ghost.hp) / (ghost.maxHp || 1);
+        ctx.save();
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        ctx.fillRect(ghost.x - width / 2, ghost.y - 28, width, height);
+        ctx.fillStyle = "#7ff3ff";
+        ctx.fillRect(ghost.x - width / 2 + 1, ghost.y - 28 + 1, (width - 2) * ratio, height - 2);
+        ctx.restore();
+      }
+    });
+  }
+
   function playEscapeVideo(onComplete) {
     if (!$escapeVideo || !$escapeVideoPlayer) {
       if (typeof onComplete === "function") onComplete();
@@ -1867,6 +2073,7 @@ function syncDialogueOverlay() {
     ctx.save();
     ctx.translate(-camX, -camY);
     drawPickups(ctx);
+    drawGhosts(ctx);
 
     if (State.flags.princessUnlocked) {
       State.princess.draw(ctx);
