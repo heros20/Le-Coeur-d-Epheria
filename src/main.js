@@ -968,7 +968,21 @@ function syncDialogueOverlay() {
         State.flags.kaelDefeated = true;
         State.bossMusicPending = false;
         stopBossMusic(true);
-        State.dialogue.show([{ speaker: "Mur", text: "Le jugement approche. Ramene Aelya a la porte." }]);
+        if (State.flags.kaelPhaseTwoStarted && !State.flags.kaelPhaseTwoDefeated) {
+          State.flags.kaelPhaseTwoDefeated = true;
+          preparePrincessForPhaseTwo();
+          pauseForDialogue(
+            [
+              { speaker: "Kael", text: "Ainsi soit-il... que tes pas trouvent enfin la lumière." },
+              { speaker: "Mur", text: "La princesse t'attend à l'entrée. C'est elle qui décidera de la suite." },
+            ],
+            () => {
+              pushStatus("Parle à Aelya pour quitter le labyrinthe.");
+            }
+          );
+        } else {
+          State.dialogue.show([{ speaker: "Mur", text: "Le jugement approche. Ramene Aelya a la porte." }]);
+        }
       }
     }
 
@@ -1066,6 +1080,10 @@ function syncDialogueOverlay() {
     // Princess release example
     if (!State.flags.princessUnlocked) return;
     const dP = Math.hypot(State.player.x - State.princess.x, State.player.y - State.princess.y);
+    if (State.flags.kaelPhaseTwoDefeated && dP < 60 && !State.flags.princessEscapeOffered) {
+      offerPrincessEscape();
+      return;
+    }
     if (dP < 60 && !State.princess.follow) {
       if (!State.flags.princessUnlocked) {
         State.dialogue.show([{ speaker: "Princesse", text: "Kael tient encore... debarrasse-toi de lui !" }]);
@@ -1362,9 +1380,92 @@ function syncDialogueOverlay() {
       "click",
       () => {
         root.classList.add("hidden");
+        State.flags.endingPending = false;
+        if (!State.flags.kaelPhaseTwoStarted) {
+          startKaelPhaseTwoRequiem();
+          return;
+        }
+        if (!State.flags.kaelPhaseTwoDefeated) {
+          pushStatus("Kael n'abandonnera pas tant que vous ne l'affronterez pas.");
+          return;
+        }
         showFinalText();
       },
       { once: true }
+    );
+  }
+
+  function startKaelPhaseTwoRequiem() {
+    pauseForDialogue(
+      [
+        { speaker: "Kael", text: "Je ne mourrai pas pour si peu, Lioran." },
+        { speaker: "Kael", text: "Toi qui me connais bien... NE ME TOURNE PAS LE DOS !!!" },
+      ],
+      () => {
+        flashScreen(1200);
+        startScreenShake(1200);
+        preparePrincessForPhaseTwo();
+        startPhaseTwoBattle();
+      }
+    );
+  }
+
+  function preparePrincessForPhaseTwo() {
+    if (!State.princess) return;
+    const spawn = State.spawnPoint ?? { x: State.player.x, y: State.player.y };
+    const waitX = spawn.x - 50;
+    const waitY = spawn.y + 70;
+    State.princess.x = waitX;
+    State.princess.y = waitY;
+    State.princess.follow = false;
+    State.princess.waitingAtEntrance = true;
+    State.flags.princessEscapeOffered = false;
+  }
+
+  function startPhaseTwoBattle() {
+    const spawn = State.spawnPoint ?? { x: State.player.x, y: State.player.y };
+    const heroPos = { x: spawn.x + 40, y: spawn.y + 70 };
+    const bossPos = { x: heroPos.x + 110, y: heroPos.y - 20 };
+    State.player.x = heroPos.x;
+    State.player.y = heroPos.y;
+    State.player.hp = State.player.maxHp ?? 100;
+    State.player.stamina = State.player.staminaMax;
+    State.player.resetCombatState?.();
+    State.player.animator?.setBase("idle");
+    clampCameraToPlayer(State.player.x, State.player.y);
+    State.boss.enterPhaseTwo({ position: bossPos });
+    State.bossCheckpoint = {
+      player: { x: heroPos.x, y: heroPos.y },
+      boss: { x: bossPos.x, y: bossPos.y },
+      phase: 2,
+      hpMultiplier: State.boss.phaseTwo?.hpMultiplier ?? 1.5,
+    };
+    State.flags.kaelDefeated = false;
+    State.flags.endingPending = false;
+    State.flags.kaelPhaseTwoStarted = true;
+    State.flags.kaelPhaseTwoDefeated = false;
+    State.flags.endingPending = false;
+    State.flags.princessEscapeOffered = false;
+    State.bossMusicPending = false;
+    startBossMusic();
+  }
+
+  function offerPrincessEscape() {
+    State.flags.princessEscapeOffered = true;
+    pauseForDialogue(
+      [
+        {
+          speaker: "Princesse",
+          text: "Lioran... Sa rage est éteinte. C'est notre seule chance.",
+        },
+        {
+          speaker: "Princesse",
+          text: "Fuyons ensemble avant que le labyrinthe ne change d'avis.",
+        },
+      ],
+      () => {
+        showFinalText();
+      }
     );
   }
 
@@ -1697,7 +1798,17 @@ function resetGameOverSound() {
     State.player.resetCombatState?.();
     State.player.animator?.setBase("idle");
     const bossSpawn = checkpoint?.boss ? { x: checkpoint.boss.x, y: checkpoint.boss.y } : undefined;
-    State.boss.resetForFight(bossSpawn);
+    if (checkpoint?.phase === 2 || State.flags.kaelPhaseTwoStarted) {
+      State.boss.enterPhaseTwo({ position: bossSpawn, hpMultiplier: checkpoint?.hpMultiplier });
+      preparePrincessForPhaseTwo();
+      State.flags.kaelPhaseTwoStarted = true;
+      State.flags.kaelPhaseTwoDefeated = false;
+      State.flags.princessEscapeOffered = false;
+    } else {
+      State.boss.resetForFight(bossSpawn);
+      State.flags.kaelPhaseTwoStarted = false;
+      State.flags.kaelPhaseTwoDefeated = false;
+    }
     State.flags.kaelDefeated = false;
     State.dialogue.close();
     clampCameraToPlayer(State.player.x, State.player.y);

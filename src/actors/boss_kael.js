@@ -16,6 +16,7 @@ export class BossKael {
     this.facing = "right";
 
     const cfg = CONFIG.kael ?? {};
+    const phaseTwo = cfg.phaseTwo ?? {};
     this.speed = cfg.speed ?? 120;
     this.preferredDistance = cfg.preferredDistance ?? 120;
     this.attackRange = cfg.attackRange ?? 150;
@@ -39,6 +40,12 @@ export class BossKael {
     this.fissureSpeed = cfg.fissureSpeed ?? 280;
     this.fissureWidth = cfg.fissureWidth ?? 42;
     this.fissureDamage = cfg.fissureDamage ?? 32;
+    this.phaseTwo = {
+      hpMultiplier: phaseTwo.hpMultiplier ?? 1.5,
+      sigilDamage: phaseTwo.sigilDamage ?? 36,
+      cloneDamage: phaseTwo.cloneDamage ?? 40,
+      beamDamage: phaseTwo.beamDamage ?? 48,
+    };
 
     this.cooldownTimer = this.attackCooldown * 0.5;
     this.windupTimer = 0;
@@ -51,6 +58,10 @@ export class BossKael {
     this._lastWorld = null;
     this.orbs = [];
     this.fissures = [];
+    this.sigils = [];
+    this.clones = [];
+    this.beamAttack = null;
+    this.phase = 1;
     this.onPlaySound = typeof opts.onPlaySound === "function" ? opts.onPlaySound : null;
     this.currentAction = null;
     this.lastAction = null;
@@ -132,6 +143,11 @@ export class BossKael {
 
     this._updateOrbs(dt, player);
     this._updateFissures(dt, player);
+    if (this.phase === 2) {
+      this._updateSigils(dt, player);
+      this._updateClones(dt, player);
+      this._updateBeam(dt, player);
+    }
     this._cleanupActions();
     if (stuckAgainstWall && !this.windupTimer && !this.dashTimer) {
       this._escapeFromWall(world, player);
@@ -147,6 +163,7 @@ export class BossKael {
     this.maxHp = CONFIG.kael.hp;
     this.hp = this.maxHp;
     this.alive = true;
+    this.phase = 1;
     this.cooldownTimer = this.attackCooldown * 0.5;
     this.windupTimer = 0;
     this.dashTimer = 0;
@@ -156,9 +173,41 @@ export class BossKael {
     this.dashHit = false;
     this.orbs = [];
     this.fissures = [];
+    this.sigils = [];
+    this.clones = [];
+    this.beamAttack = null;
     this.animator.setBase("idle");
     this.currentAction = null;
     this.lastAction = null;
+  }
+
+  enterPhaseTwo(opts = {}) {
+    this.phase = 2;
+    const multiplier = Number.isFinite(opts.hpMultiplier)
+      ? opts.hpMultiplier
+      : this.phaseTwo.hpMultiplier;
+    this.maxHp = Math.round(CONFIG.kael.hp * Math.max(1, multiplier));
+    this.hp = this.maxHp;
+    this.alive = true;
+    if (opts.position && Number.isFinite(opts.position.x) && Number.isFinite(opts.position.y)) {
+      this.x = opts.position.x;
+      this.y = opts.position.y;
+    }
+    this.cooldownTimer = this.attackCooldown * 0.35;
+    this.windupTimer = 0;
+    this.dashTimer = 0;
+    this.dashVector = { x: 0, y: 0 };
+    this.lastTarget = { x: this.x, y: this.y };
+    this.telegraph = null;
+    this.dashHit = false;
+    this.orbs = [];
+    this.fissures = [];
+    this.sigils = [];
+    this.clones = [];
+    this.beamAttack = null;
+    this.currentAction = null;
+    this.lastAction = null;
+    this.animator.setBase("idle");
   }
 
   hit(amount = 10, source = null) {
@@ -192,6 +241,9 @@ export class BossKael {
 
     this._drawFissures(ctx);
     this._drawOrbs(ctx);
+    this._drawSigils(ctx);
+    this._drawClones(ctx);
+    this._drawBeam(ctx);
 
     const frame = this.animator.getFrame();
     if (!frame) return;
@@ -360,6 +412,187 @@ export class BossKael {
     ctx.restore();
   }
 
+  _spawnSigils(player) {
+    const base = Math.atan2(player.y - this.y, player.x - this.x);
+    this.sigils = [];
+    for (let i = 0; i < 3; i++) {
+      const angle = base + (i - 1) * 0.45;
+      const distance = 90 + i * 25;
+      this.sigils.push({
+        x: player.x + Math.cos(angle) * distance,
+        y: player.y + Math.sin(angle) * distance,
+        radius: 60 + i * 5,
+        timer: 0.85 + i * 0.25,
+        explode: 0.45,
+        exploding: false,
+        done: false,
+      });
+    }
+    this._playSound("kaelOrbCast");
+  }
+
+  _updateSigils(dt, player) {
+    if (!this.sigils.length) return;
+    for (const sigil of this.sigils) {
+      if (sigil.done) continue;
+      if (!sigil.exploding) {
+        sigil.timer -= dt;
+        if (sigil.timer <= 0) {
+          sigil.exploding = true;
+          sigil.timer = sigil.explode;
+          this._playSound("kaelOrbLaunch");
+        }
+      } else {
+        sigil.timer -= dt;
+        const progress = Math.max(0, sigil.timer) / sigil.explode;
+        const blastRadius = sigil.radius + (1 - progress) * 35;
+        if (Math.hypot(player.x - sigil.x, player.y - sigil.y) < blastRadius) {
+          player.applyDamage(this.phaseTwo.sigilDamage * dt * 2.2);
+        }
+        if (sigil.timer <= 0) sigil.done = true;
+      }
+    }
+    this.sigils = this.sigils.filter((s) => !s.done);
+    if (this.currentAction === "sigil" && this.sigils.length === 0) {
+      this._finishAction("sigil");
+    }
+  }
+
+  _drawSigils(ctx) {
+    if (!this.sigils.length) return;
+    ctx.save();
+    for (const sigil of this.sigils) {
+      ctx.lineWidth = 3;
+      ctx.setLineDash([8, 10]);
+      ctx.strokeStyle = sigil.exploding ? "rgba(255,255,255,0.9)" : "rgba(120, 200, 255, 0.7)";
+      ctx.globalAlpha = sigil.exploding ? 0.75 : 0.5;
+      const radius = sigil.radius + (sigil.exploding ? (1 - Math.max(0, sigil.timer) / sigil.explode) * 25 : 0);
+      ctx.beginPath();
+      ctx.arc(sigil.x, sigil.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+      if (sigil.exploding) {
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 0.25;
+        ctx.fillStyle = "rgba(255,255,255,0.35)";
+        ctx.beginPath();
+        ctx.arc(sigil.x, sigil.y, radius * 0.65, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  _spawnClones(player) {
+    this.clones = [];
+    const spreads = [-0.55, 0, 0.55];
+    const base = Math.atan2(player.y - this.y, player.x - this.x);
+    for (const spread of spreads) {
+      const angle = base + spread;
+      this.clones.push({
+        x: this.x,
+        y: this.y,
+        dirX: Math.cos(angle),
+        dirY: Math.sin(angle),
+        speed: this.speed * 2.4,
+        timer: 1.8,
+        hit: false,
+      });
+    }
+    this._playSound("kaelJump");
+  }
+
+  _updateClones(dt, player) {
+    if (!this.clones.length) return;
+    for (const clone of this.clones) {
+      clone.timer -= dt;
+      const step = clone.speed * dt;
+      clone.x += clone.dirX * step;
+      clone.y += clone.dirY * step;
+      if (!clone.hit && Math.hypot(player.x - clone.x, player.y - clone.y) < 40) {
+        player.applyDamage(this.phaseTwo.cloneDamage);
+        clone.hit = true;
+      }
+    }
+    this.clones = this.clones.filter((c) => c.timer > 0);
+    if (this.currentAction === "clone" && this.clones.length === 0) {
+      this._finishAction("clone");
+    }
+  }
+
+  _drawClones(ctx) {
+    if (!this.clones.length) return;
+    ctx.save();
+    ctx.fillStyle = "rgba(120, 200, 255, 0.35)";
+    for (const clone of this.clones) {
+      ctx.beginPath();
+      ctx.arc(clone.x, clone.y, 26, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  _startBeam(player) {
+    const angle = Math.atan2(player.y - this.y, player.x - this.x);
+    this.beamAttack = {
+      angle,
+      windup: 0.6,
+      duration: 1.4,
+      active: false,
+      width: 55,
+      reach: 420,
+    };
+    this._playSound("kaelFireCone");
+  }
+
+  _updateBeam(dt, player) {
+    if (!this.beamAttack) return;
+    const beam = this.beamAttack;
+    if (!beam.active) {
+      beam.windup -= dt;
+      if (beam.windup <= 0) {
+        beam.active = true;
+        this._playSound("kaelOrbLaunch");
+      }
+    } else {
+      beam.duration -= dt;
+      const dirX = Math.cos(beam.angle);
+      const dirY = Math.sin(beam.angle);
+      const relX = player.x - this.x;
+      const relY = player.y - this.y;
+      const proj = relX * dirX + relY * dirY;
+      if (proj > 0 && proj < beam.reach) {
+        const perp = Math.abs(relX * -dirY + relY * dirX);
+        if (perp < beam.width) {
+          player.applyDamage(this.phaseTwo.beamDamage * dt);
+        }
+      }
+      if (beam.duration <= 0) {
+        this.beamAttack = null;
+        this._finishAction("beam");
+      }
+    }
+  }
+
+  _drawBeam(ctx) {
+    if (!this.beamAttack) return;
+    const beam = this.beamAttack;
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(beam.angle);
+    const reach = beam.reach;
+    const width = beam.width * (beam.active ? 1 : 0.5);
+    ctx.globalAlpha = beam.active ? 0.65 : 0.35;
+    ctx.fillStyle = beam.active ? "rgba(255, 120, 80, 0.8)" : "rgba(255, 255, 255, 0.45)";
+    ctx.beginPath();
+    ctx.moveTo(0, -width);
+    ctx.lineTo(reach, -width * 0.35);
+    ctx.lineTo(reach, width * 0.35);
+    ctx.lineTo(0, width);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
   _spawnFissure(player) {
     const dx = player.x - this.x;
     const dy = player.y - this.y;
@@ -426,6 +659,15 @@ export class BossKael {
     if (this.currentAction === "fissure" && !this._hasActiveFissures()) {
       this._finishAction("fissure");
     }
+    if (this.currentAction === "sigil" && this.sigils.length === 0) {
+      this._finishAction("sigil");
+    }
+    if (this.currentAction === "clone" && this.clones.length === 0) {
+      this._finishAction("clone");
+    }
+    if (this.currentAction === "beam" && !this.beamAttack) {
+      this._finishAction("beam");
+    }
   }
 
   _hasActiveFissures() {
@@ -444,8 +686,9 @@ export class BossKael {
     if (this.currentAction || !this.alive) return;
     if (this.cooldownTimer > 0) return;
     if (this.windupTimer > 0 || this.dashTimer > 0) return;
-    if (this.orbs.length > 0 || this._hasActiveFissures()) return;
-    const actions = ["dash", "orb", "fissure"];
+    if (this.phase === 1 && (this.orbs.length > 0 || this._hasActiveFissures())) return;
+    if (this.phase === 2 && (this.sigils.length > 0 || this.clones.length > 0 || this.beamAttack)) return;
+    const actions = this.phase === 2 ? ["sigil", "clone", "beam"] : ["dash", "orb", "fissure"];
     const pool = actions.filter((a) => a !== this.lastAction);
     const choicePool = pool.length ? pool : actions;
     const action = choicePool[Math.floor(Math.random() * choicePool.length)];
@@ -461,6 +704,18 @@ export class BossKael {
       case "fissure":
         this._spawnFissure(player);
         this.currentAction = "fissure";
+        break;
+      case "sigil":
+        this._spawnSigils(player);
+        this.currentAction = "sigil";
+        break;
+      case "clone":
+        this._spawnClones(player);
+        this.currentAction = "clone";
+        break;
+      case "beam":
+        this.currentAction = "beam";
+        this._startBeam(player);
         break;
     }
   }

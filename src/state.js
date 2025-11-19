@@ -34,6 +34,10 @@ export const State = {
     foundShrine: 0,
     betrayalHappened: false,
     kaelDefeated: false,
+    kaelPhaseTwoStarted: false,
+    kaelPhaseTwoDefeated: false,
+    princessEscapeOffered: false,
+    endingPending: false,
     visited: new Set(),
     princessUnlocked: false,
   }
