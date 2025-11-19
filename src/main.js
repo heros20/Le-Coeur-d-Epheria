@@ -1992,28 +1992,20 @@ function resetGameOverSound() {
     State.player.resetCombatState?.();
     State.player.animator?.setBase("idle");
     const bossSpawn = checkpoint?.boss ? { x: checkpoint.boss.x, y: checkpoint.boss.y } : undefined;
-    if (checkpoint?.phase === 3 || State.flags.kaelPhaseThreeStarted) {
-      State.boss.enterPhaseThree({ position: bossSpawn, hpMultiplier: checkpoint?.hpMultiplier });
-      preparePrincessForPhaseTwo();
-      State.flags.kaelPhaseTwoStarted = true;
-      State.flags.kaelPhaseTwoDefeated = true;
-      State.flags.kaelPhaseThreeStarted = true;
-      State.flags.kaelPhaseThreeDefeated = false;
-      State.flags.princessEscapeOffered = false;
-    } else if (checkpoint?.phase === 2 || State.flags.kaelPhaseTwoStarted) {
-      State.boss.enterPhaseTwo({ position: bossSpawn, hpMultiplier: checkpoint?.hpMultiplier });
-      preparePrincessForPhaseTwo();
-      State.flags.kaelPhaseTwoStarted = true;
-      State.flags.kaelPhaseTwoDefeated = false;
-      State.flags.kaelPhaseThreeStarted = false;
-      State.flags.kaelPhaseThreeDefeated = false;
-      State.flags.princessEscapeOffered = false;
-    } else {
-      State.boss.resetForFight(bossSpawn);
-      State.flags.kaelPhaseTwoStarted = false;
-      State.flags.kaelPhaseTwoDefeated = false;
-      State.flags.kaelPhaseThreeStarted = false;
-      State.flags.kaelPhaseThreeDefeated = false;
+    State.boss.resetForFight(bossSpawn);
+    State.flags.kaelPhaseTwoStarted = false;
+    State.flags.kaelPhaseTwoDefeated = false;
+    State.flags.kaelPhaseThreeStarted = false;
+    State.flags.kaelPhaseThreeDefeated = false;
+    State.flags.princessEscapeOffered = false;
+    if (checkpoint) {
+      checkpoint.phase = 1;
+      checkpoint.hpMultiplier = 1;
+    }
+    if (State.princess) {
+      State.princess.x = (checkpoint?.player?.x ?? State.player.x) - 40;
+      State.princess.y = (checkpoint?.player?.y ?? State.player.y) + 30;
+      State.princess.follow = true;
     }
     State.flags.kaelDefeated = false;
     State.dialogue.close();
