@@ -21,6 +21,10 @@ const ctx = $canvas.getContext("2d");
 const $consoleScreen = document.querySelector(".console-screen");
 const $screenFlash = document.getElementById("screenFlash");
 const $orbPrompt = document.getElementById("orbPrompt");
+const $escapeVideo = document.getElementById("escapeVideo");
+const $escapeVideoPlayer = document.getElementById("escapeVideoPlayer");
+const $escapeVideoSkip = document.querySelector("[data-video-skip]");
+const $escapeVideoPlay = document.querySelector("[data-video-play]");
 
 let heroSelection = null;
 let mapImg, heroImg, potionTexture;
@@ -77,6 +81,7 @@ const orbPromptState = {
 let shakeTimeout = null;
 let flashTimeout = null;
 let flashHideTimeout = null;
+let kaelOrbHintTimeout = null;
 
 function detectTouchDevice() {
   if (typeof window === "undefined") return false;
@@ -1054,6 +1059,7 @@ function syncDialogueOverlay() {
         { speaker: "Kael", text: "Allons vers la princesse. Son aura résonne… comme un appel que seuls les cœurs sincères entendent." },
 
       ]);
+      scheduleKaelOrbHint();
       return;
     }
 
@@ -1300,16 +1306,42 @@ function syncDialogueOverlay() {
   }
 
   function pauseForDialogue(lines = [], onComplete) {
-    if (!Array.isArray(lines) || !lines.length) return;
+    const hasLines = Array.isArray(lines) && lines.length > 0;
+    if (!hasLines) {
+      if (typeof onComplete === "function") onComplete();
+      return;
+    }
     State.paused = true;
-    State.dialogue.show(lines);
-    const watcher = setInterval(() => {
-      if (!State.dialogue.isOpen()) {
-        State.paused = false;
-        clearInterval(watcher);
-        if (typeof onComplete === "function") onComplete();
-      }
-    }, 100);
+    const handleClose = () => {
+      State.paused = false;
+      if (typeof onComplete === "function") onComplete();
+    };
+    State.dialogue.show(lines, { onClose: handleClose });
+  }
+
+  function scheduleKaelOrbHint() {
+    const flags = State.flags || (State.flags = {});
+    if (flags.kaelOrbHintSpoken) return;
+    if (kaelOrbHintTimeout) clearTimeout(kaelOrbHintTimeout);
+    kaelOrbHintTimeout = setTimeout(() => {
+      kaelOrbHintTimeout = null;
+      maybeSpeakKaelOrbHint();
+    }, 60_000);
+  }
+
+  function maybeSpeakKaelOrbHint() {
+    const flags = State.flags || (State.flags = {});
+    if (!flags.kaelMet || flags.kaelOrbHintSpoken) return;
+    const orbs = State.puzzleOrbs;
+    const anyActivated = Array.isArray(orbs) && orbs.some((orb) => orb?.activated);
+    if (anyActivated) return;
+    flags.kaelOrbHintSpoken = true;
+    pauseForDialogue([
+      {
+        speaker: "Kael",
+        text: "C'est étrange... Tu as remarqué comme ces orbes aux quatre coins du labyrinthe sont étranges ?",
+      },
+    ]);
   }
 
   function showOnlyEscapeEnding() {
@@ -1336,6 +1368,89 @@ function syncDialogueOverlay() {
     );
   }
 
+  function playEscapeVideo(onComplete) {
+    if (!$escapeVideo || !$escapeVideoPlayer) {
+      if (typeof onComplete === "function") onComplete();
+      return;
+    }
+    let finished = false;
+    const wasPaused = State.paused;
+    const removeManualHandlers = () => {
+      if ($escapeVideoPlay) {
+        $escapeVideoPlay.classList.add("hidden");
+        $escapeVideoPlay.removeEventListener("click", handleManualPlay);
+      }
+      $escapeVideo.removeEventListener("click", handleManualPlay);
+    };
+    const cleanup = () => {
+      if (finished) return;
+      finished = true;
+      $escapeVideoPlayer.pause();
+      try {
+        $escapeVideoPlayer.currentTime = 0;
+      } catch {
+        // ignore seek issues on some browsers
+      }
+      removeManualHandlers();
+      $escapeVideo.classList.add("hidden");
+      State.paused = wasPaused;
+      $escapeVideoPlayer.removeEventListener("ended", handleVideoEnd);
+      $escapeVideoPlayer.removeEventListener("error", handleVideoEnd);
+      if ($escapeVideoSkip) {
+        $escapeVideoSkip.removeEventListener("click", handleSkip);
+      }
+      if (typeof onComplete === "function") onComplete();
+    };
+    const handleVideoEnd = () => cleanup();
+    const handleSkip = () => cleanup();
+    const handleManualPlay = (event) => {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      if (finished) return;
+      removeManualHandlers();
+      requestPlay();
+    };
+
+    const attachManualPrompt = () => {
+      if (finished) return;
+      removeManualHandlers();
+      if ($escapeVideoPlay) {
+        $escapeVideoPlay.classList.remove("hidden");
+        $escapeVideoPlay.addEventListener("click", handleManualPlay, { once: true });
+      } else {
+        $escapeVideo.addEventListener("click", handleManualPlay, { once: true });
+      }
+    };
+
+    const requestPlay = () => {
+      if (!$escapeVideoPlayer) return;
+      try {
+        const maybePromise = $escapeVideoPlayer.play();
+        if (maybePromise && typeof maybePromise.catch === "function") {
+          maybePromise.catch(() => {
+            if (finished) return;
+            attachManualPrompt();
+          });
+        }
+      } catch {
+        attachManualPrompt();
+      }
+    };
+
+    State.paused = true;
+    $escapeVideo.classList.remove("hidden");
+    if ($escapeVideoPlay) $escapeVideoPlay.classList.add("hidden");
+    try {
+      $escapeVideoPlayer.currentTime = 0;
+    } catch {
+      // ignore seek issues if browser blocks it before metadata is ready
+    }
+    $escapeVideoPlayer.addEventListener("ended", handleVideoEnd);
+    $escapeVideoPlayer.addEventListener("error", handleVideoEnd);
+    if ($escapeVideoSkip) $escapeVideoSkip.addEventListener("click", handleSkip);
+    requestPlay();
+  }
+
   function showFinalText() {
     pauseForDialogue(
       [
@@ -1343,7 +1458,9 @@ function syncDialogueOverlay() {
         { speaker: "???", text: "h..h...h..hahahahahahahahahahahahaha" },
       ],
       () => {
-        renderEpilogue("release");
+        playEscapeVideo(() => {
+          renderEpilogue("release");
+        });
       }
     );
   }

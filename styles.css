@@ -89,21 +89,25 @@ h3 {
 }
 
 /* ====== ÉCRAN DE BOOT ====== */
-
 #boot {
+  position: relative;
   width: 100%;
   height: 100%;
-  margin: 0;
-  padding: 1.25rem 1.5rem;
-  background: radial-gradient(circle at top, #15182a 0, #080915 70%);
-  border-radius: 18px;
-  border: 1px solid #252533;
-  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.7);
+  padding: 2.5rem 2rem;
   display: flex;
   flex-direction: column;
-  gap: 1.2rem;
-  overflow: auto;
+  justify-content: flex-start;      /* on ne force plus le space-between */
+  gap: 2rem;
+  background: radial-gradient(circle at top, #17172a 0, #050510 55%, #000 100%);
+
+  /* 🔥 important : on autorise le scroll vertical */
+  overflow-y: auto;
+  overflow-x: hidden;
+
+  isolation: isolate;
+  box-sizing: border-box;
 }
+
 
 .boot-header {
   display: flex;
@@ -208,7 +212,6 @@ h3 {
   cursor: not-allowed;
   box-shadow: none;
 }
-
 .help ul {
   margin: 0.6rem 0 0.2rem;
   padding-left: 1.1rem;
@@ -572,6 +575,73 @@ h3 {
     rgba(0, 0, 0, 0) 0%,
     rgba(0, 0, 0, 0.6) 100%
   );
+}
+
+.escape-video {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  z-index: 30;
+}
+
+.escape-video.hidden {
+  display: none;
+}
+
+.escape-video video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+}
+
+.escape-video-skip {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  padding: 8px 14px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 999px;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.escape-video-skip:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.escape-video-play {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: min(320px, 80%);
+  padding: 14px 18px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(0, 0, 0, 0.65);
+  color: #fff;
+  font-size: 1rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.escape-video-play:hover {
+  transform: scale(1.02);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.escape-video-play.hidden {
+  display: none;
 }
 
 .dialogue .box {
@@ -1205,3 +1275,227 @@ body {
   opacity: 0.9;
 }
 
+/* ====== COMMANDES – Nouveau style écran d'accueil ====== */
+
+.boot-commands-wrapper {
+  width: 100%;
+  max-width: 700px;
+  margin: 1.4rem auto 1.8rem;
+  padding: 1.4rem 1.6rem;
+  border-radius: 16px;
+  
+
+  background: linear-gradient(
+      140deg,
+      rgba(255, 245, 210, 0.06),
+      rgba(120, 90, 160, 0.05) 50%,
+      rgba(0, 0, 0, 0.4) 100%
+    ),
+    radial-gradient(circle at top, rgba(255,255,255,0.10), transparent 70%);
+  border: 1px solid rgba(255,255,255,0.12);
+
+  box-shadow:
+    0 0 0 1px rgba(0,0,0,0.45),
+    0 12px 32px rgba(0,0,0,0.5),
+    inset 0 0 12px rgba(255,255,255,0.05);
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+
+  backdrop-filter: blur(3px);
+}
+
+.boot-commands-title {
+  font-family: "Cinzel", serif;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: #e9e3ff;
+  opacity: 0.9;
+  margin: 0;
+}
+
+.boot-commands-grid {
+  width: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem;
+}
+
+.boot-command-group {
+  flex: 1 1 180px;
+  min-width: 180px;
+  padding: 0.9rem 1rem;
+  border-radius: 14px;
+
+  background: radial-gradient(
+        circle at top,
+        rgba(255,255,255,0.06),
+        rgba(25,15,40,0.75)
+    );
+  border: 1px solid rgba(255,255,255,0.10);
+
+  box-shadow:
+    inset 0 0 0 1px rgba(0,0,0,0.6),
+    0 6px 16px rgba(0,0,0,0.65);
+}
+
+.boot-command-label {
+  font-family: "Cinzel", serif;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 0.8rem;
+  margin-bottom: 0.45rem;
+  color: #ffecc8;
+}
+
+.boot-command-keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin-bottom: 0.25rem;
+}
+
+.boot-command-key {
+  padding: 0.2rem 0.45rem;
+  min-width: 1.7rem;
+  text-align: center;
+
+  font-size: 0.72rem;
+  font-family: system-ui, sans-serif;
+
+  border-radius: 6px;
+  border: 1px solid rgba(255,230,200,0.85);
+
+  background: radial-gradient(circle at top, rgba(255,230,200,0.25), rgba(15,12,9,0.95));
+  box-shadow:
+    inset 0 0 0 1px rgba(0,0,0,0.65),
+    0 1px 3px rgba(0,0,0,0.7);
+}
+
+.boot-command-desc,
+.boot-command-desc-inline {
+  font-size: 0.75rem;
+  font-family: "Crimson Text", serif;
+  opacity: 0.9;
+  color: #e9ddff;
+}
+
+.boot-command-desc {
+  margin-top: 0.15rem;
+}
+
+.boot-commands-note {
+  font-size: 0.75rem;
+  color: #aeb1ff;
+  opacity: 0.85;
+  text-align: center;
+}
+/* ====== OVERRIDES POUR FAIRE RENTRER LES COMMANDES ====== */
+
+/* On réduit un peu l’air autour de tout le boot */
+#boot {
+  padding: 1.6rem 1.6rem 1.2rem;  /* au lieu de 2.5rem 2rem */
+  gap: 1.4rem;                    /* moins d’espace entre header / contenu / commandes */
+}
+
+/* On rapproche la section héros+menu du header */
+.hero-select {
+  margin-top: 0.25rem;            /* au lieu de 0.5rem */
+}
+
+/* On compacte légèrement la boîte des commandes */
+.boot-commands-wrapper {
+  margin: 0.8rem auto 0.6rem;     /* moins de marge verticale */
+  padding: 1rem 1.2rem;           /* un chouïa moins épais */
+}
+
+/* On réduit un chouïa la taille globale du texte dans cette zone */
+.boot-commands-wrapper,
+.boot-commands-grid {
+  font-size: 0.95em;
+}
+
+/* Optionnel : on réduit aussi un peu le padding de la console elle-même
+   (pour regagner quelques pixels en hauteur) */
+.console-shell {
+  padding: 0.5rem 0.8rem 0.6rem;  /* plus serré qu’avant */
+}
+/* ====== REDUCTION DE LA TAILLE DES COMMANDES ====== */
+
+.boot-commands-wrapper {
+  transform: scale(0.82);
+  transform-origin: top center;
+  max-width: 600px;
+  margin-top: 0.5rem;
+  margin-bottom: 0.2rem;
+}
+
+.boot-command-group {
+  padding: 0.6rem 0.7rem;
+}
+
+.boot-command-label {
+  font-size: 0.7rem;
+}
+
+.boot-command-key {
+  font-size: 0.62rem;
+  min-width: 1.4rem;
+  padding: 0.15rem 0.3rem;
+}
+
+.boot-command-desc,
+.boot-command-desc-inline {
+  font-size: 0.68rem;
+}
+
+.boot-commands-title {
+  font-size: 0.78rem;
+}
+/* ====== FIX : 3 BOITES SUR UNE LIGNE ====== */
+
+.boot-commands-grid {
+  width: 100%;
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.8rem;
+}
+
+/* ====== REDUCTION UNIFORME POUR QUE TOUT RENTRE DANS LA CONSOLE ====== */
+
+.boot-commands-wrapper {
+  transform: scale(0.80);
+  transform-origin: top center;
+  max-width: 900px;      /* pour étirer correctement les 3 colonnes */
+  margin-top: 0.4rem;
+  margin-bottom: 0.2rem;
+}
+
+.boot-command-group {
+  padding: 0.55rem 0.7rem;
+  min-width: unset;
+}
+
+.boot-command-label {
+  font-size: 0.68rem;
+}
+
+.boot-command-key {
+  font-size: 0.9rem;
+  min-width: 1.3rem;
+  padding: 0.15rem 0.3rem;
+}
+
+.boot-command-desc,
+.boot-command-desc-inline {
+  font-size: 0.9rem;
+}
+
+.boot-commands-title {
+  font-size: 0.75rem;
+}
