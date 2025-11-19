@@ -970,13 +970,7 @@ function syncDialogueOverlay() {
     if (State.flags.kaelDefeated && State.princess.follow && !State.flags.endingPending) {
       if (Math.hypot(player.x - entrance.x, player.y - entrance.y) < entrance.r) {
         State.flags.endingPending = true;
-        pauseForDialogue(
-          [
-            { speaker: "Chuchotement", text: "Vous entendez un rire venir du fond du labyrinthe..." },
-            { speaker: "???", text: "h..h...h..hahahahahahahahahahahahaha" },
-          ],
-          () => showOnlyEscapeEnding()
-        );
+        showOnlyEscapeEnding();
       }
     }
 
