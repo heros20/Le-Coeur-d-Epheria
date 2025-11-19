@@ -177,6 +177,7 @@ export class BossKael {
     this.clones = [];
     this.beamAttack = null;
     this.animator.setBase("idle");
+    this.animator.play?.("idle", { force: true, sticky: true });
     this.currentAction = null;
     this.lastAction = null;
   }
@@ -208,6 +209,7 @@ export class BossKael {
     this.currentAction = null;
     this.lastAction = null;
     this.animator.setBase("idle");
+    this.animator.play?.("idle", { force: true, sticky: true });
   }
 
   hit(amount = 10, source = null) {
@@ -461,6 +463,7 @@ export class BossKael {
   _drawSigils(ctx) {
     if (!this.sigils.length) return;
     ctx.save();
+    ctx.globalCompositeOperation = "lighter";
     for (const sigil of this.sigils) {
       ctx.lineWidth = 3;
       ctx.setLineDash([8, 10]);
@@ -473,10 +476,31 @@ export class BossKael {
       if (sigil.exploding) {
         ctx.setLineDash([]);
         ctx.globalAlpha = 0.25;
-        ctx.fillStyle = "rgba(255,255,255,0.35)";
+        const gradient = ctx.createRadialGradient(sigil.x, sigil.y, 0, sigil.x, sigil.y, radius);
+        gradient.addColorStop(0, "rgba(255,255,255,0.65)");
+        gradient.addColorStop(0.45, "rgba(255,140,120,0.35)");
+        gradient.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = gradient;
         ctx.beginPath();
         ctx.arc(sigil.x, sigil.y, radius * 0.65, 0, Math.PI * 2);
         ctx.fill();
+        ctx.globalAlpha = 0.7;
+        ctx.strokeStyle = "rgba(255, 200, 120, 0.8)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        for (let i = 0; i < 6; i++) {
+          const angle = (Math.PI * 2 * i) / 6;
+          const inner = radius * 0.3;
+          ctx.moveTo(
+            sigil.x + Math.cos(angle) * inner,
+            sigil.y + Math.sin(angle) * inner
+          );
+          ctx.lineTo(
+            sigil.x + Math.cos(angle) * radius,
+            sigil.y + Math.sin(angle) * radius
+          );
+        }
+        ctx.stroke();
       }
     }
     ctx.restore();
@@ -495,6 +519,7 @@ export class BossKael {
         dirY: Math.sin(angle),
         speed: this.speed * 2.4,
         timer: 1.8,
+        life: 1.8,
         hit: false,
       });
     }
@@ -522,11 +547,22 @@ export class BossKael {
   _drawClones(ctx) {
     if (!this.clones.length) return;
     ctx.save();
-    ctx.fillStyle = "rgba(120, 200, 255, 0.35)";
+    ctx.globalCompositeOperation = "lighter";
     for (const clone of this.clones) {
+      const lifeRatio = clone.life > 0 ? Math.max(0, clone.timer / clone.life) : 0;
+      const radius = 18 + (1 - lifeRatio) * 16;
+      const alpha = 0.2 + (1 - lifeRatio) * 0.6;
+      const tailLength = 40 + (1 - lifeRatio) * 60;
+      ctx.fillStyle = `rgba(140, 220, 255, ${alpha})`;
       ctx.beginPath();
-      ctx.arc(clone.x, clone.y, 26, 0, Math.PI * 2);
+      ctx.arc(clone.x, clone.y, radius, 0, Math.PI * 2);
       ctx.fill();
+      ctx.strokeStyle = `rgba(140, 220, 255, ${alpha * 0.8})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(clone.x, clone.y);
+      ctx.lineTo(clone.x - clone.dirX * tailLength, clone.y - clone.dirY * tailLength);
+      ctx.stroke();
     }
     ctx.restore();
   }
@@ -582,7 +618,11 @@ export class BossKael {
     const reach = beam.reach;
     const width = beam.width * (beam.active ? 1 : 0.5);
     ctx.globalAlpha = beam.active ? 0.65 : 0.35;
-    ctx.fillStyle = beam.active ? "rgba(255, 120, 80, 0.8)" : "rgba(255, 255, 255, 0.45)";
+    const gradient = ctx.createLinearGradient(0, 0, reach, 0);
+    gradient.addColorStop(0, "rgba(255,255,255,0.4)");
+    gradient.addColorStop(0.4, "rgba(255,160,120,0.7)");
+    gradient.addColorStop(1, "rgba(255,90,60,0.1)");
+    ctx.fillStyle = gradient;
     ctx.beginPath();
     ctx.moveTo(0, -width);
     ctx.lineTo(reach, -width * 0.35);
@@ -590,6 +630,16 @@ export class BossKael {
     ctx.lineTo(0, width);
     ctx.closePath();
     ctx.fill();
+    ctx.globalAlpha = beam.active ? 0.4 : 0.2;
+    ctx.strokeStyle = "rgba(255,255,255,0.8)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([12, 10]);
+    ctx.beginPath();
+    ctx.moveTo(0, -width * 0.5);
+    ctx.lineTo(reach, 0);
+    ctx.lineTo(0, width * 0.5);
+    ctx.stroke();
+    ctx.setLineDash([]);
     ctx.restore();
   }
 

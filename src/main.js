@@ -82,6 +82,7 @@ let shakeTimeout = null;
 let flashTimeout = null;
 let flashHideTimeout = null;
 let kaelOrbHintTimeout = null;
+let lastKaelOrbReminderTime = -Infinity;
 
 function detectTouchDevice() {
   if (typeof window === "undefined") return false;
@@ -1145,6 +1146,10 @@ function syncDialogueOverlay() {
     if (State.orbPromptOpen) return true;
     const orb = findNearbyOrb();
     if (!orb) return false;
+    if (isKaelTooFarForOrb()) {
+      remindKaelToInspectOrb();
+      return true;
+    }
     if (orb.activated) {
       if (orb.repeatUsed) {
         pushStatus("L'orbe est silencieuse.");
@@ -1157,6 +1162,28 @@ function syncDialogueOverlay() {
     }
     showOrbPrompt(orb);
     return true;
+  }
+
+  function isKaelTooFarForOrb(distance = 100) {
+    if (State.flags?.betrayalHappened) return false;
+    const player = State.player;
+    const kael = State.kael;
+    if (!player || !kael) return false;
+    const dist = Math.hypot(player.x - kael.x, player.y - kael.y);
+    return dist > distance;
+  }
+
+  function remindKaelToInspectOrb() {
+    if (!State || typeof State.time !== "number") return;
+    if (State.time - lastKaelOrbReminderTime < 4) return;
+    if (State.dialogue?.isOpen?.()) return;
+    lastKaelOrbReminderTime = State.time;
+    State.dialogue?.show?.([
+      {
+        speaker: "Kael",
+        text: "Attends moi Lioran, je dois voir ça !",
+      },
+    ]);
   }
 
   function showOrbPrompt(orb) {
