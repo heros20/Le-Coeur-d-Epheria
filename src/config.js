@@ -47,6 +47,20 @@ export const CONFIG = {
     fissureSpeed: 320,
     fissureWidth: 42,
     fissureDamage: 36,
+    phaseTwo: {
+      hpMultiplier: 1.5,
+      sigilDamage: 38,
+      cloneDamage: 44,
+      beamDamage: 52,
+    },
+    phaseThree: {
+      hpMultiplier: 2.2,
+      dragonScale: 0.55,
+      meteorDamage: 65,
+      infernoDamage: 58,
+      shockwaveDamage: 54,
+      stormDamage: 62,
+    },
   },
 
   // Sprint / endurance

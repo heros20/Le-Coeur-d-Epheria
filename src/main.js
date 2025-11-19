@@ -427,6 +427,58 @@ const KAEL_ANIMATION_SOURCES = {
   dead: ["./assets/Kael/dead/Dead.png"],
 };
 
+const KAEL_DRAGON_ANIMATION_SOURCES = {
+  idle: [
+    "./assets/Dragon_Kael/idle/Idle1.png",
+    "./assets/Dragon_Kael/idle/Idle2.png",
+    "./assets/Dragon_Kael/idle/Idle3.png",
+  ],
+  walk_left: [
+    "./assets/Dragon_Kael/walk/Walk1.png",
+    "./assets/Dragon_Kael/walk/Walk2.png",
+    "./assets/Dragon_Kael/walk/Walk3.png",
+    "./assets/Dragon_Kael/walk/Walk4.png",
+    "./assets/Dragon_Kael/walk/Walk5.png",
+  ],
+  walk_right: [
+    "./assets/Dragon_Kael/walk/Walk1.png",
+    "./assets/Dragon_Kael/walk/Walk2.png",
+    "./assets/Dragon_Kael/walk/Walk3.png",
+    "./assets/Dragon_Kael/walk/Walk4.png",
+    "./assets/Dragon_Kael/walk/Walk5.png",
+  ],
+  run: [
+    "./assets/Dragon_Kael/run/Walk1.png",
+    "./assets/Dragon_Kael/run/Walk2.png",
+    "./assets/Dragon_Kael/run/Walk3.png",
+    "./assets/Dragon_Kael/run/Walk4.png",
+    "./assets/Dragon_Kael/run/Walk5.png",
+  ],
+  attack: [
+    "./assets/Dragon_Kael/attack/Attack1.png",
+    "./assets/Dragon_Kael/attack/Attack2.png",
+    "./assets/Dragon_Kael/attack/Attack3.png",
+    "./assets/Dragon_Kael/attack/Attack4.png",
+    "./assets/Dragon_Kael/attack/Fire_Attack1.png",
+    "./assets/Dragon_Kael/attack/Fire_Attack2.png",
+    "./assets/Dragon_Kael/attack/Fire_Attack3.png",
+    "./assets/Dragon_Kael/attack/Fire_Attack4.png",
+    "./assets/Dragon_Kael/attack/Fire_Attack5.png",
+    "./assets/Dragon_Kael/attack/Fire_Attack6.png",
+  ],
+  hurt: [
+    "./assets/Dragon_Kael/hurt/Hurt1.png",
+    "./assets/Dragon_Kael/hurt/Hurt2.png",
+  ],
+  dead: [
+    "./assets/Dragon_Kael/dead/Death1.png",
+    "./assets/Dragon_Kael/dead/Death2.png",
+    "./assets/Dragon_Kael/dead/Death3.png",
+    "./assets/Dragon_Kael/dead/Death4.png",
+    "./assets/Dragon_Kael/dead/Death5.png",
+  ],
+};
+
 const PRINCESS_ANIMATION_SOURCES = {
   idle: ["./assets/Princesse/idle/Idle.png", "./assets/Princesse/idle/Idle_2.png"],
   walk_left: ["./assets/Princesse/walk/Walk_left.png"],
@@ -585,6 +637,7 @@ function syncDialogueOverlay() {
     h3,
     heroAnimations,
     kaelAnimations,
+    dragonKaelAnimations,
     princessAnimations,
     potionImage,
     soundBank,
@@ -594,6 +647,7 @@ function syncDialogueOverlay() {
     loadImage("./assets/hero3.png"),
     loadAnimations(HERO_ANIMATION_SOURCES),
     loadAnimations(KAEL_ANIMATION_SOURCES),
+    loadAnimations(KAEL_DRAGON_ANIMATION_SOURCES),
     loadAnimations(PRINCESS_ANIMATION_SOURCES),
     loadImage(POTION_SPRITE),
     loadAudios(SOUND_SOURCES),
@@ -685,6 +739,12 @@ function syncDialogueOverlay() {
   });
   State.kael.follow = false;
   State.flags.kaelMet = false;
+  State.flags.kaelPhaseTwoStarted = false;
+  State.flags.kaelPhaseTwoDefeated = false;
+  State.flags.kaelPhaseThreeStarted = false;
+  State.flags.kaelPhaseThreeDefeated = false;
+  State.flags.princessEscapeOffered = false;
+  State.flags.endingPending = false;
 
   State.princess = new NPC(princessAnimations, princessPos.x, princessPos.y, "Aelya", {
     scale: ACTOR_SCALE,
@@ -699,6 +759,8 @@ function syncDialogueOverlay() {
   State.boss = new BossKael(kaelAnimations, kaelStart.x, kaelStart.y, {
     scale: ACTOR_SCALE,
     hitRadius: PLAYER_RADIUS * 2.2,
+    dragonAnimations: dragonKaelAnimations,
+    dragonScale: CONFIG.kael?.phaseThree?.dragonScale ?? ACTOR_SCALE * 1.5,
     onPlaySound: (name) => {
       const vol = name === "kaelOrbLaunch" ? 0.6 : 1;
       playSound(name, vol);
@@ -969,7 +1031,25 @@ function syncDialogueOverlay() {
         State.flags.kaelDefeated = true;
         State.bossMusicPending = false;
         stopBossMusic(true);
-        if (State.flags.kaelPhaseTwoStarted && !State.flags.kaelPhaseTwoDefeated) {
+        if (State.flags.kaelPhaseThreeStarted && !State.flags.kaelPhaseThreeDefeated) {
+          State.flags.kaelPhaseThreeDefeated = true;
+          State.flags.princessEscapeOffered = false;
+          pauseForDialogue(
+            [
+              {
+                speaker: "Kael",
+                text: "Je... ne peux plus me relever. La route est à toi, Lioran...",
+              },
+              {
+                speaker: "Mur",
+                text: "Hâte-toi vers la princesse. Le labyrinthe se replie déjà.",
+              },
+            ],
+            () => {
+              pushStatus("Parle à Aelya avant que ce lieu ne s'effondre.");
+            }
+          );
+        } else if (State.flags.kaelPhaseTwoStarted && !State.flags.kaelPhaseTwoDefeated) {
           State.flags.kaelPhaseTwoDefeated = true;
           preparePrincessForPhaseTwo();
           pauseForDialogue(
@@ -1081,9 +1161,15 @@ function syncDialogueOverlay() {
     // Princess release example
     if (!State.flags.princessUnlocked) return;
     const dP = Math.hypot(State.player.x - State.princess.x, State.player.y - State.princess.y);
-    if (State.flags.kaelPhaseTwoDefeated && dP < 60 && !State.flags.princessEscapeOffered) {
-      offerPrincessEscape();
-      return;
+    if (dP < 70) {
+      if (State.flags.kaelPhaseThreeDefeated && !State.flags.princessEscapeOffered) {
+        offerFinalEscapeAfterDragon();
+        return;
+      }
+      if (State.flags.kaelPhaseTwoDefeated && !State.flags.kaelPhaseThreeStarted) {
+        startPhaseThreeAwakening();
+        return;
+      }
     }
     if (dP < 60 && !State.princess.follow) {
       if (!State.flags.princessUnlocked) {
@@ -1416,7 +1502,15 @@ function syncDialogueOverlay() {
           pushStatus("Kael n'abandonnera pas tant que vous ne l'affronterez pas.");
           return;
         }
-        showFinalText();
+        if (!State.flags.kaelPhaseThreeStarted) {
+          pushStatus("Va parler à Aelya, elle sait comment vous enfuir.");
+          return;
+        }
+        if (!State.flags.kaelPhaseThreeDefeated) {
+          pushStatus("La forme draconique de Kael te barre encore la route.");
+          return;
+        }
+        launchFinalEscape();
       },
       { once: true }
     );
@@ -1471,29 +1565,102 @@ function syncDialogueOverlay() {
     State.flags.endingPending = false;
     State.flags.kaelPhaseTwoStarted = true;
     State.flags.kaelPhaseTwoDefeated = false;
+    State.flags.kaelPhaseThreeStarted = false;
+    State.flags.kaelPhaseThreeDefeated = false;
     State.flags.endingPending = false;
     State.flags.princessEscapeOffered = false;
     State.bossMusicPending = false;
     startBossMusic();
   }
 
-  function offerPrincessEscape() {
+  function playLabyrinthLaugh(onComplete) {
+    pauseForDialogue(
+      [
+        { speaker: "Chuchotement", text: "Vous entendez un rire venir du fond du labyrinthe." },
+        { speaker: "???", text: "h..h...h..hahahahahahahahahahahahaha" },
+      ],
+      () => {
+        if (typeof onComplete === "function") onComplete();
+      }
+    );
+  }
+
+  function startPhaseThreeAwakening() {
+    pauseForDialogue(
+      [
+        { speaker: "Princesse", text: "Lioran... Tu as fait ta part. Quittons cet endroit." },
+        { speaker: "Princesse", text: "Attends... Cette vibration... quelque chose s'éveille encore !" },
+      ],
+      () => {
+        playLabyrinthLaugh(() => {
+          flashScreen(1200);
+          startScreenShake(1200);
+          pauseForDialogue(
+            [{ speaker: "Kael", text: "TU NE ME LAISSE PAS LE CHOIX LORIAN ! JE NE ME RETIENDRAI PLUS !!!!!!" }],
+            () => {
+              startPhaseThreeBattle();
+            }
+          );
+        });
+      }
+    );
+  }
+
+  function startPhaseThreeBattle() {
+    const spawn = State.spawnPoint ?? { x: State.player.x, y: State.player.y };
+    const heroPos = { x: spawn.x + 30, y: spawn.y + 80 };
+    const bossPos = { x: heroPos.x + 140, y: heroPos.y - 10 };
+    State.player.x = heroPos.x;
+    State.player.y = heroPos.y;
+    State.player.hp = State.player.maxHp ?? 100;
+    State.player.stamina = State.player.staminaMax;
+    State.player.resetCombatState?.();
+    State.player.animator?.setBase("idle");
+    clampCameraToPlayer(State.player.x, State.player.y);
+    State.boss.enterPhaseThree({
+      position: bossPos,
+      hpMultiplier: State.boss?.phaseThreeCfg?.hpMultiplier ?? 2,
+    });
+    State.bossCheckpoint = {
+      player: { x: heroPos.x, y: heroPos.y },
+      boss: { x: bossPos.x, y: bossPos.y },
+      phase: 3,
+      hpMultiplier: State.boss?.phaseThreeCfg?.hpMultiplier ?? 2,
+    };
+    preparePrincessForPhaseTwo();
+    State.flags.kaelDefeated = false;
+    State.flags.endingPending = false;
+    State.flags.kaelPhaseThreeStarted = true;
+    State.flags.kaelPhaseThreeDefeated = false;
+    State.flags.kaelPhaseTwoDefeated = true;
+    State.flags.princessEscapeOffered = false;
+    State.bossMusicPending = false;
+    startBossMusic();
+  }
+
+  function offerFinalEscapeAfterDragon() {
     State.flags.princessEscapeOffered = true;
     pauseForDialogue(
       [
         {
           speaker: "Princesse",
-          text: "Lioran... Sa rage est éteinte. C'est notre seule chance.",
+          text: "Il est tombé... vite, Lioran, fuyons de ce lieu maudit.",
         },
         {
           speaker: "Princesse",
-          text: "Fuyons ensemble avant que le labyrinthe ne change d'avis.",
+          text: "Ne restons pas assez longtemps pour qu'il se réveille encore.",
         },
       ],
       () => {
-        showFinalText();
+        launchFinalEscape();
       }
     );
+  }
+
+  function launchFinalEscape() {
+    playEscapeVideo(() => {
+      renderEpilogue("release");
+    });
   }
 
   function playEscapeVideo(onComplete) {
@@ -1825,16 +1992,28 @@ function resetGameOverSound() {
     State.player.resetCombatState?.();
     State.player.animator?.setBase("idle");
     const bossSpawn = checkpoint?.boss ? { x: checkpoint.boss.x, y: checkpoint.boss.y } : undefined;
-    if (checkpoint?.phase === 2 || State.flags.kaelPhaseTwoStarted) {
+    if (checkpoint?.phase === 3 || State.flags.kaelPhaseThreeStarted) {
+      State.boss.enterPhaseThree({ position: bossSpawn, hpMultiplier: checkpoint?.hpMultiplier });
+      preparePrincessForPhaseTwo();
+      State.flags.kaelPhaseTwoStarted = true;
+      State.flags.kaelPhaseTwoDefeated = true;
+      State.flags.kaelPhaseThreeStarted = true;
+      State.flags.kaelPhaseThreeDefeated = false;
+      State.flags.princessEscapeOffered = false;
+    } else if (checkpoint?.phase === 2 || State.flags.kaelPhaseTwoStarted) {
       State.boss.enterPhaseTwo({ position: bossSpawn, hpMultiplier: checkpoint?.hpMultiplier });
       preparePrincessForPhaseTwo();
       State.flags.kaelPhaseTwoStarted = true;
       State.flags.kaelPhaseTwoDefeated = false;
+      State.flags.kaelPhaseThreeStarted = false;
+      State.flags.kaelPhaseThreeDefeated = false;
       State.flags.princessEscapeOffered = false;
     } else {
       State.boss.resetForFight(bossSpawn);
       State.flags.kaelPhaseTwoStarted = false;
       State.flags.kaelPhaseTwoDefeated = false;
+      State.flags.kaelPhaseThreeStarted = false;
+      State.flags.kaelPhaseThreeDefeated = false;
     }
     State.flags.kaelDefeated = false;
     State.dialogue.close();

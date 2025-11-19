@@ -36,6 +36,8 @@ export const State = {
     kaelDefeated: false,
     kaelPhaseTwoStarted: false,
     kaelPhaseTwoDefeated: false,
+    kaelPhaseThreeStarted: false,
+    kaelPhaseThreeDefeated: false,
     princessEscapeOffered: false,
     endingPending: false,
     visited: new Set(),

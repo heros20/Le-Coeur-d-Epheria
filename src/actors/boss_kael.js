@@ -9,14 +9,20 @@ export class BossKael {
     this.maxHp = this.hp;
     this.alive = true;
     const baseAnimations = filterBossAnimations(animations);
+    this.baseAnimations = baseAnimations;
+    this.dragonAnimations = filterBossAnimations(opts.dragonAnimations ?? animations ?? {});
     this.animator = new Animator(baseAnimations, "idle");
     this.scale = opts.scale ?? 0.35;
+    this.baseScale = this.scale;
+    this.dragonScale = opts.dragonScale ?? this.scale * 1.4;
     const baseRadius = (CONFIG.actorRadius ?? 12) * (this.scale / 0.35);
     this.hitRadius = opts.hitRadius ?? opts.radius ?? Math.max(12, baseRadius * 1.5);
+    this.baseHitRadius = this.hitRadius;
     this.facing = "right";
 
     const cfg = CONFIG.kael ?? {};
     const phaseTwo = cfg.phaseTwo ?? {};
+    const phaseThree = cfg.phaseThree ?? {};
     this.speed = cfg.speed ?? 120;
     this.preferredDistance = cfg.preferredDistance ?? 120;
     this.attackRange = cfg.attackRange ?? 150;
@@ -46,6 +52,14 @@ export class BossKael {
       cloneDamage: phaseTwo.cloneDamage ?? 40,
       beamDamage: phaseTwo.beamDamage ?? 48,
     };
+    this.phaseThreeCfg = {
+      hpMultiplier: phaseThree.hpMultiplier ?? 2.1,
+      dragonScale: phaseThree.dragonScale ?? this.dragonScale,
+      meteorDamage: phaseThree.meteorDamage ?? 60,
+      infernoDamage: phaseThree.infernoDamage ?? 58,
+      shockwaveDamage: phaseThree.shockwaveDamage ?? 52,
+      stormDamage: phaseThree.stormDamage ?? 58,
+    };
 
     this.cooldownTimer = this.attackCooldown * 0.5;
     this.windupTimer = 0;
@@ -61,11 +75,52 @@ export class BossKael {
     this.sigils = [];
     this.clones = [];
     this.beamAttack = null;
+    this.meteors = [];
+    this.shockwaves = [];
+    this.stormBolts = [];
+    this.dragonBreath = null;
     this.phase = 1;
     this.onPlaySound = typeof opts.onPlaySound === "function" ? opts.onPlaySound : null;
     this.currentAction = null;
     this.lastAction = null;
     this.lastMoveVector = { x: 0, y: 0 };
+  }
+
+  enterPhaseThree(opts = {}) {
+    this.phase = 3;
+    const multiplier = Number.isFinite(opts.hpMultiplier)
+      ? opts.hpMultiplier
+      : this.phaseThreeCfg.hpMultiplier;
+    this.maxHp = Math.round(CONFIG.kael.hp * Math.max(1, multiplier));
+    this.hp = this.maxHp;
+    this.alive = true;
+    if (opts.position && Number.isFinite(opts.position.x) && Number.isFinite(opts.position.y)) {
+      this.x = opts.position.x;
+      this.y = opts.position.y;
+    }
+    this.cooldownTimer = this.attackCooldown * 0.3;
+    this.windupTimer = 0;
+    this.dashTimer = 0;
+    this.dashVector = { x: 0, y: 0 };
+    this.lastTarget = { x: this.x, y: this.y };
+    this.telegraph = null;
+    this.dashHit = false;
+    this.orbs = [];
+    this.fissures = [];
+    this.sigils = [];
+    this.clones = [];
+    this.beamAttack = null;
+    this.meteors = [];
+    this.shockwaves = [];
+    this.stormBolts = [];
+    this.dragonBreath = null;
+    this.scale = this.phaseThreeCfg.dragonScale ?? this.dragonScale;
+    this.hitRadius = Math.max(this.baseHitRadius * 1.4, this.hitRadius);
+    this.currentAction = null;
+    this.lastAction = null;
+    this.animator.setAnimations(this.dragonAnimations);
+    this.animator.setBase("idle");
+    this.animator.play?.("idle", { force: true, sticky: true });
   }
 
   update(dt, player, world) {
@@ -147,6 +202,11 @@ export class BossKael {
       this._updateSigils(dt, player);
       this._updateClones(dt, player);
       this._updateBeam(dt, player);
+    } else if (this.phase === 3) {
+      this._updateMeteors(dt, player);
+      this._updateShockwaves(dt, player);
+      this._updateStormBolts(dt, player);
+      this._updateDragonBreath(dt, player);
     }
     this._cleanupActions();
     if (stuckAgainstWall && !this.windupTimer && !this.dashTimer) {
@@ -164,6 +224,9 @@ export class BossKael {
     this.hp = this.maxHp;
     this.alive = true;
     this.phase = 1;
+    this.animator.setAnimations(this.baseAnimations);
+    this.scale = this.baseScale;
+    this.hitRadius = this.baseHitRadius;
     this.cooldownTimer = this.attackCooldown * 0.5;
     this.windupTimer = 0;
     this.dashTimer = 0;
@@ -176,6 +239,10 @@ export class BossKael {
     this.sigils = [];
     this.clones = [];
     this.beamAttack = null;
+    this.meteors = [];
+    this.shockwaves = [];
+    this.stormBolts = [];
+    this.dragonBreath = null;
     this.animator.setBase("idle");
     this.animator.play?.("idle", { force: true, sticky: true });
     this.currentAction = null;
@@ -206,6 +273,10 @@ export class BossKael {
     this.sigils = [];
     this.clones = [];
     this.beamAttack = null;
+    this.meteors = [];
+    this.shockwaves = [];
+    this.stormBolts = [];
+    this.dragonBreath = null;
     this.currentAction = null;
     this.lastAction = null;
     this.animator.setBase("idle");
@@ -243,9 +314,16 @@ export class BossKael {
 
     this._drawFissures(ctx);
     this._drawOrbs(ctx);
-    this._drawSigils(ctx);
-    this._drawClones(ctx);
-    this._drawBeam(ctx);
+    if (this.phase === 2) {
+      this._drawSigils(ctx);
+      this._drawClones(ctx);
+      this._drawBeam(ctx);
+    } else if (this.phase === 3) {
+      this._drawMeteors(ctx);
+      this._drawShockwaves(ctx);
+      this._drawStormBolts(ctx);
+      this._drawDragonBreath(ctx);
+    }
 
     const frame = this.animator.getFrame();
     if (!frame) return;
@@ -643,6 +721,310 @@ export class BossKael {
     ctx.restore();
   }
 
+  _spawnMeteorRain(player) {
+    const count = 6;
+    this.meteors = [];
+    for (let i = 0; i < count; i++) {
+      const offsetAngle = Math.random() * Math.PI * 2;
+      const offsetDist = 60 + Math.random() * 160;
+      const targetX = player.x + Math.cos(offsetAngle) * offsetDist;
+      const targetY = player.y + Math.sin(offsetAngle) * offsetDist;
+      this.meteors.push({
+        targetX,
+        targetY,
+        telegraph: 0.9 + Math.random() * 0.4,
+        fall: 0.6 + Math.random() * 0.2,
+        state: "telegraph",
+        blast: 0.45,
+        radius: 45 + Math.random() * 15,
+      });
+    }
+    this._playSound("kaelOrbCast");
+  }
+
+  _updateMeteors(dt, player) {
+    if (!this.meteors.length) return;
+    for (const meteor of this.meteors) {
+      if (meteor.state === "telegraph") {
+        meteor.telegraph -= dt;
+        if (meteor.telegraph <= 0) {
+          meteor.state = "fall";
+          this._playSound("kaelOrbLaunch");
+        }
+      } else if (meteor.state === "fall") {
+        meteor.fall -= dt;
+        if (meteor.fall <= 0) {
+          meteor.state = "blast";
+          meteor.blastTimer = meteor.blast;
+          const dist = Math.hypot(player.x - meteor.targetX, player.y - meteor.targetY);
+          if (dist < meteor.radius + 20) {
+            player.applyDamage(this.phaseThreeCfg.meteorDamage);
+          }
+        }
+      } else if (meteor.state === "blast") {
+        meteor.blastTimer -= dt;
+      }
+    }
+    this.meteors = this.meteors.filter((m) => m.state !== "blast" || m.blastTimer > 0);
+    if (this.currentAction === "meteor" && this.meteors.length === 0) {
+      this._finishAction("meteor");
+    }
+  }
+
+  _drawMeteors(ctx) {
+    if (!this.meteors.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const time = (typeof performance !== "undefined" ? performance.now() : Date.now()) * 0.001;
+    for (const meteor of this.meteors) {
+      if (meteor.state === "telegraph") {
+        const pulse = Math.sin((meteor.telegraph + time) * 10) * 0.3 + 0.7;
+        ctx.strokeStyle = `rgba(255,120,80,${pulse})`;
+        ctx.lineWidth = 2 + pulse * 4;
+        ctx.beginPath();
+        ctx.arc(meteor.targetX, meteor.targetY, meteor.radius, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (meteor.state === "fall") {
+        ctx.strokeStyle = "rgba(255,180,120,0.9)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(meteor.targetX, meteor.targetY - 200);
+        ctx.lineTo(meteor.targetX, meteor.targetY);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(255,220,120,0.6)";
+        ctx.beginPath();
+        ctx.arc(meteor.targetX, meteor.targetY - 20, 12, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (meteor.state === "blast") {
+        const ratio = meteor.blastTimer / meteor.blast;
+        const radius = meteor.radius * (1 + (1 - ratio) * 0.5);
+        const grad = ctx.createRadialGradient(
+          meteor.targetX,
+          meteor.targetY,
+          0,
+          meteor.targetX,
+          meteor.targetY,
+          radius
+        );
+        grad.addColorStop(0, "rgba(255,255,255,0.9)");
+        grad.addColorStop(0.4, "rgba(255,170,90,0.5)");
+        grad.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(meteor.targetX, meteor.targetY, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  _spawnShockwaves() {
+    const waves = [];
+    const count = 3;
+    for (let i = 0; i < count; i++) {
+      waves.push({
+        radius: 30 + i * 20,
+        speed: 160 + i * 40,
+        width: 28 + i * 8,
+        timer: 2.2,
+      });
+    }
+    this.shockwaves = waves;
+    this._playSound("kaelJump");
+  }
+
+  _updateShockwaves(dt, player) {
+    if (!this.shockwaves.length) return;
+    for (const wave of this.shockwaves) {
+      wave.radius += wave.speed * dt;
+      wave.timer -= dt;
+      const dist = Math.hypot(player.x - this.x, player.y - this.y);
+      const halfWidth = wave.width * 0.5;
+      if (Math.abs(dist - wave.radius) <= halfWidth) {
+        player.applyDamage(this.phaseThreeCfg.shockwaveDamage * dt);
+      }
+    }
+    this.shockwaves = this.shockwaves.filter((w) => w.timer > 0 && w.radius < 520);
+    if (this.currentAction === "shockwave" && this.shockwaves.length === 0) {
+      this._finishAction("shockwave");
+    }
+  }
+
+  _drawShockwaves(ctx) {
+    if (!this.shockwaves.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "screen";
+    for (const wave of this.shockwaves) {
+      const alpha = Math.max(0.2, Math.min(0.8, 1 - wave.radius / 520));
+      ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+      ctx.lineWidth = wave.width;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, wave.radius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  _spawnStormBolts() {
+    const bolts = [];
+    const count = 6;
+    for (let i = 0; i < count; i++) {
+      bolts.push({
+        angle: (Math.PI * 2 * i) / count,
+        radius: 80,
+        state: "orbit",
+        timer: 1.1 + Math.random() * 0.4,
+        speed: 280 + Math.random() * 60,
+      });
+    }
+    this.stormBolts = bolts;
+    this._playSound("kaelFireCone");
+  }
+
+  _updateStormBolts(dt, player) {
+    if (!this.stormBolts.length) return;
+    for (const bolt of this.stormBolts) {
+      if (bolt.state === "orbit") {
+        bolt.timer -= dt;
+        bolt.angle += 2.4 * dt;
+        const px = this.x + Math.cos(bolt.angle) * bolt.radius;
+        const py = this.y + Math.sin(bolt.angle) * bolt.radius;
+        bolt.previewX = px;
+        bolt.previewY = py;
+        if (bolt.timer <= 0) {
+          bolt.state = "dash";
+          const dirX = Math.cos(bolt.angle);
+          const dirY = Math.sin(bolt.angle);
+          bolt.dirX = dirX;
+          bolt.dirY = dirY;
+          bolt.x = px;
+          bolt.y = py;
+        }
+      } else if (bolt.state === "dash") {
+        bolt.x += bolt.dirX * bolt.speed * dt;
+        bolt.y += bolt.dirY * bolt.speed * dt;
+        const dist = Math.hypot(player.x - bolt.x, player.y - bolt.y);
+        if (dist < 36) {
+          player.applyDamage(this.phaseThreeCfg.stormDamage);
+          bolt.state = "done";
+        }
+        if (Math.hypot(bolt.x - this.x, bolt.y - this.y) > 520) {
+          bolt.state = "done";
+        }
+      }
+    }
+    this.stormBolts = this.stormBolts.filter((b) => b.state !== "done");
+    if (this.currentAction === "storm" && this.stormBolts.length === 0) {
+      this._finishAction("storm");
+    }
+  }
+
+  _drawStormBolts(ctx) {
+    if (!this.stormBolts.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (const bolt of this.stormBolts) {
+      if (bolt.state === "orbit") {
+        ctx.fillStyle = "rgba(120,180,255,0.6)";
+        ctx.beginPath();
+        ctx.arc(bolt.previewX ?? this.x, bolt.previewY ?? this.y, 12, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (bolt.state === "dash") {
+        ctx.strokeStyle = "rgba(255,255,255,0.8)";
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(bolt.x, bolt.y);
+        ctx.lineTo(bolt.x - bolt.dirX * 25, bolt.y - bolt.dirY * 25);
+        ctx.stroke();
+        ctx.fillStyle = "rgba(255,200,80,0.9)";
+        ctx.beginPath();
+        ctx.arc(bolt.x, bolt.y, 10, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  _spawnDragonBreath(player) {
+    const angle = Math.atan2(player.y - this.y, player.x - this.x);
+    this.dragonBreath = {
+      angleStart: angle - Math.PI * 0.4,
+      angleEnd: angle + Math.PI * 0.4,
+      sweepDuration: 1.5,
+      windup: 0.5,
+      width: Math.PI / 10,
+      active: false,
+      progress: 0,
+    };
+    this._playSound("kaelOrbCast");
+  }
+
+  _updateDragonBreath(dt, player) {
+    if (!this.dragonBreath) return;
+    const breath = this.dragonBreath;
+    if (!breath.active) {
+      breath.windup -= dt;
+      if (breath.windup <= 0) {
+        breath.active = true;
+        breath.timer = breath.sweepDuration;
+        breath.progress = 0;
+        this._playSound("kaelOrbLaunch");
+      }
+    } else {
+      breath.timer -= dt;
+      const ratio = 1 - breath.timer / Math.max(0.001, breath.sweepDuration);
+      breath.progress = ratio;
+      const currentAngle =
+        breath.angleStart + (breath.angleEnd - breath.angleStart) * Math.min(1, Math.max(0, ratio));
+      const dirX = Math.cos(currentAngle);
+      const dirY = Math.sin(currentAngle);
+      const toPlayerX = player.x - this.x;
+      const toPlayerY = player.y - this.y;
+      const dist = Math.hypot(toPlayerX, toPlayerY);
+      if (dist < 420) {
+        const normX = toPlayerX / (dist || 1);
+        const normY = toPlayerY / (dist || 1);
+        const angleDiff = Math.acos(Math.max(-1, Math.min(1, dirX * normX + dirY * normY)));
+        if (angleDiff < breath.width) {
+          player.applyDamage(this.phaseThreeCfg.infernoDamage * dt * 2.2);
+        }
+      }
+      if (breath.timer <= 0) {
+        this.dragonBreath = null;
+        if (this.currentAction === "inferno") this._finishAction("inferno");
+      }
+    }
+  }
+
+  _drawDragonBreath(ctx) {
+    if (!this.dragonBreath) return;
+    const breath = this.dragonBreath;
+    const angle =
+      breath.active && breath.sweepDuration > 0
+        ? breath.angleStart +
+          (breath.angleEnd - breath.angleStart) * Math.min(1, Math.max(0, breath.progress))
+        : breath.angleStart;
+    const reach = 420;
+    const width = breath.active ? Math.PI / 6 : Math.PI / 12;
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate(angle);
+    ctx.globalAlpha = breath.active ? 0.7 : 0.4;
+    const gradient = ctx.createLinearGradient(0, 0, reach, 0);
+    gradient.addColorStop(0, "rgba(255,255,255,0.35)");
+    gradient.addColorStop(0.4, "rgba(255,180,90,0.65)");
+    gradient.addColorStop(1, "rgba(255,60,30,0)");
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.moveTo(0, -reach * Math.tan(width));
+    ctx.lineTo(reach, -reach * Math.tan(width * 0.35));
+    ctx.lineTo(reach, reach * Math.tan(width * 0.35));
+    ctx.lineTo(0, reach * Math.tan(width));
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
   _spawnFissure(player) {
     const dx = player.x - this.x;
     const dy = player.y - this.y;
@@ -718,6 +1100,18 @@ export class BossKael {
     if (this.currentAction === "beam" && !this.beamAttack) {
       this._finishAction("beam");
     }
+    if (this.currentAction === "meteor" && this.meteors.length === 0) {
+      this._finishAction("meteor");
+    }
+    if (this.currentAction === "shockwave" && this.shockwaves.length === 0) {
+      this._finishAction("shockwave");
+    }
+    if (this.currentAction === "storm" && this.stormBolts.length === 0) {
+      this._finishAction("storm");
+    }
+    if (this.currentAction === "inferno" && !this.dragonBreath) {
+      this._finishAction("inferno");
+    }
   }
 
   _hasActiveFissures() {
@@ -738,7 +1132,22 @@ export class BossKael {
     if (this.windupTimer > 0 || this.dashTimer > 0) return;
     if (this.phase === 1 && (this.orbs.length > 0 || this._hasActiveFissures())) return;
     if (this.phase === 2 && (this.sigils.length > 0 || this.clones.length > 0 || this.beamAttack)) return;
-    const actions = this.phase === 2 ? ["sigil", "clone", "beam"] : ["dash", "orb", "fissure"];
+    if (
+      this.phase === 3 &&
+      (this.meteors.length > 0 ||
+        this.shockwaves.length > 0 ||
+        this.stormBolts.length > 0 ||
+        this.dragonBreath)
+    )
+      return;
+    let actions;
+    if (this.phase === 2) {
+      actions = ["sigil", "clone", "beam"];
+    } else if (this.phase === 3) {
+      actions = ["inferno", "meteor", "shockwave", "storm"];
+    } else {
+      actions = ["dash", "orb", "fissure"];
+    }
     const pool = actions.filter((a) => a !== this.lastAction);
     const choicePool = pool.length ? pool : actions;
     const action = choicePool[Math.floor(Math.random() * choicePool.length)];
@@ -766,6 +1175,22 @@ export class BossKael {
       case "beam":
         this.currentAction = "beam";
         this._startBeam(player);
+        break;
+      case "inferno":
+        this.currentAction = "inferno";
+        this._spawnDragonBreath(player);
+        break;
+      case "meteor":
+        this.currentAction = "meteor";
+        this._spawnMeteorRain(player);
+        break;
+      case "shockwave":
+        this.currentAction = "shockwave";
+        this._spawnShockwaves();
+        break;
+      case "storm":
+        this.currentAction = "storm";
+        this._spawnStormBolts();
         break;
     }
   }
