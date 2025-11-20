@@ -121,14 +121,17 @@ export function createHUD() {
           <div class="helper-group-label">Clavier</div>
           <div class="helper-keys">
             <span class="key">1</span>
+            <span class="key">K</span>
             <span class="helper-desc-inline">Attaquer</span>
           </div>
           <div class="helper-keys">
             <span class="key">2</span>
+            <span class="key">O</span>
             <span class="helper-desc-inline">Sprint</span>
           </div>
           <div class="helper-keys">
             <span class="key">3</span>
+            <span class="key">M</span>
             <span class="helper-desc-inline">Utiliser un objet</span>
           </div>
           

@@ -2,7 +2,7 @@ import { CONFIG } from "../config.js";
 import { Keys } from "../input.js";
 import { Animator } from "../utils/animator.js";
 
-const SPRINT_KEYS = ["2", "\u00E9"];
+const SPRINT_KEYS = ["2", "\u00E9", "o"];
 
 export class Player {
   constructor(img, x, y, animations = {}, opts = {}) {

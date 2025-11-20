@@ -44,7 +44,7 @@ const SOUND_SOURCES = {
   bossFight: "./assets/sounds/Kael_Spell/boss_fight.mp3",
 };
 
-const DESKTOP_ATTACK_KEYS = ["1", "&"];
+const DESKTOP_ATTACK_KEYS = ["1", "&", "k"];
 const ORB_MESSAGES = [
   "Toi qui entre dans ce labyrinthe, ne vois-tu pas ? ...",
   "Certaines lumieres guident. D'autres eblouissent... pour mieux cacher la lame qu'elles portent.",
@@ -968,7 +968,7 @@ function syncDialogueOverlay() {
 
     const dashPressed = consume(" ") || (State.isMobile && consumeMobileDashPress());
     const potionPressed = consume("p");
-    const quickItemPressed = consume("3");
+    const quickItemPressed = consume("3") || consume("m");
     const jumpPressed = consume("j");
     const interactPressed = consume("e");
 
