@@ -40,6 +40,7 @@ export const State = {
     preQuestBoundaryWarned: false,
     enemyWarningSpoken: false,
     kaelDown: false,
+    kaelAggro: false,
     kaelMet: false,
     kaelDefeated: false,
     kaelPhaseTwoStarted: false,

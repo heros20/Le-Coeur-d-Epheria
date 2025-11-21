@@ -7,11 +7,12 @@
 html,
 body {
   margin: 0;
-  height: 100%;
+  min-height: 100%;
   background: radial-gradient(circle at top, #111321 0, #020208 55%, #000 100%);
   color: #e8e8ea;
   font-family: system-ui, Segoe UI, Roboto, Inter, sans-serif;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
   overscroll-behavior: contain;
 }
 
@@ -25,8 +26,8 @@ body {
 /* Coque de console */
 
 .console-root {
-  width: min(76vw, 1440px);
-  height: min(76vh, 800px);
+  width: min(96vw, 1440px);
+  height: min(96vh, 900px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -35,9 +36,8 @@ body {
 .console-shell {
   position: relative;
   width: 100%;
-  height: auto;
+  height: 100%;
   max-width: none;
-  aspect-ratio: 16 / 9;
   border-radius: 32px;
   padding: 0.75rem 1rem 1rem;
   background:
@@ -56,6 +56,7 @@ body {
 
 .console-screen {
   flex: 1;
+  min-height: 0;
   border-radius: 22px;
   padding: 0.55rem;
   background: radial-gradient(circle at top, #141826 0, #050711 65%);
@@ -251,13 +252,15 @@ h3 {
   border-radius: 18px;
   overflow: hidden;
   background: #000;
+  min-height: 55vh;
 }
 
 /* Canvas en plein écran dans la zone de jeu, ratio respecté */
 
 #gameCanvas {
   width: 100%;
-  height: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
   max-width: 100%;
   max-height: 100%;
   image-rendering: pixelated;
@@ -1014,11 +1017,13 @@ h3 {
   .console-shell {
     border-radius: 22px;
     padding: 0.5rem;
+    height: 100%;
   }
 
   .console-screen {
     border-radius: 18px;
     padding: 0.4rem;
+    overflow: auto;
   }
 
   .game-layout {
@@ -1029,7 +1034,7 @@ h3 {
 
   .game-viewport {
     flex: 1;
-    min-height: 0;
+    min-height: 60vh;
   }
 
   #hud {
@@ -1046,7 +1051,11 @@ h3 {
   }
 
   #boot {
-    padding: 1rem;
+    padding: 0.85rem;
+  }
+
+  #gameCanvas {
+    max-height: 70vh;
   }
 }
 
@@ -1161,6 +1170,8 @@ body {
   }
 
   .console-root {
+    width: 100vw;
+    height: 100vh;
     max-width: 100%;
     max-height: 100vh;
   }
@@ -1170,22 +1181,25 @@ body {
     height: 100vh;
     aspect-ratio: auto;
     border-radius: 0;
-    padding: 0;
+    padding: 0.25rem;
     box-shadow: none;
   }
 
   .console-screen {
     border-radius: 0;
-    padding: 0;
+    padding: 0.25rem;
+    overflow: auto;
   }
 
   .game-viewport {
     border-radius: 0;
+    min-height: 65vh;
   }
 
   #gameCanvas {
     border-radius: 0;
     border-width: 0;
+    max-height: 70vh;
   }
 
   /* Boîte de dialogue bien large */

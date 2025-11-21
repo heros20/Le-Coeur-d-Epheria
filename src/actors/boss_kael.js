@@ -365,35 +365,44 @@ export class BossKael {
 
   _move(world, mx, my) {
     if (!world) return false;
+    const inside = (x, y) => {
+      const w = world.w ?? Infinity;
+      const h = world.h ?? Infinity;
+      return x > 1 && y > 1 && x < w - 1 && y < h - 1;
+    };
+    const canOccupy = (x, y) => {
+      if (!inside(x, y)) return false;
+      return !world.isBlocked(x, y);
+    };
     let moved = false;
     let collided = false;
     const prevX = this.x;
-    const stepSize = Math.max(6, this.hitRadius * 0.75);
-    const stepsX = Math.max(1, Math.ceil(Math.abs(mx) / stepSize));
-    const stepsY = Math.max(1, Math.ceil(Math.abs(my) / stepSize));
-
-    const stepAxis = (total, axis) => {
-      if (total === 0) return false;
-      const perStep = total / (axis === "x" ? stepsX : stepsY);
-      let localMoved = false;
-      for (let i = 0; i < (axis === "x" ? stepsX : stepsY); i++) {
-        const nx = this.x + (axis === "x" ? perStep : 0);
-        const ny = this.y + (axis === "y" ? perStep : 0);
-        if (!world.isBlocked(nx, ny)) {
+    const stepSize = Math.max(2, this.hitRadius * 0.35);
+    const steps = Math.max(1, Math.ceil(Math.hypot(mx, my) / stepSize));
+    for (let i = 0; i < steps; i++) {
+      const sx = mx / steps;
+      const sy = my / steps;
+      // move X then Y separately to avoid tunneling
+      if (sx !== 0) {
+        const nx = this.x + sx;
+        if (canOccupy(nx, this.y)) {
           this.x = nx;
-          this.y = ny;
           moved = true;
-          localMoved = true;
         } else {
           collided = true;
-          break;
         }
       }
-      return localMoved;
-    };
-
-    stepAxis(mx, "x");
-    stepAxis(my, "y");
+      if (sy !== 0) {
+        const ny = this.y + sy;
+        if (canOccupy(this.x, ny)) {
+          this.y = ny;
+          moved = true;
+        } else {
+          collided = true;
+        }
+      }
+      if (collided && moved) break;
+    }
 
     if (moved) {
       const deltaX = this.x - prevX;

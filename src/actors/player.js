@@ -53,7 +53,6 @@ export class Player {
     this.isSprinting = false;
     this.isDashing = false;
     this.hitFlash = 0;
-    this.attackFlash = 0;
 
     this.recoveryCooldown = 0;
     this.recoveryDelay = CONFIG.staminaDelay ?? 0.6;
@@ -276,14 +275,12 @@ export class Player {
         dw,
         dh
       );
-      const flashA = Math.max(0, this.hitFlash) / 0.35;
-      const flashB = Math.max(0, this.attackFlash) / 0.2;
-      const alpha = flashA * 0.45 + flashB * 0.35;
+      const alpha = Math.max(0, this.hitFlash) / 0.35;
       if (alpha > 0.01) {
         ctx.save();
         ctx.globalCompositeOperation = "lighter";
         ctx.globalAlpha = Math.min(0.7, alpha);
-        ctx.fillStyle = flashA >= flashB ? "rgba(255,70,90,1)" : "rgba(90,200,255,1)";
+        ctx.fillStyle = "rgba(255,70,90,1)";
         ctx.beginPath();
         ctx.ellipse(this.x, this.y, dw * 0.35, dh * 0.35, 0, 0, Math.PI * 2);
         ctx.fill();
@@ -306,7 +303,6 @@ export class Player {
     if (this.recoveryCooldown > 0) this.recoveryCooldown -= dt;
     if (this.hurtCooldown > 0) this.hurtCooldown -= dt;
     if (this.hitFlash > 0) this.hitFlash = Math.max(0, this.hitFlash - dt);
-    if (this.attackFlash > 0) this.attackFlash = Math.max(0, this.attackFlash - dt);
     if (this._attackTimer > 0) {
       this._attackTimer = Math.max(0, this._attackTimer - dt);
       if (this._attackTimer === 0) this._attackCanHit = false;
@@ -341,7 +337,6 @@ export class Player {
 
   confirmAttackHit() {
     this._attackCanHit = false;
-    this.attackFlash = 0.2;
   }
 
   resetCombatState() {

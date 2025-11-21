@@ -423,6 +423,11 @@ const KAEL_ANIMATION_SOURCES = {
   walk_left: ["./assets/Kael/walk/Walk_left.png"],
   walk_right: ["./assets/Kael/walk/Walk_right.png"],
   run: ["./assets/Kael/run/Run.png"],
+  attack: [
+    "./assets/Kael/attack/Attack_1.png",
+    "./assets/Kael/attack/Attack_2.png",
+    "./assets/Kael/attack/Attack_3.png",
+  ],
   jump: ["./assets/Kael/jump/Jump.png"],
   hurt: ["./assets/Kael/hurt/Hurt.png"],
   dead: ["./assets/Kael/dead/Dead.png"],
@@ -1128,7 +1133,17 @@ function syncDialogueOverlay() {
     ) {
       State.princess.follow = true;
     }
-    State.kael.update(dt, player, map);
+    let kaelTarget = player;
+    const savedKeep = State.kael.keepDistance;
+    if (!State.flags.betrayalHappened && isKaelAllyAlive() && State.flags.kaelAggro) {
+      const nearbyGhost = findNearestAliveGhost(170);
+      if (nearbyGhost) {
+        kaelTarget = nearbyGhost;
+        State.kael.keepDistance = 30;
+      }
+    }
+    State.kael.update(dt, kaelTarget, map);
+    State.kael.keepDistance = savedKeep;
     if (State.flags.princessUnlocked) {
       State.princess.update(dt, player, map);
     }
@@ -1920,6 +1935,7 @@ function syncDialogueOverlay() {
       if (!ghost) continue;
       ghost.attackCooldown = Math.max(0, (ghost.attackCooldown ?? 0) - dt);
       ghost.hurtTimer = Math.max(0, (ghost.hurtTimer ?? 0) - dt);
+      ghost.hitFlash = Math.max(0, (ghost.hitFlash ?? 0) - dt);
       if (ghost.dead) {
         ghost.animator?.update?.(dt);
         continue;
@@ -1953,7 +1969,8 @@ function syncDialogueOverlay() {
           { x: dx / dist, y: dy / dist }
         );
         baseAction = moved ? "run" : "idle";
-        if (dist < ghost.attackRange && ghost.attackCooldown <= 0) {
+      if (dist < ghost.attackRange && ghost.attackCooldown <= 0) {
+          State.flags.kaelAggro = true;
           if (target === kael) {
             if (kael.applyDamage(ghost.attackDamage)) {
               handleKaelDeath();
@@ -1985,6 +2002,7 @@ function syncDialogueOverlay() {
       const damage = player.getCurrentAttackDamage?.() ?? 12;
       ghost.hp = Math.max(0, ghost.hp - damage);
       ghost.hurtTimer = 0.25;
+      ghost.hitFlash = 0.35;
       ghost.animator?.play?.("hurt", { force: true });
       if (!registeredHit) {
         player.confirmAttackHit?.();
@@ -1994,6 +2012,7 @@ function syncDialogueOverlay() {
         ghost.dead = true;
         ghost.animator?.play?.("dead", { sticky: true, force: true });
       }
+      State.flags.kaelAggro = true;
     });
   }
 
@@ -2011,8 +2030,10 @@ function syncDialogueOverlay() {
       const dmg = kael.attackDamage ?? 14;
       ghost.hp = Math.max(0, ghost.hp - dmg);
       ghost.hurtTimer = 0.25;
+      ghost.hitFlash = 0.35;
       ghost.animator?.play?.("hurt", { force: true });
-      kael.animator?.play?.("attack", { force: true });
+      const atkAnim = kael.animator?.animations?.[`attack_${kael.facing}`] ? `attack_${kael.facing}` : "attack";
+      kael.animator?.play?.(atkAnim, { force: true });
       kael.attackCooldown = 0.8;
       if (ghost.hp === 0 && !ghost.dead) {
         ghost.dead = true;
@@ -2028,17 +2049,38 @@ function syncDialogueOverlay() {
     const player = State.player;
     const kael = State.kael;
     if (!Array.isArray(ghosts) || !player) return;
-    const threshold = 300;
+    const threshold = 100;
+    if (State.dialogue?.isOpen?.()) return;
     for (const ghost of ghosts) {
       if (!ghost || ghost.dead) continue;
       const distPlayer = Math.hypot(player.x - ghost.x, player.y - ghost.y);
       const distKael = kael ? Math.hypot(kael.x - ghost.x, kael.y - ghost.y) : Infinity;
       if (distPlayer < threshold || distKael < threshold) {
         State.flags.enemyWarningSpoken = true;
-        pushStatus("Kael: Je sens des spectres tout proches. Reste sur tes gardes.");
+        State.dialogue?.show?.([
+          { speaker: "Kael", text: "Je sens des spectres a moins de cent pas. Reste sur tes gardes." },
+        ]);
         break;
       }
     }
+  }
+
+  function findNearestAliveGhost(maxDist = Infinity) {
+    const ghosts = State.ghosts;
+    if (!Array.isArray(ghosts)) return null;
+    const origin = State.kael ?? State.player;
+    if (!origin) return null;
+    let best = null;
+    let bestD = maxDist;
+    ghosts.forEach((g) => {
+      if (!g || g.dead) return;
+      const d = Math.hypot(origin.x - g.x, origin.y - g.y);
+      if (d < bestD) {
+        best = g;
+        bestD = d;
+      }
+    });
+    return best;
   }
 
   function updateQuestAnnouncement(dt) {
@@ -2099,11 +2141,15 @@ function syncDialogueOverlay() {
     if (!Array.isArray(ghosts)) return;
     ghosts.forEach((ghost) => {
       if (!ghost) return;
+      let flashWx = 26;
+      let flashWy = 26;
       const frame = ghost.animator?.getFrame?.();
       if (frame) {
         const scale = ghost.scale ?? 0.32;
         const dw = frame.sw * scale;
         const dh = frame.sh * scale;
+        flashWx = dw * 0.35;
+        flashWy = dh * 0.35;
         ctx.drawImage(
           frame.image,
           frame.sx,
@@ -2126,6 +2172,17 @@ function syncDialogueOverlay() {
         ctx.fillStyle = "#7ff3ff";
         ctx.fillRect(ghost.x - width / 2 + 1, ghost.y - 28 + 1, (width - 2) * ratio, height - 2);
         ctx.restore();
+        if (ghost.hitFlash > 0) {
+          const alpha = Math.min(0.7, ghost.hitFlash / 0.35);
+          ctx.save();
+          ctx.globalCompositeOperation = "lighter";
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = "rgba(80,170,255,0.9)";
+          ctx.beginPath();
+          ctx.ellipse(ghost.x, ghost.y, flashWx, flashWy, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
       }
     });
   }

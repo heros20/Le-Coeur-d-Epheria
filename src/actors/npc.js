@@ -22,6 +22,7 @@ export class NPC {
     this.attackDamage = opts.attackDamage ?? null;
     this.attackRange = opts.attackRange ?? null;
     this.attackCooldown = 0;
+    this.hitFlash = 0;
   }
 
   update(dt, target, world) {
@@ -69,6 +70,7 @@ export class NPC {
         this.facing = dx > 0 ? "right" : "left";
       }
     }
+    if (this.hitFlash > 0) this.hitFlash = Math.max(0, this.hitFlash - dt);
     const baseAction = moving ? this._pickDirectionalAction(this.moveAction) : this.idleAction;
     this.animator.setBase(baseAction);
     this.animator.update(dt);
@@ -90,6 +92,17 @@ export class NPC {
         dw,
         dh
       );
+      if (this.hitFlash > 0) {
+        const alpha = Math.min(0.6, this.hitFlash / 0.3);
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = "rgba(255,70,90,0.9)";
+        ctx.beginPath();
+        ctx.ellipse(this.x, this.y, dw * 0.35, dh * 0.35, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
     } else if (this.fallbackImage) {
       const w = this.fallbackImage.width * this.scale;
       const h = this.fallbackImage.height * this.scale;
@@ -139,6 +152,7 @@ export class NPC {
   applyDamage(dmg) {
     if (!Number.isFinite(this.hp)) return false;
     this.hp = Math.max(0, this.hp - Math.max(0, dmg || 0));
+    this.hitFlash = 0.3;
     return this.hp === 0;
   }
 }
