@@ -52,9 +52,11 @@ export class WorldMap {
 
  for (const o of colliderLayer.objects) {
   if (o.ellipse || o.polygon || o.polyline) continue;
-  const x = o.x;
-  const y = o.y; // ✅ Rectangle = coin haut-gauche dans Tiled
-  this._rasterizeRectToCollision(x, y, o.width, o.height);
+  const x = o.x || 0;
+  const y = o.y || 0; // ✅ Rectangle = coin haut-gauche dans Tiled
+  const w = o.width || 0;
+  const h = o.height || 0;
+  this._rasterizeRectToCollision(x, y, w, h);
 }
 
 

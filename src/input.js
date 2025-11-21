@@ -36,6 +36,7 @@ const HANDLED = new Set([
   "e",
   "i",
   " ",
+  "f3",
 ]);
 
 function norm(e) {

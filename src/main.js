@@ -938,6 +938,10 @@ function syncDialogueOverlay() {
       State.attackInput = { lastTap: -Infinity, holdStart: 0, wasHeld: false, pendingDouble: false };
     }
     maybeStartBossMusic();
+    if (consume("f3")) {
+      State.showCollisionDebug = !State.showCollisionDebug;
+      pushStatus(State.showCollisionDebug ? "Collisions affichées" : "Collisions masquées");
+    }
     const attackPressed = State.isMobile
       ? consumeMobileAttackPress()
       : DESKTOP_ATTACK_KEYS.some((key) => consume(key));
@@ -2068,6 +2072,9 @@ function syncDialogueOverlay() {
     ctx.scale(scaleX, scaleY);
 
     ctx.drawImage(mapImg, camX, camY, camera.w, camera.h, 0, 0, camera.w, camera.h);
+    if (State.showCollisionDebug && map?.drawCollisionDebug) {
+      map.drawCollisionDebug(ctx, camX, camY, camera.w, camera.h);
+    }
 
     // actors in world space
     ctx.save();

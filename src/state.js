@@ -26,6 +26,7 @@ export const State = {
   touchControls: null,
   isMobile: false,
   puzzleOrbs: [],
+  showCollisionDebug: true,
   orbPromptOpen: false,
   princessHint: null,
   bossMusicPending: false,

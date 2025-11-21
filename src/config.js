@@ -5,8 +5,9 @@ export const CONFIG = {
   shadowPenalty: 0.25,
 
   // cellule de collision plus large pour lisser la texture brique
-  collisionCell: 6,
-  collisionOffset: { x: 15, y: 0 },
+  collisionCell: 1,
+  // decallage leger : on s'aligne exactement sur les coordonnées du map.json
+  collisionOffset: { x: 13, y: -8 },
 
   playerAttackRadius: 22,
   playerAttackDuration: 0.28,
