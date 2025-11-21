@@ -50,6 +50,7 @@ export class Player {
     this.staminaRegen = CONFIG.staminaRegen ?? 18;
     this.sprintMult = CONFIG.sprintMult ?? 1.45;
     this.shadowPenalty = CONFIG.shadowPenalty ?? 0.8;
+    this.isSprinting = false;
 
     this.recoveryCooldown = 0;
     this.recoveryDelay = CONFIG.staminaDelay ?? 0.6;
@@ -128,6 +129,7 @@ export class Player {
     let sp = this.speed * (mode === "SHADOW" ? this.shadowPenalty : 1);
     const canSprint = this.stamina > 0.1 && this.recoveryCooldown <= 0;
     const wantsSprint = SPRINT_KEYS.some((key) => Keys.has(key)) && canSprint;
+    this.isSprinting = wantsSprint && this._dashActive <= 0;
     if (wantsSprint) sp *= this.sprintMult;
 
     const prevX = this.x;

@@ -776,6 +776,8 @@ function syncDialogueOverlay() {
   });
   State.kael.follow = false;
   State.flags.kaelMet = false;
+  State.flags.princessQuestAccepted = false;
+  State.flags.preQuestBoundaryWarned = false;
   State.flags.kaelPhaseTwoStarted = false;
   State.flags.kaelPhaseTwoDefeated = false;
   State.flags.kaelPhaseThreeStarted = false;
@@ -910,6 +912,29 @@ function syncDialogueOverlay() {
       }
       ctx.restore();
     });
+  }
+
+  function drawQuestMarker(ctx, npc) {
+    if (!npc) return;
+    const markerHeight = 20;
+    const markerWidth = 12;
+    const offsetY = 15;
+    ctx.save();
+    ctx.translate(npc.x, npc.y - offsetY);
+    ctx.fillStyle = "#f6c344";
+    ctx.beginPath();
+    ctx.moveTo(0, -markerHeight);
+    ctx.lineTo(markerWidth * 0.6, -4);
+    ctx.lineTo(0, 6);
+    ctx.lineTo(-markerWidth * 0.6, -4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = "#1c1c2b";
+    ctx.font = "bold 12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("!", 0, -5);
+    ctx.restore();
   }
   // ===== Update =====
   function update(dt) {
@@ -1191,13 +1216,15 @@ function syncDialogueOverlay() {
     const dKael = Math.hypot(State.player.x - State.kael.x, State.player.y - State.kael.y);
     if (dKael < 70 && !State.flags.kaelMet) {
       State.flags.kaelMet = true;
+      State.flags.princessQuestAccepted = true;
       State.kael.follow = true;
       State.dialogue.show([
-        { speaker: "Kael", text: "Te voilà… Les arches ont reconnu en toi une force que tu ignores encore." },
-        { speaker: "Kael", text: "Je serai ton compagnon dans ces ténèbres. Même les ombres se dissipent quand deux voyageurs avancent ensemble." },
-        { speaker: "Kael", text: "Allons vers la princesse. Son aura résonne… comme un appel que seuls les cœurs sincères entendent." },
-
+        { speaker: "Kael", text: "Enfin du renfort. Aelya s'est perdue dans ce labyrinthe mouvant." },
+        { speaker: "Kael", text: "Seul, je n'avance plus. J'ai besoin que tu m'aides a la retrouver avant que les arches ne se referment." },
+        { speaker: "Moi", text: "D'accord. On la ramene ensemble, quoi qu'il arrive." },
+        { speaker: "Kael", text: "Alors je marche a tes cotes. Reste pres de moi." },
       ]);
+      pushStatus("Quete acceptee : aider Kael a retrouver la princesse.");
       scheduleKaelOrbHint();
       return;
     }
@@ -2001,21 +2028,31 @@ function syncDialogueOverlay() {
   }
 
   function enforcePreKaelBoundary(player) {
-    if (State.flags.kaelMet || !player) return;
+    if (State.flags.princessQuestAccepted || !player) {
+      State.flags.preQuestBoundaryWarned = false;
+      return;
+    }
     const spawn = State.spawnPoint;
     if (!spawn) return;
     const limit = spawn.y + 300;
     if (player.y > limit) {
       player.y = limit - 5;
       clampCameraToPlayer(player.x, player.y);
-      pauseForDialogue(
-        [
-          {
-            speaker: "Moi",
-            text: "Je devrais aller parler a Kael avant toute chose.",
-          },
-        ]
-      );
+      if (!State.flags.preQuestBoundaryWarned) {
+        State.flags.preQuestBoundaryWarned = true;
+        pauseForDialogue(
+          [
+            {
+              speaker: "Moi",
+              text: "Je devrais parler a Kael avant d'entrer dans le labyrinthe.",
+            },
+            {
+              speaker: "Mur",
+              text: "Les arches restent closes tant que la quete n'est pas acceptee.",
+            },
+          ]
+        );
+      }
     }
   }
 
@@ -2085,7 +2122,12 @@ function syncDialogueOverlay() {
     if (State.flags.princessUnlocked) {
       State.princess.draw(ctx);
     }
-    if (!State.flags.betrayalHappened) State.kael.draw(ctx);
+    if (!State.flags.betrayalHappened) {
+      State.kael.draw(ctx);
+      if (!State.flags.princessQuestAccepted) {
+        drawQuestMarker(ctx, State.kael);
+      }
+    }
     if (State.flags.betrayalHappened && !State.flags.kaelDefeated) {
       State.boss.draw(ctx);
       drawBossHpBar(ctx, boss);

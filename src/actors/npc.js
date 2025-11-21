@@ -30,7 +30,8 @@ export class NPC {
       const dist = Math.hypot(dx, dy) || 1;
       const desiredDist = this.keepDistance * 0.35;
       if (dist > desiredDist) {
-        const step = this.speed * dt * 1.25;
+        const sprintMult = target?.isSprinting ? (CONFIG.sprintMult ?? 1.45) : 1;
+        const step = this.speed * sprintMult * dt * 1.25;
         const mx = (dx / dist) * step;
         const my = (dy / dist) * step;
         const nx = this.x + mx;

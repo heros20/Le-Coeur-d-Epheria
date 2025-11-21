@@ -34,6 +34,9 @@ export const State = {
   flags: {
     foundShrine: 0,
     betrayalHappened: false,
+    princessQuestAccepted: false,
+    preQuestBoundaryWarned: false,
+    kaelMet: false,
     kaelDefeated: false,
     kaelPhaseTwoStarted: false,
     kaelPhaseTwoDefeated: false,
