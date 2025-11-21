@@ -368,22 +368,33 @@ export class BossKael {
     let moved = false;
     let collided = false;
     const prevX = this.x;
-    if (mx !== 0) {
-      if (!world.isBlocked(this.x + mx, this.y)) {
-        this.x += mx;
-        moved = true;
-      } else {
-        collided = true;
+    const stepSize = Math.max(6, this.hitRadius * 0.75);
+    const stepsX = Math.max(1, Math.ceil(Math.abs(mx) / stepSize));
+    const stepsY = Math.max(1, Math.ceil(Math.abs(my) / stepSize));
+
+    const stepAxis = (total, axis) => {
+      if (total === 0) return false;
+      const perStep = total / (axis === "x" ? stepsX : stepsY);
+      let localMoved = false;
+      for (let i = 0; i < (axis === "x" ? stepsX : stepsY); i++) {
+        const nx = this.x + (axis === "x" ? perStep : 0);
+        const ny = this.y + (axis === "y" ? perStep : 0);
+        if (!world.isBlocked(nx, ny)) {
+          this.x = nx;
+          this.y = ny;
+          moved = true;
+          localMoved = true;
+        } else {
+          collided = true;
+          break;
+        }
       }
-    }
-    if (my !== 0) {
-      if (!world.isBlocked(this.x, this.y + my)) {
-        this.y += my;
-        moved = true;
-      } else {
-        collided = true;
-      }
-    }
+      return localMoved;
+    };
+
+    stepAxis(mx, "x");
+    stepAxis(my, "y");
+
     if (moved) {
       const deltaX = this.x - prevX;
       if (Math.abs(deltaX) > 0.5) {
@@ -394,6 +405,23 @@ export class BossKael {
     }
     if (collided) {
       this._handleCollisionResponse(mx, my);
+      // tentative d'esquive latérale pour ne pas rester collé aux murs
+      const len = Math.hypot(mx, my) || 1;
+      const nx = mx / len;
+      const ny = my / len;
+      const steer = Math.hypot(mx, my) * 0.8;
+      const options = [
+        { x: -ny * steer, y: nx * steer },
+        { x: ny * steer, y: -nx * steer },
+      ];
+      for (const opt of options) {
+        if (!world.isBlocked(this.x + opt.x, this.y + opt.y)) {
+          this.x += opt.x;
+          this.y += opt.y;
+          moved = true;
+          break;
+        }
+      }
     }
     return moved;
   }

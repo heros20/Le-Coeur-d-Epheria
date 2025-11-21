@@ -773,6 +773,9 @@ function syncDialogueOverlay() {
     moveAction: "walk",
     idleAction: "idle",
     hitRadius: PLAYER_RADIUS,
+    hp: 100,
+    attackDamage: 16,
+    attackRange: 38,
   });
   State.kael.follow = false;
   State.flags.kaelMet = false;
@@ -936,9 +939,62 @@ function syncDialogueOverlay() {
     ctx.fillText("!", 0, -5);
     ctx.restore();
   }
+
+  function drawQuestBanner(ctx, screenX, screenY, qa) {
+    if (!qa) return;
+    const w = 220;
+    const h = 64;
+    const x = screenX - w / 2;
+    const y = screenY - h;
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, (qa.timer ?? 0) / (qa.max || 4) + 0.3);
+    const grd = ctx.createLinearGradient(x, y, x, y + h);
+    grd.addColorStop(0, "rgba(32,36,58,0.92)");
+    grd.addColorStop(1, "rgba(18,22,38,0.94)");
+    ctx.fillStyle = grd;
+    ctx.strokeStyle = "rgba(255,210,120,0.9)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 10);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#ffd76a";
+    ctx.font = "bold 16px 'Segoe UI', sans-serif";
+    ctx.textBaseline = "top";
+    ctx.textAlign = "center";
+    ctx.fillText(qa.title ?? "Quete acceptee", screenX, y + 10);
+    ctx.fillStyle = "#e9f1ff";
+    ctx.font = "13px 'Segoe UI', sans-serif";
+    ctx.fillText(qa.subtitle ?? "", screenX, y + 32);
+    ctx.restore();
+  }
+
+  function drawLowHpOverlay(ctx, player) {
+    if (!player) return;
+    const maxHp = player.maxHp || 1;
+    const ratio = Math.max(0, (player.hp ?? maxHp) / maxHp);
+    if (ratio >= 0.35) return;
+    const t = 1 - ratio / 0.35;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const w = $canvas.width;
+    const h = $canvas.height;
+    const cx = w / 2;
+    const cy = h / 2;
+    const radial = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.15, cx, cy, Math.max(w, h));
+    radial.addColorStop(0, "rgba(0,0,0,0)");
+    radial.addColorStop(0.55, "rgba(140,20,30,0.18)");
+    radial.addColorStop(1, "rgba(200,20,40,0.7)");
+    ctx.globalAlpha = Math.min(0.9, 0.5 + t * 0.6);
+    ctx.fillStyle = radial;
+    ctx.fillRect(0, 0, w, h);
+    ctx.restore();
+  }
   // ===== Update =====
   function update(dt) {
     const { player, map } = State;
+
+    State.questPromptCooldown = Math.max(0, (State.questPromptCooldown ?? 0) - dt);
 
     const camera = State.camera;
     const pointerData = null;
@@ -1025,7 +1081,7 @@ function syncDialogueOverlay() {
     if (potionPressed) tryUsePotion();
     if (quickItemPressed) tryUseQuickItem();
 
-    if (!State.dialogue.isOpen() && interactPressed) tryInteract();
+    if (interactPressed && !State.dialogue.isOpen()) tryInteract();
 
     // Mouvements joueur
     player.update(dt, map, State.mode, {
@@ -1072,11 +1128,16 @@ function syncDialogueOverlay() {
     ) {
       State.princess.follow = true;
     }
-  State.kael.update(dt, player, map);
-  if (State.flags.princessUnlocked) {
-    State.princess.update(dt, player, map);
-  }
-  updateGhosts(dt);
+    State.kael.update(dt, player, map);
+    if (State.flags.princessUnlocked) {
+      State.princess.update(dt, player, map);
+    }
+    updateGhosts(dt);
+    if (!State.flags.betrayalHappened) {
+      handleKaelVsGhosts(dt);
+      maybeWarnEnemiesNearby();
+    }
+    updateQuestAnnouncement(dt);
 
     // Camera & fog
     clampCameraToPlayer(player.x, player.y);
@@ -1211,21 +1272,13 @@ function syncDialogueOverlay() {
 
   // ===== Interactions =====
   function tryInteract() {
+    if (State.dialogue.isOpen()) return;
+    if (State.orbPromptOpen) return;
     if (tryInteractOrb()) return;
     // Simple example: speak to Kael when close
     const dKael = Math.hypot(State.player.x - State.kael.x, State.player.y - State.kael.y);
-    if (dKael < 70 && !State.flags.kaelMet) {
-      State.flags.kaelMet = true;
-      State.flags.princessQuestAccepted = true;
-      State.kael.follow = true;
-      State.dialogue.show([
-        { speaker: "Kael", text: "Enfin du renfort. Aelya s'est perdue dans ce labyrinthe mouvant." },
-        { speaker: "Kael", text: "Seul, je n'avance plus. J'ai besoin que tu m'aides a la retrouver avant que les arches ne se referment." },
-        { speaker: "Moi", text: "D'accord. On la ramene ensemble, quoi qu'il arrive." },
-        { speaker: "Kael", text: "Alors je marche a tes cotes. Reste pres de moi." },
-      ]);
-      pushStatus("Quete acceptee : aider Kael a retrouver la princesse.");
-      scheduleKaelOrbHint();
+    if (dKael < 70 && !State.flags.princessQuestAccepted && !State.orbPromptOpen) {
+      startKaelQuestDialogue();
       return;
     }
 
@@ -1390,6 +1443,61 @@ function syncDialogueOverlay() {
       } else if (event.key === "e" || event.key === "E") {
         event.preventDefault();
         hideOrbPrompt();
+      }
+    };
+    orbPromptState.yesHandler = handleYes;
+    orbPromptState.noHandler = handleNo;
+    orbPromptState.keyHandler = handleKey;
+    yesBtn?.addEventListener("click", handleYes);
+    noBtn?.addEventListener("click", handleNo);
+    window.addEventListener("keydown", handleKey);
+  }
+
+  function showKaelQuestPrompt() {
+    if (!$orbPrompt) return;
+    hideOrbPrompt();
+    State.orbPromptOpen = true;
+    State.questPromptCooldown = 0.8;
+    $orbPrompt.innerHTML = `
+      <div class="prompt-card">
+        <h4>Quete : Retrouver Aelya</h4>
+        <p>Kael te demande de l'aider a retrouver la princesse dans le labyrinthe.</p>
+        <div class="prompt-actions">
+          <button data-orb-no>Refuser</button>
+          <button data-orb-yes>Accepter</button>
+        </div>
+      </div>`;
+    $orbPrompt.classList.remove("hidden");
+    requestAnimationFrame(() => $orbPrompt.classList.add("visible"));
+
+    const yesBtn = $orbPrompt.querySelector("[data-orb-yes]");
+    const noBtn = $orbPrompt.querySelector("[data-orb-no]");
+
+    const handleYes = () => {
+      hideOrbPrompt();
+      acceptKaelQuest();
+    };
+    const handleNo = () => {
+      hideOrbPrompt();
+      State.questPromptCooldown = 1.2;
+      State.dialogue?.show?.([{ speaker: "Kael", text: "Je comprends... mais le temps presse." }]);
+    };
+    const buttons = [noBtn, yesBtn].filter(Boolean);
+    orbPromptState.buttons = buttons;
+    orbPromptState.focusIndex = buttons.length === 2 ? 1 : 0;
+    updatePromptFocus();
+    const handleKey = (event) => {
+      if (!State.orbPromptOpen) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        hideOrbPrompt();
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        rotatePromptFocus(event.key === "ArrowRight" ? 1 : -1);
+      } else if (event.key === "Enter") {
+        event.preventDefault();
+        const btn = orbPromptState.buttons[orbPromptState.focusIndex];
+        btn?.click();
       }
     };
     orbPromptState.yesHandler = handleYes;
@@ -1781,9 +1889,31 @@ function syncDialogueOverlay() {
     };
   }
 
+  function isKaelAllyAlive() {
+    return (
+      !State.flags.betrayalHappened &&
+      State.kael &&
+      !State.flags.kaelDown &&
+      Number.isFinite(State.kael.hp) &&
+      State.kael.hp > 0
+    );
+  }
+
+  function handleKaelDeath() {
+    if (State.flags.kaelDown) return;
+    State.flags.kaelDown = true;
+    State.kael.follow = false;
+    pushStatus("Kael s'effondre. Il faudra poursuivre sans lui.");
+    State.dialogue?.show?.([
+      { speaker: "Kael", text: "Je... continue sans moi. Trouve Aelya avant que le labyrinthe ne se referme." },
+    ]);
+  }
+
   function updateGhosts(dt) {
     const ghosts = State.ghosts;
     const player = State.player;
+    const kaelAlive = isKaelAllyAlive();
+    const kael = State.kael;
     const map = State.map;
     if (!Array.isArray(ghosts) || !player || !map) return;
     for (const ghost of ghosts) {
@@ -1794,16 +1924,43 @@ function syncDialogueOverlay() {
         ghost.animator?.update?.(dt);
         continue;
       }
-      const dx = player.x - ghost.x;
-      const dy = player.y - ghost.y;
-      const dist = Math.hypot(dx, dy) || 1;
+      const dxP = player.x - ghost.x;
+      const dyP = player.y - ghost.y;
+      const distP = Math.hypot(dxP, dyP) || 1;
+      const dxK = kaelAlive ? kael.x - ghost.x : 0;
+      const dyK = kaelAlive ? kael.y - ghost.y : 0;
+      const distK = kaelAlive ? Math.hypot(dxK, dyK) || 1 : Infinity;
+
+      let target = player;
+      let dx = dxP;
+      let dy = dyP;
+      let dist = distP;
+      if (kaelAlive && distK < distP * 0.9) {
+        target = kael;
+        dx = dxK;
+        dy = dyK;
+        dist = distK;
+      }
+
       let baseAction = "idle";
       if (dist < 50) {
         const step = ghost.chaseSpeed * dt;
-        moveGhost(ghost, (dx / dist) * step, (dy / dist) * step, map);
-        baseAction = "run";
+        const moved = moveGhost(
+          ghost,
+          (dx / dist) * step,
+          (dy / dist) * step,
+          map,
+          { x: dx / dist, y: dy / dist }
+        );
+        baseAction = moved ? "run" : "idle";
         if (dist < ghost.attackRange && ghost.attackCooldown <= 0) {
-          player.applyDamage(ghost.attackDamage);
+          if (target === kael) {
+            if (kael.applyDamage(ghost.attackDamage)) {
+              handleKaelDeath();
+            }
+          } else {
+            target.applyDamage?.(ghost.attackDamage);
+          }
           ghost.attackCooldown = 1.35;
           ghost.animator?.play?.("attack", { force: true });
         }
@@ -1840,7 +1997,58 @@ function syncDialogueOverlay() {
     });
   }
 
-  function moveGhost(ghost, mx, my, world) {
+  function handleKaelVsGhosts(dt) {
+    const ghosts = State.ghosts;
+    const kael = State.kael;
+    if (!isKaelAllyAlive() || !Array.isArray(ghosts)) return;
+    kael.attackCooldown = Math.max(0, (kael.attackCooldown ?? 0) - dt);
+    const range = kael.attackRange ?? 40;
+    if (kael.attackCooldown > 0) return;
+    for (const ghost of ghosts) {
+      if (!ghost || ghost.dead) continue;
+      const dist = Math.hypot(kael.x - ghost.x, kael.y - ghost.y);
+      if (dist > range) continue;
+      const dmg = kael.attackDamage ?? 14;
+      ghost.hp = Math.max(0, ghost.hp - dmg);
+      ghost.hurtTimer = 0.25;
+      ghost.animator?.play?.("hurt", { force: true });
+      kael.animator?.play?.("attack", { force: true });
+      kael.attackCooldown = 0.8;
+      if (ghost.hp === 0 && !ghost.dead) {
+        ghost.dead = true;
+        ghost.animator?.play?.("dead", { sticky: true, force: true });
+      }
+      break;
+    }
+  }
+
+  function maybeWarnEnemiesNearby() {
+    if (State.flags.enemyWarningSpoken) return;
+    const ghosts = State.ghosts;
+    const player = State.player;
+    const kael = State.kael;
+    if (!Array.isArray(ghosts) || !player) return;
+    const threshold = 300;
+    for (const ghost of ghosts) {
+      if (!ghost || ghost.dead) continue;
+      const distPlayer = Math.hypot(player.x - ghost.x, player.y - ghost.y);
+      const distKael = kael ? Math.hypot(kael.x - ghost.x, kael.y - ghost.y) : Infinity;
+      if (distPlayer < threshold || distKael < threshold) {
+        State.flags.enemyWarningSpoken = true;
+        pushStatus("Kael: Je sens des spectres tout proches. Reste sur tes gardes.");
+        break;
+      }
+    }
+  }
+
+  function updateQuestAnnouncement(dt) {
+    const qa = State.questAnnouncement;
+    if (!qa) return;
+    qa.timer = Math.max(0, qa.timer - dt);
+    if (qa.timer <= 0) State.questAnnouncement = null;
+  }
+
+  function moveGhost(ghost, mx, my, world, dir = null) {
     if (!world) {
       ghost.x += mx;
       ghost.y += my;
@@ -1859,6 +2067,28 @@ function syncDialogueOverlay() {
       if (!world.isBlocked(ghost.x, nextY)) {
         ghost.y = nextY;
         moved = true;
+      }
+    }
+
+    // Petit évitement de mur : tente un pas latéral si bloqué
+    if (!moved && dir && (mx !== 0 || my !== 0)) {
+      const len = Math.hypot(dir.x, dir.y) || 1;
+      const nx = dir.x / len;
+      const ny = dir.y / len;
+      const steer = Math.hypot(mx, my) * 0.7;
+      const options = [
+        { x: -ny * steer, y: nx * steer },
+        { x: ny * steer, y: -nx * steer },
+      ];
+      for (const opt of options) {
+        const tx = ghost.x + opt.x;
+        const ty = ghost.y + opt.y;
+        if (!world.isBlocked(tx, ty)) {
+          ghost.x = tx;
+          ghost.y = ty;
+          moved = true;
+          break;
+        }
       }
     }
     return moved;
@@ -2070,6 +2300,33 @@ function syncDialogueOverlay() {
     orbPromptState.focusIndex = (orbPromptState.focusIndex + dir + len) % len;
     updatePromptFocus();
   }
+
+  function acceptKaelQuest() {
+    if (State.flags.princessQuestAccepted) return;
+    State.questPromptCooldown = 0.6;
+    State.flags.kaelMet = true;
+    State.flags.princessQuestAccepted = true;
+    State.kael.follow = true;
+    pushStatus("Quete acceptee : aider Kael a retrouver la princesse.");
+    State.questAnnouncement = { title: "Quete acceptee", subtitle: "Retrouver Aelya", timer: 4, max: 4 };
+    scheduleKaelOrbHint();
+  }
+
+  function startKaelQuestDialogue() {
+    if (State.dialogue.isOpen() || State.orbPromptOpen) return;
+    if ((State.questPromptCooldown ?? 0) > 0) return;
+    if (State.flags.princessQuestAccepted) return;
+    pauseForDialogue(
+      [
+        { speaker: "Kael", text: "Enfin du renfort. Aelya s'est perdue dans ce labyrinthe mouvant." },
+        { speaker: "Kael", text: "Seul, je n'avance plus. J'ai besoin que tu m'aides a la retrouver avant que les arches ne se referment." },
+        { speaker: "Kael", text: "Tu acceptes ? Nous devrons faire vite et rester ensemble." },
+      ],
+      () => {
+        showKaelQuestPrompt();
+      }
+    );
+  }
   function triggerBetrayal() {
     if (State.flags.betrayalHappened) return;
     State.flags.betrayalHappened = true;
@@ -2167,9 +2424,13 @@ function syncDialogueOverlay() {
     if (!State.flags.betrayalHappened || State.flags.kaelDefeated) {
       drawHeroShroud(ctx, playerScreenX, playerScreenY);
     }
+    if (State.questAnnouncement) {
+      drawQuestBanner(ctx, playerScreenX, playerScreenY - 80, State.questAnnouncement);
+    }
 
     // post-processing
     applyLighting(ctx, State.mode, playerScreenX, playerScreenY, player.torchOn);
+    drawLowHpOverlay(ctx, player);
 
     ctx.save();
     ctx.scale(scaleX, scaleY);

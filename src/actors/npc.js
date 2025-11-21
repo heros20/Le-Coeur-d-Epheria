@@ -17,6 +17,11 @@ export class NPC {
     this.facing = opts.facing ?? "right";
     const baseRadius = CONFIG.actorRadius ?? 12;
     this.hitRadius = opts.hitRadius ?? opts.radius ?? baseRadius;
+    this.hp = Number.isFinite(opts.hp) ? opts.hp : null;
+    this.maxHp = Number.isFinite(opts.hp) ? opts.hp : null;
+    this.attackDamage = opts.attackDamage ?? null;
+    this.attackRange = opts.attackRange ?? null;
+    this.attackCooldown = 0;
   }
 
   update(dt, target, world) {
@@ -31,7 +36,8 @@ export class NPC {
       const desiredDist = this.keepDistance * 0.35;
       if (dist > desiredDist) {
         const sprintMult = target?.isSprinting ? (CONFIG.sprintMult ?? 1.45) : 1;
-        const step = this.speed * sprintMult * dt * 1.25;
+        const dashMult = target?.isDashing ? 2.2 : 1;
+        const step = this.speed * sprintMult * dashMult * dt * 1.25;
         const mx = (dx / dist) * step;
         const my = (dy / dist) * step;
         const nx = this.x + mx;
@@ -128,5 +134,11 @@ export class NPC {
         break;
       }
     }
+  }
+
+  applyDamage(dmg) {
+    if (!Number.isFinite(this.hp)) return false;
+    this.hp = Math.max(0, this.hp - Math.max(0, dmg || 0));
+    return this.hp === 0;
   }
 }

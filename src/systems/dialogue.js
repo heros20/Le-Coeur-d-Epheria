@@ -45,7 +45,7 @@ class DialogueUI {
     this.index = 0;
     this.sourceId = sourceId;
     this.onClose = onClose || null;
-    this.visibleChars = 0;
+    this.visibleChars = this.lines[0]?.length ?? 0; // affiche toute la ligne immédiatement
   }
   show(lines, opts = {}) { this.open({ lines, ...opts }); }
   isOpen() { return this.active; }
@@ -64,7 +64,7 @@ class DialogueUI {
       this.index++;
     }
     if (!this._hasCurrent()) this.close();
-    else this.visibleChars = 0;
+    else this.visibleChars = this.lines[this.index]?.length ?? 0;
   }
 
   next() {
@@ -79,7 +79,7 @@ class DialogueUI {
     if (!this._hasCurrent()) { this.close(); return; }
     const line = this.lines[this.index];
     if (line) {
-      this.visibleChars = Math.min(line.length, this.visibleChars + (this.revealSpeed * (dt ?? 0)));
+      this.visibleChars = line.length; // pas de reveal progressif
     }
     if (this.sourceId && typeof isSourceStillValid === "function") {
       if (!isSourceStillValid(this.sourceId)) this.close();

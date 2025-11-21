@@ -51,6 +51,9 @@ export class Player {
     this.sprintMult = CONFIG.sprintMult ?? 1.45;
     this.shadowPenalty = CONFIG.shadowPenalty ?? 0.8;
     this.isSprinting = false;
+    this.isDashing = false;
+    this.hitFlash = 0;
+    this.attackFlash = 0;
 
     this.recoveryCooldown = 0;
     this.recoveryDelay = CONFIG.staminaDelay ?? 0.6;
@@ -138,12 +141,15 @@ export class Player {
     const dashSpeed =
       this.dashDistance / Math.max(0.05, this.dashDuration || 0.05);
     if (this._dashActive > 0) {
+      this.isDashing = true;
       usingMouseMove = true;
       const mag = Math.hypot(this._dashDir.x, this._dashDir.y) || 1;
       vx = this._dashDir.x / mag;
       vy = this._dashDir.y / mag;
       sp = dashSpeed;
       this._dashActive = Math.max(0, this._dashActive - dt);
+    } else {
+      this.isDashing = false;
     }
 
     const collidesWithOrbs = (x, y, radius) => {
@@ -243,6 +249,7 @@ export class Player {
   applyDamage(amount) {
     if (amount <= 0 || this.hp <= 0) return;
     this.hp = Math.max(0, this.hp - amount);
+    this.hitFlash = 0.35;
     if (this.hp === 0) {
       this.animator.play("dead", { sticky: true, force: true });
       return;
@@ -269,6 +276,19 @@ export class Player {
         dw,
         dh
       );
+      const flashA = Math.max(0, this.hitFlash) / 0.35;
+      const flashB = Math.max(0, this.attackFlash) / 0.2;
+      const alpha = flashA * 0.45 + flashB * 0.35;
+      if (alpha > 0.01) {
+        ctx.save();
+        ctx.globalCompositeOperation = "lighter";
+        ctx.globalAlpha = Math.min(0.7, alpha);
+        ctx.fillStyle = flashA >= flashB ? "rgba(255,70,90,1)" : "rgba(90,200,255,1)";
+        ctx.beginPath();
+        ctx.ellipse(this.x, this.y, dw * 0.35, dh * 0.35, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
     } else if (this.img) {
       const baseW = 64 * this.scale;
       const baseH = 64 * this.scale;
@@ -285,6 +305,8 @@ export class Player {
   _tickCooldowns(dt) {
     if (this.recoveryCooldown > 0) this.recoveryCooldown -= dt;
     if (this.hurtCooldown > 0) this.hurtCooldown -= dt;
+    if (this.hitFlash > 0) this.hitFlash = Math.max(0, this.hitFlash - dt);
+    if (this.attackFlash > 0) this.attackFlash = Math.max(0, this.attackFlash - dt);
     if (this._attackTimer > 0) {
       this._attackTimer = Math.max(0, this._attackTimer - dt);
       if (this._attackTimer === 0) this._attackCanHit = false;
@@ -319,6 +341,7 @@ export class Player {
 
   confirmAttackHit() {
     this._attackCanHit = false;
+    this.attackFlash = 0.2;
   }
 
   resetCombatState() {
