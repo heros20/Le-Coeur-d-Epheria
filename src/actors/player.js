@@ -2,7 +2,7 @@ import { CONFIG } from "../config.js";
 import { Keys } from "../input.js";
 import { Animator } from "../utils/animator.js";
 
-const SPRINT_KEYS = ["2", "\u00E9", "o"];
+const SPRINT_KEYS = ["5", "\u00E9", "o"];
 
 export class Player {
   constructor(img, x, y, animations = {}, opts = {}) {
@@ -324,6 +324,10 @@ export class Player {
   }
 
   _getFacingVector() {
+    if (this._aimDir && Number.isFinite(this._aimDir.x) && Number.isFinite(this._aimDir.y)) {
+      const mag = Math.hypot(this._aimDir.x, this._aimDir.y) || 1;
+      return { x: this._aimDir.x / mag, y: this._aimDir.y / mag };
+    }
     return this.facing === "left" ? { x: -1, y: 0 } : { x: 1, y: 0 };
   }
 
@@ -368,6 +372,11 @@ export class Player {
   }
 
   _getFacingVector() {
+    const a = this._aimDir;
+    if (a && Number.isFinite(a.x) && Number.isFinite(a.y)) {
+      const m = Math.hypot(a.x, a.y) || 1;
+      if (m > 0.001) return { x: a.x / m, y: a.y / m };
+    }
     return this.facing === "left" ? { x: -1, y: 0 } : { x: 1, y: 0 };
   }
 

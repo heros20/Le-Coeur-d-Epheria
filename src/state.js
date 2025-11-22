@@ -33,6 +33,9 @@ export const State = {
   activeBossTrack: null,
   questAnnouncement: null,
   questPromptCooldown: 0,
+  floatingTexts: [],
+  projectiles: [],
+  lastAim: { x: 1, y: 0 },
   flags: {
     foundShrine: 0,
     betrayalHappened: false,
@@ -41,6 +44,7 @@ export const State = {
     enemyWarningSpoken: false,
     kaelDown: false,
     kaelAggro: false,
+    questCompletedShown: false,
     kaelMet: false,
     kaelDefeated: false,
     kaelPhaseTwoStarted: false,

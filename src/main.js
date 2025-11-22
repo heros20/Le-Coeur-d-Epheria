@@ -1000,11 +1000,13 @@ function syncDialogueOverlay() {
     const { player, map } = State;
 
     State.questPromptCooldown = Math.max(0, (State.questPromptCooldown ?? 0) - dt);
+    updateFloatingTexts(dt);
 
     const camera = State.camera;
     const pointerData = null;
     State.pointer = pointerData;
     let moveVectorInput = null;
+    let currentAim = State.lastAim ?? { x: 1, y: 0 };
     if (State.isMobile) {
       const touchVector = getTouchMoveVector();
       if (touchVector) {
@@ -1017,9 +1019,15 @@ function syncDialogueOverlay() {
         const { x, y } = keyboardVector;
         const dist = Math.hypot(x, y) || 1;
         moveVectorInput = { x, y, dist, source: "keyboard" };
+        if (dist > 0.01) currentAim = { x: x / dist, y: y / dist };
       }
     }
-
+    // si aucune entrée de déplacement, aligner l'aim sur le facing horizontal
+    if ((!moveVectorInput || moveVectorInput.dist === 0) && State.player) {
+      currentAim = State.player.facing === "left" ? { x: -1, y: 0 } : { x: 1, y: 0 };
+    }
+    State.lastAim = currentAim;
+    if (State.player) State.player._aimDir = currentAim;
     if (!State.attackInput) {
       State.attackInput = { lastTap: -Infinity, holdStart: 0, wasHeld: false, pendingDouble: false };
     }
@@ -1058,9 +1066,10 @@ function syncDialogueOverlay() {
 
     const dashPressed = consume(" ") || (State.isMobile && consumeMobileDashPress());
     const potionPressed = consume("p");
-    const quickItemPressed = consume("3") || consume("m");
+    const quickItemPressed = consume("l") || consume("2");
     const jumpPressed = consume("j");
     const interactPressed = consume("e");
+    const rangedPressed = consume("3") || consume("m");
 
     // E pour interagir uniquement si aucun dialogue en cours
     if (State.paused || State.orbPromptOpen) {
@@ -1085,6 +1094,9 @@ function syncDialogueOverlay() {
 
     if (potionPressed) tryUsePotion();
     if (quickItemPressed) tryUseQuickItem();
+    if (rangedPressed && player.rangedCooldown <= 0) {
+      fireRangedAttack(player, currentAim);
+    }
 
     if (interactPressed && !State.dialogue.isOpen()) tryInteract();
 
@@ -1105,6 +1117,8 @@ function syncDialogueOverlay() {
     enforcePreKaelBoundary(player);
     handlePickups();
     maybeTriggerPrincessHint();
+    checkPrincessQuestCompletion(player);
+    updateProjectiles(dt);
     if (dashPressed) {
       const keyboardVector = getKeyboardMoveVector();
       const pointerVector = pointerData
@@ -1890,13 +1904,18 @@ function syncDialogueOverlay() {
     return {
       x,
       y,
-      hp: 55,
-      maxHp: 55,
+      hp: 70,
+      maxHp: 70,
       speed: 60,
       chaseSpeed: 115,
       attackRange: 26,
       attackDamage: 8,
       attackCooldown: 0,
+      specialCooldown: 0,
+      specialFlash: 0,
+      specialState: null,
+      chargeTimer: 0,
+      chargeMax: 0,
       hurtTimer: 0,
       dead: false,
       scale: 0.128,
@@ -1936,6 +1955,8 @@ function syncDialogueOverlay() {
       ghost.attackCooldown = Math.max(0, (ghost.attackCooldown ?? 0) - dt);
       ghost.hurtTimer = Math.max(0, (ghost.hurtTimer ?? 0) - dt);
       ghost.hitFlash = Math.max(0, (ghost.hitFlash ?? 0) - dt);
+      ghost.specialCooldown = Math.max(0, (ghost.specialCooldown ?? 0) - dt);
+      ghost.specialFlash = Math.max(0, (ghost.specialFlash ?? 0) - dt);
       if (ghost.dead) {
         ghost.animator?.update?.(dt);
         continue;
@@ -1959,6 +1980,43 @@ function syncDialogueOverlay() {
       }
 
       let baseAction = "idle";
+
+      // Attaque speciale (charge puis explosion type Zelda)
+      if (!ghost.specialState && ghost.specialCooldown <= 0 && dist < 120) {
+        ghost.specialState = "charging";
+        ghost.chargeMax = 0.9;
+        ghost.chargeTimer = ghost.chargeMax;
+      }
+
+      if (ghost.specialState === "charging") {
+        ghost.chargeTimer = Math.max(0, ghost.chargeTimer - dt);
+        baseAction = "attack";
+        ghost.specialFlash = Math.max(ghost.specialFlash, 0.2);
+        if (ghost.chargeTimer <= 0) {
+          ghost.specialState = null;
+          ghost.specialCooldown = 5;
+          ghost.specialFlash = 0.65;
+          const blastRadius = 70;
+          const applyBlast = (t) => {
+            if (!t) return;
+            const dd = Math.hypot(t.x - ghost.x, t.y - ghost.y);
+            if (dd < blastRadius) {
+              t.applyDamage?.(ghost.attackDamage * 1.8);
+              State.flags.kaelAggro = true;
+              spawnFloatingText(-Math.round(ghost.attackDamage * 1.8), t.x, t.y - 14, {
+                color: "rgba(255,80,80,0.95)",
+                stroke: "rgba(0,0,0,0.7)",
+              });
+            }
+          };
+          applyBlast(player);
+          if (kaelAlive) applyBlast(kael);
+        }
+        ghost.animator?.setBase?.(baseAction);
+        ghost.animator?.update?.(dt);
+        continue;
+      }
+
       if (dist < 50) {
         const step = ghost.chaseSpeed * dt;
         const moved = moveGhost(
@@ -1969,21 +2027,173 @@ function syncDialogueOverlay() {
           { x: dx / dist, y: dy / dist }
         );
         baseAction = moved ? "run" : "idle";
-      if (dist < ghost.attackRange && ghost.attackCooldown <= 0) {
+        if (dist < ghost.attackRange && ghost.attackCooldown <= 0) {
           State.flags.kaelAggro = true;
+          const dmg = ghost.attackDamage;
           if (target === kael) {
-            if (kael.applyDamage(ghost.attackDamage)) {
+            if (kael.applyDamage(dmg)) {
               handleKaelDeath();
             }
           } else {
-            target.applyDamage?.(ghost.attackDamage);
+            target.applyDamage?.(dmg);
           }
+          spawnFloatingText(-dmg, target.x, target.y - 14, {
+            color: "rgba(255,80,80,0.95)",
+            stroke: "rgba(0,0,0,0.7)",
+          });
           ghost.attackCooldown = 1.35;
           ghost.animator?.play?.("attack", { force: true });
         }
+        // attaque spéciale : impulsion visuelle et dégâts si trop proche
       }
       ghost.animator?.setBase?.(baseAction);
       ghost.animator?.update?.(dt);
+    }
+  }
+
+  function spawnFloatingText(value, x, y, opts = {}) {
+    State.floatingTexts.push({
+      value: Math.round(value),
+      x,
+      y,
+      lifetime: 1,
+      maxLifetime: 1,
+      vy: -30 - Math.random() * 20,
+      color: opts.color || "rgba(255,215,110,1)",
+      stroke: opts.stroke || "rgba(0,0,0,0.65)",
+    });
+  }
+
+  function fireRangedAttack(player, dir = { x: 1, y: 0 }) {
+    const mag = Math.hypot(dir.x, dir.y) || 1;
+    const vx = dir.x / mag;
+    const vy = dir.y / mag;
+    const speed = 600;
+    const maxDist = 70;
+    const life = maxDist / speed;
+    State.projectiles.push({
+      x: player.x + vx * 12,
+      y: player.y + vy * 12,
+      vx: vx * speed,
+      vy: vy * speed,
+      lifetime: life,
+      damage: 10,
+      hit: false,
+    });
+    player.rangedCooldown = 0.35;
+  }
+
+  function updateProjectiles(dt) {
+    const arr = State.projectiles ?? [];
+    const ghosts = State.ghosts;
+    const map = State.map;
+    const remaining = [];
+    arr.forEach((p) => {
+      if (!p || p.lifetime <= 0) return;
+      p.lifetime -= dt;
+      p.x += p.vx * dt;
+      p.y += p.vy * dt;
+      // stop if blocked by wall
+      if (map?.isBlocked?.(p.x, p.y)) return;
+      let hit = false;
+      if (Array.isArray(ghosts)) {
+        for (const g of ghosts) {
+          if (!g || g.dead) continue;
+          const size = Math.max(28, (g.scale ?? 0.128) * 140);
+          const d = Math.hypot(p.x - g.x, p.y - g.y);
+          if (d < size * 0.5) {
+            g.hp = Math.max(0, g.hp - p.damage);
+            g.hurtTimer = 0.25;
+            g.hitFlash = 0.35;
+            spawnFloatingText(p.damage, g.x, g.y - 18, { color: "rgba(255,215,110,1)" });
+            if (g.hp === 0 && !g.dead) {
+              g.dead = true;
+              g.animator?.play?.("dead", { sticky: true, force: true });
+            }
+            hit = true;
+            State.flags.kaelAggro = true;
+            break;
+          }
+        }
+      }
+      if (!hit && p.lifetime > 0) remaining.push(p);
+    });
+    State.projectiles = remaining;
+    if (State.player) {
+      State.player.rangedCooldown = Math.max(0, (State.player.rangedCooldown ?? 0) - dt);
+    }
+  }
+
+  function drawProjectiles(ctx, camX, camY, scaleX, scaleY) {
+    const arr = State.projectiles ?? [];
+    if (!arr.length) return;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    arr.forEach((p) => {
+      const sx = (p.x - camX) * scaleX;
+      const sy = (p.y - camY) * scaleY;
+      const len = 21;
+      const dir = Math.atan2(p.vy, p.vx);
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(dir);
+      const grad = ctx.createLinearGradient(-len, 0, len, 0);
+      grad.addColorStop(0, "rgba(255,215,80,0)");
+      grad.addColorStop(0.5, "rgba(255,230,130,0.95)");
+      grad.addColorStop(1, "rgba(255,215,80,0)");
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 4;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(-len, 0);
+      ctx.lineTo(len, 0);
+      ctx.stroke();
+      ctx.restore();
+    });
+    ctx.restore();
+  }
+
+  function updateFloatingTexts(dt) {
+    const arr = State.floatingTexts;
+    if (!Array.isArray(arr)) return;
+    for (const ft of arr) {
+      ft.lifetime = Math.max(0, ft.lifetime - dt);
+      ft.y += ft.vy * dt;
+    }
+    State.floatingTexts = arr.filter((ft) => ft.lifetime > 0);
+  }
+
+  function drawFloatingTexts(ctx, camX, camY, scaleX, scaleY) {
+    const arr = State.floatingTexts;
+    if (!Array.isArray(arr) || arr.length === 0) return;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.textAlign = "center";
+    ctx.font = "bold 18px 'Segoe UI', sans-serif";
+    for (const ft of arr) {
+      const alpha = ft.lifetime / ft.maxLifetime;
+      const sx = (ft.x - camX) * scaleX;
+      const sy = (ft.y - camY) * scaleY;
+      ctx.globalAlpha = Math.min(1, alpha + 0.2);
+      ctx.fillStyle = ft.color || "rgba(255,215,110,1)";
+      ctx.strokeStyle = ft.stroke || "rgba(0,0,0,0.65)";
+      ctx.lineWidth = 2;
+      ctx.strokeText(ft.value, sx, sy);
+      ctx.fillText(ft.value, sx, sy);
+    }
+    ctx.restore();
+  }
+
+  function checkPrincessQuestCompletion(player) {
+    if (!State.flags.princessQuestAccepted) return;
+    if (State.flags.questCompletedShown) return;
+    const princess = State.princess;
+    if (!princess) return;
+    const dist = Math.hypot(player.x - princess.x, player.y - princess.y);
+    if (dist <= 50) {
+      State.flags.questCompletedShown = true;
+      State.questAnnouncement = { title: "Quete terminee", subtitle: "Rejoins la princesse", timer: 4, max: 4 };
+      pushStatus("Princesse trouvee !");
     }
   }
 
@@ -2012,6 +2222,7 @@ function syncDialogueOverlay() {
         ghost.dead = true;
         ghost.animator?.play?.("dead", { sticky: true, force: true });
       }
+      spawnFloatingText(damage, ghost.x, ghost.y - 20, { color: "rgba(255,215,110,1)" });
       State.flags.kaelAggro = true;
     });
   }
@@ -2039,6 +2250,7 @@ function syncDialogueOverlay() {
         ghost.dead = true;
         ghost.animator?.play?.("dead", { sticky: true, force: true });
       }
+      spawnFloatingText(dmg, ghost.x, ghost.y - 20, { color: "rgba(255,215,110,1)" });
       break;
     }
   }
@@ -2181,6 +2393,31 @@ function syncDialogueOverlay() {
           ctx.beginPath();
           ctx.ellipse(ghost.x, ghost.y, flashWx, flashWy, 0, 0, Math.PI * 2);
           ctx.fill();
+          ctx.restore();
+        }
+        if (ghost.specialState === "charging") {
+          const progress = 1 - ghost.chargeTimer / Math.max(ghost.chargeMax || 1, 0.0001);
+          const radius = Math.max(flashWx, flashWy) * (1.2 + progress * 1.0);
+          ctx.save();
+          ctx.globalAlpha = 0.7;
+          ctx.strokeStyle = "rgba(255,223,120,0.9)";
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.arc(ghost.x, ghost.y, radius, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
+        if (ghost.specialFlash > 0) {
+          const alpha = Math.min(0.55, ghost.specialFlash / 0.55);
+          ctx.save();
+          ctx.globalCompositeOperation = "lighter";
+          ctx.globalAlpha = alpha;
+          const radius = Math.max(flashWx, flashWy) * 1.6;
+          ctx.strokeStyle = "rgba(120,200,255,0.9)";
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.arc(ghost.x, ghost.y, radius, 0, Math.PI * 2);
+          ctx.stroke();
           ctx.restore();
         }
       }
@@ -2484,6 +2721,8 @@ function syncDialogueOverlay() {
     if (State.questAnnouncement) {
       drawQuestBanner(ctx, playerScreenX, playerScreenY - 80, State.questAnnouncement);
     }
+    drawFloatingTexts(ctx, camX, camY, scaleX, scaleY);
+    drawProjectiles(ctx, camX, camY, scaleX, scaleY);
 
     // post-processing
     applyLighting(ctx, State.mode, playerScreenX, playerScreenY, player.torchOn);

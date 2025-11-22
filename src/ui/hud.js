@@ -125,14 +125,20 @@ export function createHUD() {
             <span class="helper-desc-inline">Attaquer</span>
           </div>
           <div class="helper-keys">
-            <span class="key">2</span>
+            <span class="key">5</span>
+            <span class="key">\u00E9</span>
             <span class="key">O</span>
             <span class="helper-desc-inline">Sprint</span>
           </div>
           <div class="helper-keys">
             <span class="key">3</span>
             <span class="key">M</span>
-            <span class="helper-desc-inline">Utiliser un objet</span>
+            <span class="helper-desc-inline">Attaque \u00e0 distance</span>
+          </div>
+          <div class="helper-keys">
+            <span class="key">L</span>
+            <span class="key">2</span>
+            <span class="helper-desc-inline">Objet rapide</span>
           </div>
           
           <div class="helper-keys">
