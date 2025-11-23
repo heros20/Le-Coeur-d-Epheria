@@ -8,8 +8,10 @@ export const CONFIG = {
   collisionCell: 1,
   // decallage leger : on s'aligne exactement sur les coordonnées du map.json
   collisionOffset: { x: 13, y: -8 },
+  // on élargit légèrement les collisions pour éviter de traverser les murs
+  collisionInflation: 1.15,
 
-  playerAttackRadius: 22,
+  playerAttackRadius: 25.3,
   playerAttackDuration: 0.28,
   playerMouseDeadzone: 18,
   dashDistance: 140,

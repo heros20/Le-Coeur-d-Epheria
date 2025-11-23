@@ -323,16 +323,53 @@ export class BossKael {
 
   draw(ctx) {
     if (this.telegraph) {
+      const radius = this.telegraph.radius;
+      const progress = Math.max(0, Math.min(1, this.telegraph.progress ?? 0));
+      const pulse = Math.sin((typeof performance !== "undefined" ? performance.now() : Date.now()) * 0.008) * 0.08 + 0.9;
       ctx.save();
-      ctx.globalAlpha = 0.35;
-      ctx.fillStyle = "rgba(255, 80, 64, 0.25)";
+      ctx.globalCompositeOperation = "lighter";
+
+      const fillGrad = ctx.createRadialGradient(
+        this.lastTarget.x,
+        this.lastTarget.y,
+        radius * 0.1,
+        this.lastTarget.x,
+        this.lastTarget.y,
+        radius * 1.1
+      );
+      fillGrad.addColorStop(0, `rgba(255, 200, 150, ${0.9 * pulse})`);
+      fillGrad.addColorStop(0.55, "rgba(255, 120, 60, 0.25)");
+      fillGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
+      ctx.fillStyle = fillGrad;
       ctx.beginPath();
-      ctx.arc(this.lastTarget.x, this.lastTarget.y, this.telegraph.radius, 0, Math.PI * 2);
+      ctx.arc(this.lastTarget.x, this.lastTarget.y, radius * (1 + progress * 0.2), 0, Math.PI * 2);
       ctx.fill();
-      ctx.lineWidth = 3;
-      ctx.setLineDash([8, 10]);
-      ctx.strokeStyle = "rgba(255, 150, 90, 0.9)";
+
+      const ringAlpha = 0.35 + progress * 0.5;
+      ctx.lineWidth = 3 + progress * 2;
+      ctx.setLineDash([6, 10]);
+      ctx.strokeStyle = `rgba(255, 210, 140, ${ringAlpha})`;
+      ctx.beginPath();
+      ctx.arc(this.lastTarget.x, this.lastTarget.y, radius * (1 - progress * 0.1), 0, Math.PI * 2);
       ctx.stroke();
+
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+      ctx.strokeStyle = `rgba(255, 255, 255, ${0.5 + progress * 0.3})`;
+      for (let i = 0; i < 4; i++) {
+        const angle = (Math.PI * 0.5 * i) + progress * 1.8;
+        ctx.beginPath();
+        ctx.moveTo(
+          this.lastTarget.x + Math.cos(angle) * radius * 0.6,
+          this.lastTarget.y + Math.sin(angle) * radius * 0.6
+        );
+        ctx.lineTo(
+          this.lastTarget.x + Math.cos(angle) * radius * 1.05,
+          this.lastTarget.y + Math.sin(angle) * radius * 1.05
+        );
+        ctx.stroke();
+      }
+
       ctx.restore();
     }
 
@@ -556,19 +593,59 @@ export class BossKael {
   _drawOrbs(ctx) {
     if (this.orbs.length === 0) return;
     ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const time = (typeof performance !== "undefined" ? performance.now() : Date.now()) * 0.001;
     for (const orb of this.orbs) {
-      ctx.globalAlpha = orb.state === "orbit" ? 0.8 : 1;
+      const baseRadius = orb.state === "orbit" ? 16 : 18;
+      const glowRadius = baseRadius * 1.7;
+      const fade = orb.state === "orbit" ? 0.7 : 1;
+      const gradient = ctx.createRadialGradient(orb.x, orb.y, baseRadius * 0.3, orb.x, orb.y, glowRadius);
+      gradient.addColorStop(0, `rgba(255,255,255,${0.9 * fade})`);
+      gradient.addColorStop(0.45, `rgba(255,200,140,${0.75 * fade})`);
+      gradient.addColorStop(1, "rgba(255,90,70,0)");
+      ctx.fillStyle = gradient;
+      ctx.globalAlpha = fade;
+      ctx.beginPath();
+      ctx.arc(orb.x, orb.y, glowRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.globalAlpha = 0.8 * fade;
       ctx.fillStyle = orb.color;
       ctx.beginPath();
-      ctx.arc(orb.x, orb.y, 14, 0, Math.PI * 2);
+      ctx.arc(orb.x, orb.y, baseRadius, 0, Math.PI * 2);
       ctx.fill();
-      if (orb.state === "launch") {
-        ctx.strokeStyle = orb.color;
-        ctx.globalAlpha = 0.5;
+
+      if (orb.state === "orbit") {
+        const spin = time * 2 + orb.angle * 0.5;
         ctx.lineWidth = 2;
+        ctx.strokeStyle = `rgba(255,255,255,${0.35 + Math.sin(spin) * 0.15})`;
         ctx.beginPath();
-        ctx.arc(orb.x, orb.y, 20, 0, Math.PI * 2);
+        for (let s = 0; s < 3; s++) {
+          const offset = spin + (Math.PI * 2 * s) / 3;
+          ctx.arc(
+            orb.x,
+            orb.y,
+            baseRadius + s * 5,
+            offset,
+            offset + Math.PI * 0.4
+          );
+        }
         ctx.stroke();
+      } else if (orb.state === "launch") {
+        ctx.strokeStyle = `rgba(255,220,185,${0.5 + Math.sin(time * 4) * 0.25})`;
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(orb.x, orb.y, baseRadius + 12, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.globalAlpha = 0.45;
+        const trailLength = 40;
+        ctx.strokeStyle = `rgba(255,255,255,${0.8 * fade})`;
+        ctx.beginPath();
+        ctx.moveTo(orb.x - orb.dirX * trailLength, orb.y - orb.dirY * trailLength);
+        ctx.lineTo(orb.x - orb.dirX * (trailLength * 0.3), orb.y - orb.dirY * (trailLength * 0.3));
+        ctx.stroke();
+        ctx.globalAlpha = 1;
       }
     }
     ctx.restore();
@@ -622,45 +699,72 @@ export class BossKael {
 
   _drawSigils(ctx) {
     if (!this.sigils.length) return;
+    const time = (typeof performance !== "undefined" ? performance.now() : Date.now()) * 0.001;
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     for (const sigil of this.sigils) {
-      ctx.lineWidth = 3;
-      ctx.setLineDash([8, 10]);
-      ctx.strokeStyle = sigil.exploding ? "rgba(255,255,255,0.9)" : "rgba(120, 200, 255, 0.7)";
-      ctx.globalAlpha = sigil.exploding ? 0.75 : 0.5;
-      const radius = sigil.radius + (sigil.exploding ? (1 - Math.max(0, sigil.timer) / sigil.explode) * 25 : 0);
+      const pulse = Math.sin(time * 8 + (sigil.x + sigil.y) * 0.05) * 0.15 + 0.85;
+      const radius =
+        sigil.radius +
+        (sigil.exploding ? (1 - Math.max(0, sigil.timer) / sigil.explode) * 35 : 0) +
+        pulse * 3;
+      ctx.lineWidth = sigil.exploding ? 4 : 2;
+      ctx.setLineDash(sigil.exploding ? [12, 14] : [6, 8]);
+      ctx.strokeStyle = sigil.exploding ? "rgba(255,220,160,0.9)" : `rgba(120, 200, 255, ${0.55 + pulse * 0.3})`;
+      ctx.globalAlpha = sigil.exploding ? 0.8 : 0.6;
       ctx.beginPath();
       ctx.arc(sigil.x, sigil.y, radius, 0, Math.PI * 2);
       ctx.stroke();
+
+      ctx.setLineDash([]);
+      ctx.globalAlpha = sigil.exploding ? 0.35 : 0.15;
+      const glowRadius = radius * (sigil.exploding ? 1.1 : 0.9);
+      const glow = ctx.createRadialGradient(
+        sigil.x,
+        sigil.y,
+        glowRadius * 0.15,
+        sigil.x,
+        sigil.y,
+        glowRadius
+      );
+      glow.addColorStop(0, "rgba(255,255,255,0.8)");
+      glow.addColorStop(0.4, "rgba(255,160,110,0.35)");
+      glow.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(sigil.x, sigil.y, glowRadius, 0, Math.PI * 2);
+      ctx.fill();
+
       if (sigil.exploding) {
-        ctx.setLineDash([]);
-        ctx.globalAlpha = 0.25;
-        const gradient = ctx.createRadialGradient(sigil.x, sigil.y, 0, sigil.x, sigil.y, radius);
-        gradient.addColorStop(0, "rgba(255,255,255,0.65)");
-        gradient.addColorStop(0.45, "rgba(255,140,120,0.35)");
-        gradient.addColorStop(1, "rgba(255,255,255,0)");
-        ctx.fillStyle = gradient;
-        ctx.beginPath();
-        ctx.arc(sigil.x, sigil.y, radius * 0.65, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 0.7;
-        ctx.strokeStyle = "rgba(255, 200, 120, 0.8)";
+        ctx.globalAlpha = 0.6;
+        ctx.strokeStyle = "rgba(255, 210, 150, 0.9)";
         ctx.lineWidth = 2;
-        ctx.beginPath();
-        for (let i = 0; i < 6; i++) {
-          const angle = (Math.PI * 2 * i) / 6;
-          const inner = radius * 0.3;
+        const ringCount = 5;
+        for (let i = 0; i < ringCount; i++) {
+          const controlRadius = radius * (0.6 + (i / ringCount) * 0.4);
+          const offset = Math.sin(time * 6 + i) * 6;
+          ctx.beginPath();
+          ctx.arc(sigil.x, sigil.y, controlRadius + offset, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+
+        ctx.globalAlpha = 0.8;
+        ctx.lineWidth = 2.2;
+        ctx.strokeStyle = "rgba(255, 235, 190, 0.7)";
+        for (let i = 0; i < 12; i++) {
+          const angle = (Math.PI * 2 * i) / 12 + time * 0.6;
+          const inner = radius * 0.35;
+          ctx.beginPath();
           ctx.moveTo(
             sigil.x + Math.cos(angle) * inner,
             sigil.y + Math.sin(angle) * inner
           );
           ctx.lineTo(
-            sigil.x + Math.cos(angle) * radius,
-            sigil.y + Math.sin(angle) * radius
+            sigil.x + Math.cos(angle) * (radius + 10),
+            sigil.y + Math.sin(angle) * (radius + 10)
           );
+          ctx.stroke();
         }
-        ctx.stroke();
       }
     }
     ctx.restore();
@@ -708,21 +812,58 @@ export class BossKael {
     if (!this.clones.length) return;
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
+    const time = (typeof performance !== "undefined" ? performance.now() : Date.now()) * 0.001;
     for (const clone of this.clones) {
       const lifeRatio = clone.life > 0 ? Math.max(0, clone.timer / clone.life) : 0;
-      const radius = 18 + (1 - lifeRatio) * 16;
-      const alpha = 0.2 + (1 - lifeRatio) * 0.6;
-      const tailLength = 40 + (1 - lifeRatio) * 60;
-      ctx.fillStyle = `rgba(140, 220, 255, ${alpha})`;
+      const radius = 20 + (1 - lifeRatio) * 20;
+      const alpha = 0.25 + (1 - lifeRatio) * 0.65;
+      const tailLength = 50 + (1 - lifeRatio) * 70;
+      const glow = ctx.createRadialGradient(clone.x, clone.y, radius * 0.15, clone.x, clone.y, radius * 1.4);
+      glow.addColorStop(0, `rgba(180, 230, 255, ${alpha})`);
+      glow.addColorStop(0.6, `rgba(100, 170, 255, ${alpha * 0.4})`);
+      glow.addColorStop(1, "rgba(50, 100, 255, 0)");
+      ctx.fillStyle = glow;
       ctx.beginPath();
       ctx.arc(clone.x, clone.y, radius, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = `rgba(140, 220, 255, ${alpha * 0.8})`;
-      ctx.lineWidth = 4;
+
+      ctx.strokeStyle = `rgba(190, 235, 255, ${alpha})`;
+      ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(clone.x, clone.y);
       ctx.lineTo(clone.x - clone.dirX * tailLength, clone.y - clone.dirY * tailLength);
       ctx.stroke();
+
+      ctx.globalAlpha = 0.6;
+      const energy = ctx.createLinearGradient(
+        clone.x,
+        clone.y,
+        clone.x - clone.dirX * tailLength,
+        clone.y - clone.dirY * tailLength
+      );
+      energy.addColorStop(0, `rgba(255,255,255,${0.7 + lifeRatio * 0.2})`);
+      energy.addColorStop(1, "rgba(50, 150, 255, 0)");
+      ctx.strokeStyle = energy;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath();
+      ctx.moveTo(clone.x, clone.y);
+      ctx.lineTo(clone.x - clone.dirX * (tailLength * 0.65), clone.y - clone.dirY * (tailLength * 0.65));
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.globalAlpha = 0.4;
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      ctx.beginPath();
+      ctx.arc(
+        clone.x - clone.dirX * (tailLength * 0.9),
+        clone.y - clone.dirY * (tailLength * 0.9),
+        6 + Math.sin(time * 12 + clone.dirX * 8) * 3,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+      ctx.globalAlpha = 1;
     }
     ctx.restore();
   }
@@ -777,29 +918,80 @@ export class BossKael {
     ctx.rotate(beam.angle);
     const reach = beam.reach;
     const width = beam.width * (beam.active ? 1 : 0.5);
-    ctx.globalAlpha = beam.active ? 0.65 : 0.35;
-    const gradient = ctx.createLinearGradient(0, 0, reach, 0);
-    gradient.addColorStop(0, "rgba(255,255,255,0.4)");
-    gradient.addColorStop(0.4, "rgba(255,160,120,0.7)");
-    gradient.addColorStop(1, "rgba(255,90,60,0.1)");
+    const headRadius = Math.max(width * 2.8, 35);
+    const bodyEnd = Math.max(0, reach - headRadius * 0.5);
+    ctx.globalAlpha = beam.active ? 0.85 : 0.5;
+    const gradient = ctx.createLinearGradient(0, 0, bodyEnd, 0);
+    gradient.addColorStop(0, "rgba(255,255,255,0.8)");
+    gradient.addColorStop(0.4, "rgba(255,200,140,0.9)");
+    gradient.addColorStop(0.7, "rgba(255,150,80,0.7)");
+    gradient.addColorStop(1, "rgba(255,90,45,0.05)");
     ctx.fillStyle = gradient;
     ctx.beginPath();
     ctx.moveTo(0, -width);
-    ctx.lineTo(reach, -width * 0.35);
-    ctx.lineTo(reach, width * 0.35);
+    ctx.lineTo(bodyEnd, -width * 0.5);
+    ctx.lineTo(bodyEnd, width * 0.5);
     ctx.lineTo(0, width);
     ctx.closePath();
     ctx.fill();
-    ctx.globalAlpha = beam.active ? 0.4 : 0.2;
+
+    ctx.save();
+    const headCenter = bodyEnd + headRadius * 0.3;
+    ctx.globalAlpha = beam.active ? 0.7 : 0.4;
+    const headGradient = ctx.createRadialGradient(
+      headCenter,
+      0,
+      headRadius * 0.2,
+      headCenter,
+      0,
+      headRadius * 1.05
+    );
+    headGradient.addColorStop(0, "rgba(255,255,255,0.95)");
+    headGradient.addColorStop(0.3, "rgba(255,210,140,0.6)");
+    headGradient.addColorStop(0.7, "rgba(255,90,40,0.25)");
+    headGradient.addColorStop(1, "rgba(255,60,30,0)");
+    ctx.fillStyle = headGradient;
+    ctx.beginPath();
+    ctx.arc(headCenter, 0, headRadius, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = beam.active ? 0.5 : 0.25;
+    ctx.strokeStyle = "rgba(255,255,255,0.9)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(headCenter, 0, headRadius * 1.1, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.globalAlpha = beam.active ? 0.35 : 0.2;
     ctx.strokeStyle = "rgba(255,255,255,0.8)";
     ctx.lineWidth = 2;
-    ctx.setLineDash([12, 10]);
+    ctx.setLineDash([14, 12]);
     ctx.beginPath();
-    ctx.moveTo(0, -width * 0.5);
-    ctx.lineTo(reach, 0);
-    ctx.lineTo(0, width * 0.5);
+    ctx.moveTo(0, -width * 0.8);
+    ctx.lineTo(bodyEnd, -width * 0.4);
+    ctx.lineTo(headCenter, -width * 0.1);
+    ctx.lineTo(headCenter, width * 0.1);
+    ctx.lineTo(bodyEnd, width * 0.4);
+    ctx.lineTo(0, width * 0.8);
     ctx.stroke();
     ctx.setLineDash([]);
+
+    const ripple = ctx.createLinearGradient(0, 0, Math.max(bodyEnd, 200), 0);
+    ripple.addColorStop(0, "rgba(255,255,255,0.8)");
+    ripple.addColorStop(0.5, "rgba(255,200,130,0.25)");
+    ripple.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.globalAlpha = 0.45;
+    ctx.strokeStyle = ripple;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(0, -width * 0.2);
+    ctx.quadraticCurveTo(bodyEnd * 0.5, 0, bodyEnd, 0);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, width * 0.2);
+    ctx.quadraticCurveTo(bodyEnd * 0.5, 0, bodyEnd, 0);
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -860,26 +1052,50 @@ export class BossKael {
     const time = (typeof performance !== "undefined" ? performance.now() : Date.now()) * 0.001;
     for (const meteor of this.meteors) {
       if (meteor.state === "telegraph") {
-        const pulse = Math.sin((meteor.telegraph + time) * 10) * 0.3 + 0.7;
-        ctx.strokeStyle = `rgba(255,120,80,${pulse})`;
-        ctx.lineWidth = 2 + pulse * 4;
+        const pulse = Math.sin((meteor.telegraph + time) * 8) * 0.25 + 0.75;
+        ctx.strokeStyle = `rgba(255,160,100,${pulse})`;
+        ctx.lineWidth = 3 + pulse * 4;
+        ctx.setLineDash([4, 8]);
         ctx.beginPath();
-        ctx.arc(meteor.targetX, meteor.targetY, meteor.radius, 0, Math.PI * 2);
+        ctx.arc(meteor.targetX, meteor.targetY, meteor.radius + pulse * 8, 0, Math.PI * 2);
         ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 0.35;
+        const glow = ctx.createRadialGradient(
+          meteor.targetX,
+          meteor.targetY,
+          meteor.radius * 0.2,
+          meteor.targetX,
+          meteor.targetY,
+          meteor.radius * 1.5
+        );
+        glow.addColorStop(0, "rgba(255,230,180,0.6)");
+        glow.addColorStop(0.5, "rgba(255,120,80,0.15)");
+        glow.addColorStop(1, "rgba(255,120,80,0)");
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(meteor.targetX, meteor.targetY, meteor.radius * 1.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
       } else if (meteor.state === "fall") {
-        ctx.strokeStyle = "rgba(255,180,120,0.9)";
-        ctx.lineWidth = 3;
+        ctx.strokeStyle = "rgba(255,200,130,0.9)";
+        ctx.lineWidth = 3.5;
         ctx.beginPath();
-        ctx.moveTo(meteor.targetX, meteor.targetY - 200);
-        ctx.lineTo(meteor.targetX, meteor.targetY);
+        ctx.moveTo(meteor.targetX, meteor.targetY - 220);
+        ctx.lineTo(meteor.targetX + Math.sin(time * 3) * 12, meteor.targetY);
         ctx.stroke();
-        ctx.fillStyle = "rgba(255,220,120,0.6)";
+        ctx.fillStyle = "rgba(255,220,120,0.8)";
         ctx.beginPath();
-        ctx.arc(meteor.targetX, meteor.targetY - 20, 12, 0, Math.PI * 2);
+        ctx.arc(meteor.targetX + Math.cos(time * 6) * 5, meteor.targetY - 30, 14, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "rgba(255,255,255,0.8)";
+        ctx.beginPath();
+        ctx.arc(meteor.targetX + Math.sin(time * 7) * 3, meteor.targetY - 50, 6, 0, Math.PI * 2);
         ctx.fill();
       } else if (meteor.state === "blast") {
-        const ratio = meteor.blastTimer / meteor.blast;
-        const radius = meteor.radius * (1 + (1 - ratio) * 0.5);
+        const ratio = meteor.blastTimer / Math.max(0.01, meteor.blast);
+        const radius = meteor.radius * (1 + (1 - ratio) * 0.6);
         const grad = ctx.createRadialGradient(
           meteor.targetX,
           meteor.targetY,
@@ -888,13 +1104,21 @@ export class BossKael {
           meteor.targetY,
           radius
         );
-        grad.addColorStop(0, "rgba(255,255,255,0.9)");
-        grad.addColorStop(0.4, "rgba(255,170,90,0.5)");
-        grad.addColorStop(1, "rgba(255,255,255,0)");
+        grad.addColorStop(0, "rgba(255,255,255,0.95)");
+        grad.addColorStop(0.3, "rgba(254,194,111,0.8)");
+        grad.addColorStop(0.6, "rgba(255,120,75,0.4)");
+        grad.addColorStop(1, "rgba(255,60,30,0)");
         ctx.fillStyle = grad;
         ctx.beginPath();
         ctx.arc(meteor.targetX, meteor.targetY, radius, 0, Math.PI * 2);
         ctx.fill();
+        ctx.globalAlpha = 0.6;
+        ctx.strokeStyle = "rgba(255,255,255,0.9)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(meteor.targetX, meteor.targetY, radius * 0.7, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
       }
     }
     ctx.restore();
@@ -938,11 +1162,32 @@ export class BossKael {
     ctx.globalCompositeOperation = "screen";
     for (const wave of this.shockwaves) {
       const alpha = Math.max(0.2, Math.min(0.8, 1 - wave.radius / 520));
-      ctx.strokeStyle = `rgba(255,255,255,${alpha})`;
+      const gradient = ctx.createRadialGradient(
+        this.x,
+        this.y,
+        wave.radius - wave.width * 0.5,
+        this.x,
+        this.y,
+        wave.radius + wave.width * 0.5
+      );
+      gradient.addColorStop(0, "rgba(255,255,255,0)");
+      gradient.addColorStop(0.3, `rgba(255, 255, 255, ${alpha * 0.6})`);
+      gradient.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.strokeStyle = gradient;
       ctx.lineWidth = wave.width;
+      ctx.shadowColor = `rgba(255,235,190,${alpha * 0.6})`;
+      ctx.shadowBlur = 14;
       ctx.beginPath();
       ctx.arc(this.x, this.y, wave.radius, 0, Math.PI * 2);
       ctx.stroke();
+      ctx.shadowBlur = 0;
+
+      ctx.globalAlpha = alpha * 0.6;
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, wave.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
     }
     ctx.restore();
   }
@@ -1007,21 +1252,55 @@ export class BossKael {
     ctx.globalCompositeOperation = "lighter";
     for (const bolt of this.stormBolts) {
       if (bolt.state === "orbit") {
-        ctx.fillStyle = "rgba(120,180,255,0.6)";
+        const pulse = Math.sin(bolt.angle * 4) * 0.5 + 1;
+        const orbitRadius = 9 + pulse * 3;
+        const glow = ctx.createRadialGradient(
+          bolt.previewX ?? this.x,
+          bolt.previewY ?? this.y,
+          0,
+          bolt.previewX ?? this.x,
+          bolt.previewY ?? this.y,
+          orbitRadius * 1.6
+        );
+        glow.addColorStop(0, "rgba(255,255,255,0.65)");
+        glow.addColorStop(0.5, "rgba(115,180,255,0.45)");
+        glow.addColorStop(1, "rgba(115,180,255,0)");
+        ctx.fillStyle = glow;
         ctx.beginPath();
-        ctx.arc(bolt.previewX ?? this.x, bolt.previewY ?? this.y, 12, 0, Math.PI * 2);
+        ctx.arc(bolt.previewX ?? this.x, bolt.previewY ?? this.y, orbitRadius * 1.6, 0, Math.PI * 2);
         ctx.fill();
+        ctx.globalAlpha = 0.95;
+        ctx.fillStyle = `rgba(120,180,255,${0.65 * pulse})`;
+        ctx.beginPath();
+        ctx.arc(bolt.previewX ?? this.x, bolt.previewY ?? this.y, orbitRadius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 1;
       } else if (bolt.state === "dash") {
-        ctx.strokeStyle = "rgba(255,255,255,0.8)";
-        ctx.lineWidth = 3;
+        const trailGradient = ctx.createLinearGradient(
+          bolt.x,
+          bolt.y,
+          bolt.x - bolt.dirX * 40,
+          bolt.y - bolt.dirY * 40
+        );
+        trailGradient.addColorStop(0, "rgba(255,255,255,0.9)");
+        trailGradient.addColorStop(1, "rgba(255,200,80,0)");
+        ctx.strokeStyle = trailGradient;
+        ctx.lineWidth = 6;
+        ctx.setLineDash([6, 4]);
         ctx.beginPath();
         ctx.moveTo(bolt.x, bolt.y);
-        ctx.lineTo(bolt.x - bolt.dirX * 25, bolt.y - bolt.dirY * 25);
+        ctx.lineTo(bolt.x - bolt.dirX * 45, bolt.y - bolt.dirY * 45);
         ctx.stroke();
-        ctx.fillStyle = "rgba(255,200,80,0.9)";
+        ctx.setLineDash([]);
+        ctx.fillStyle = "rgba(255,230,160,0.95)";
         ctx.beginPath();
-        ctx.arc(bolt.x, bolt.y, 10, 0, Math.PI * 2);
+        ctx.arc(bolt.x, bolt.y, 12, 0, Math.PI * 2);
         ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.7)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(bolt.x, bolt.y, 12, 0, Math.PI * 2);
+        ctx.stroke();
       }
     }
     ctx.restore();
@@ -1104,6 +1383,41 @@ export class BossKael {
     ctx.lineTo(0, reach * Math.tan(width));
     ctx.closePath();
     ctx.fill();
+
+    ctx.save();
+    ctx.globalAlpha = breath.active ? 0.5 : 0.25;
+    ctx.strokeStyle = "rgba(255, 230, 180, 0.8)";
+    ctx.lineWidth = 3;
+    ctx.setLineDash([14, 12]);
+    ctx.beginPath();
+    ctx.moveTo(0, -reach * Math.tan(width * 0.5));
+    ctx.lineTo(reach * 0.6, 0);
+    ctx.lineTo(0, reach * Math.tan(width * 0.5));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    ctx.save();
+    ctx.globalAlpha = 0.4;
+    const innerGlow = ctx.createRadialGradient(
+      reach * 0.5,
+      0,
+      0,
+      reach * 0.5,
+      0,
+      reach * 0.8
+    );
+    innerGlow.addColorStop(0, "rgba(255,255,255,0.8)");
+    innerGlow.addColorStop(0.4, "rgba(255,160,80,0.5)");
+    innerGlow.addColorStop(1, "rgba(255,40,20,0)");
+    ctx.fillStyle = innerGlow;
+    ctx.beginPath();
+    ctx.moveTo(0, -reach * Math.tan(width * 0.3));
+    ctx.lineTo(reach * 0.9, 0);
+    ctx.lineTo(0, reach * Math.tan(width * 0.3));
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
     ctx.restore();
   }
 
@@ -1348,29 +1662,56 @@ export class BossKael {
   _drawFissures(ctx) {
     if (this.fissures.length === 0) return;
     ctx.save();
-    ctx.lineWidth = this.fissureWidth;
+    ctx.globalCompositeOperation = "lighter";
+    const time = (typeof performance !== "undefined" ? performance.now() : Date.now()) * 0.001;
     for (const fissure of this.fissures) {
       const maxLength = fissure.active ? fissure.progress : this.fissureLength;
       const endX = fissure.startX + fissure.dirX * maxLength;
       const endY = fissure.startY + fissure.dirY * maxLength;
-      ctx.strokeStyle = fissure.active
-        ? "rgba(255,120,20,0.65)"
-        : "rgba(255,180,80,0.35)";
-      ctx.globalAlpha = fissure.active ? 0.9 : 0.6;
+      const baseColor = fissure.active ? "255,150,60" : "255,200,120";
+      const alpha = fissure.active ? 0.95 : 0.6;
+      ctx.lineWidth = this.fissureWidth + (fissure.active ? 2 : 0);
+      ctx.shadowColor = `rgba(${baseColor}, ${0.8 * alpha})`;
+      ctx.shadowBlur = fissure.active ? 25 : 12;
+      const gradient = ctx.createLinearGradient(fissure.startX, fissure.startY, endX, endY);
+      gradient.addColorStop(0, `rgba(${baseColor}, ${alpha})`);
+      gradient.addColorStop(0.5, `rgba(255,255,255,${alpha * 0.6})`);
+      gradient.addColorStop(1, `rgba(${baseColor}, ${alpha * 0.5})`);
+      ctx.strokeStyle = gradient;
+      ctx.globalAlpha = alpha;
       ctx.beginPath();
       ctx.moveTo(fissure.startX, fissure.startY);
       ctx.lineTo(endX, endY);
       ctx.stroke();
+
       if (!fissure.active) {
-        ctx.globalAlpha = 0.4;
-        ctx.setLineDash([12, 14]);
+        ctx.globalAlpha = 0.35;
         ctx.lineWidth = this.fissureWidth * 0.6;
-        ctx.strokeStyle = "rgba(255, 200, 120, 0.8)";
+        ctx.setLineDash([10, 16]);
+        ctx.strokeStyle = `rgba(255, 205, 145, 0.7)`;
         ctx.beginPath();
         ctx.moveTo(fissure.startX, fissure.startY);
         ctx.lineTo(endX, endY);
         ctx.stroke();
         ctx.setLineDash([]);
+      } else {
+        ctx.globalAlpha = 0.6;
+        ctx.lineWidth = 1.5;
+        for (let i = 0; i < 4; i++) {
+          const offset = (i / 3) * maxLength;
+          const px = fissure.startX + fissure.dirX * offset;
+          const py = fissure.startY + fissure.dirY * offset;
+          const sparkAngle = time * 4 + i * 1.2;
+          const sparkLength = 10 + Math.sin(time * 6 + i) * 4;
+          ctx.strokeStyle = `rgba(255,255,255,${0.35 + Math.sin(sparkAngle) * 0.25})`;
+          ctx.beginPath();
+          ctx.moveTo(px - fissure.dirX * sparkLength * 0.3, py - fissure.dirY * sparkLength * 0.3);
+          ctx.lineTo(
+            px + Math.cos(sparkAngle) * sparkLength,
+            py + Math.sin(sparkAngle) * sparkLength
+          );
+          ctx.stroke();
+        }
       }
     }
     ctx.restore();

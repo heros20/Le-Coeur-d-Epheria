@@ -139,14 +139,31 @@ export class Player {
 
     const dashSpeed =
       this.dashDistance / Math.max(0.05, this.dashDuration || 0.05);
+    const dashHold = Boolean(inputs.dashHold);
+    const dashVector = hasMoveVector
+      ? {
+          x: moveVector.x / (moveVector.dist || Math.hypot(moveVector.x, moveVector.y) || 1),
+          y: moveVector.y / (moveVector.dist || Math.hypot(moveVector.x, moveVector.y) || 1),
+        }
+      : null;
     if (this._dashActive > 0) {
       this.isDashing = true;
       usingMouseMove = true;
+      if (dashHold) {
+        if (dashVector) {
+          this._dashDir = { x: dashVector.x, y: dashVector.y };
+        }
+        if (this.stamina > 0) {
+          this.stamina = Math.max(0, this.stamina - this.dashCost * dt);
+        }
+      }
       const mag = Math.hypot(this._dashDir.x, this._dashDir.y) || 1;
       vx = this._dashDir.x / mag;
       vy = this._dashDir.y / mag;
       sp = dashSpeed;
-      this._dashActive = Math.max(0, this._dashActive - dt);
+      if (!dashHold || this.stamina <= 0) {
+        this._dashActive = Math.max(0, this._dashActive - dt);
+      }
     } else {
       this.isDashing = false;
     }

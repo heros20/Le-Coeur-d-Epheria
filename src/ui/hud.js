@@ -27,6 +27,24 @@ export function createHUD() {
   const vitals = makeCard("hud-vitals");
   const inventory = makeCard("hud-inventory");
   const helper = makeCard("hud-helper");
+  const handleInventoryClick = (event) => {
+    const slot = event.target.closest(".inventory-slot[data-inventory-index]");
+    if (!slot) return;
+    const idx = Number(slot.dataset.inventoryIndex);
+    const inv = State.inventory;
+    if (!inv) return;
+    const list = typeof inv.list === "function" ? inv.list() : [];
+    const item = list[idx];
+    if (!item?.id) {
+      State.pushStatus?.("Aucun objet disponible");
+      return;
+    }
+    const used = inv.use?.(item.id, { player: State.player, notify: State.pushStatus });
+    if (!used) {
+      State.pushStatus?.(`${item.name ?? item.id} impossible à utiliser`);
+    }
+  };
+  inventory.addEventListener("click", handleInventoryClick);
   const dashCooldownButton = document.getElementById("btn-dash");
   const dashCooldownText = dashCooldownButton?.querySelector(".cooldown-text");
 
@@ -82,7 +100,9 @@ export function createHUD() {
           ? `<img src="${escapeHtml(item.iconSrc)}" alt="" />`
           : escapeHtml(item.icon ?? "⋄");
         slots.push(
-          `<div class="inventory-slot filled">
+          `<div class="inventory-slot filled" data-inventory-index="${i}" data-item-id="${escapeHtml(
+            item.id
+          )}">
             <div class="icon">${icon}</div>
             <div class="item-name">${escapeHtml(item.name ?? item.id)}</div>
           </div>`

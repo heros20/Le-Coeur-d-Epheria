@@ -178,21 +178,48 @@ class DialogueUI {
       return;
     }
 
-    const padding = 12;
-    const boxW = Math.min(canvas.width - padding * 2, 800);
-    const boxH = 110;
+    const padding = 18;
+    const boxW = Math.min(canvas.width - padding * 2, 860);
+    const boxH = 140;
     const x = Math.round((canvas.width - boxW) / 2);
     const y = canvas.height - boxH - padding;
+    const radius = 18;
 
     ctx.save();
-    ctx.globalAlpha = 0.9;
-    ctx.fillStyle = "#111";
-    ctx.fillRect(x, y, boxW, boxH);
-    ctx.globalAlpha = 1;
+    ctx.shadowColor = "rgba(0, 0, 0, 0.85)";
+    ctx.shadowBlur = 32;
+    ctx.shadowOffsetY = 12;
+    const gradient = ctx.createLinearGradient(x, y, x, y + boxH);
+    gradient.addColorStop(0, "rgba(6, 6, 8, 0.95)");
+    gradient.addColorStop(1, "rgba(0, 0, 0, 0.98)");
+    ctx.fillStyle = gradient;
+    drawRoundedRect(ctx, x, y, boxW, boxH, radius);
+    ctx.fill();
 
+    ctx.save();
+    drawRoundedRect(ctx, x, y, boxW, boxH, radius);
+    ctx.clip();
+    const highlight = ctx.createRadialGradient(
+      x + boxW * 0.25,
+      y + boxH * 0.15,
+      0,
+      x + boxW * 0.25,
+      y + boxH * 0.15,
+      boxH * 0.7
+    );
+    highlight.addColorStop(0, "rgba(255, 255, 255, 0.15)");
+    highlight.addColorStop(1, "rgba(255, 255, 255, 0)");
+    ctx.globalAlpha = 0.2;
+    ctx.fillStyle = highlight;
+    ctx.fillRect(x, y, boxW, boxH);
+    ctx.restore();
+
+    ctx.shadowColor = "transparent";
     ctx.lineWidth = 2;
-    ctx.strokeStyle = "#B4F116";
-    ctx.strokeRect(x, y, boxW, boxH);
+    ctx.strokeStyle = "#fbe7c6";
+    drawRoundedRect(ctx, x, y, boxW, boxH, radius);
+    ctx.stroke();
+    ctx.restore();
 
     const line = this.lines[this.index];
     const shown =
@@ -200,20 +227,18 @@ class DialogueUI {
         ? line.slice(0, Math.max(0, Math.floor(this.visibleChars)))
         : "";
 
-    ctx.font = "16px system-ui, -apple-system, Segoe UI, Roboto, Arial";
-    ctx.fillStyle = "#eee";
-    wrapText(ctx, shown, x + padding, y + padding + 6, boxW - padding * 2, 20);
+    ctx.font = "18px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    ctx.fillStyle = "#ffffff";
+    wrapText(ctx, shown, x + padding, y + padding + 8, boxW - padding * 2, 26);
 
-    ctx.globalAlpha = 0.8;
-    ctx.font = "13px system-ui, -apple-system, Segoe UI, Roboto, Arial";
-    ctx.fillStyle = "#aaa";
-
+    ctx.globalAlpha = 0.85;
+    ctx.font = "14px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+    ctx.fillStyle = "#fbd38d";
     const hint = this._isFullyShown()
-      ? "Appuie sur E pour continuer - Echap pour afficher instantanement"
-      : "E : afficher la phrase - Echap : afficher instantanement";
-
-    ctx.fillText(hint, x + padding, y + boxH - 12);
-    ctx.restore();
+      ? "Appuie sur E pour continuer — Échap pour afficher instantanément"
+      : "E : afficher la phrase — Échap : finir l'affichage";
+    ctx.fillText(hint, x + padding, y + boxH - 16);
+    ctx.globalAlpha = 1;
   }
 }
 
@@ -232,6 +257,21 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
     }
   }
   if (line) ctx.fillText(line, x, yy);
+}
+
+function drawRoundedRect(ctx, x, y, width, height, radius) {
+  const r = Math.max(0, Math.min(radius, Math.min(width, height) / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + width - r, y);
+  ctx.quadraticCurveTo(x + width, y, x + width, y + r);
+  ctx.lineTo(x + width, y + height - r);
+  ctx.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  ctx.lineTo(x + r, y + height);
+  ctx.quadraticCurveTo(x, y + height, x, y + height - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
 }
 
 export function createDialogueLayer() {

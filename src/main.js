@@ -14,7 +14,7 @@ import { showEndings, renderEpilogue } from "./systems/endings.js";
 import { vignette, strokeText } from "./utils/draw.js";
 import { Animator } from "./utils/animator.js";
 import { createHUD } from "./ui/hud.js";
-
+console.log("### VERSION CURSOR OK ###");
 const $boot = document.getElementById("boot");
 const $game = document.getElementById("game");
 const $canvas = document.getElementById("gameCanvas");
@@ -26,6 +26,7 @@ const $escapeVideo = document.getElementById("escapeVideo");
 const $escapeVideoPlayer = document.getElementById("escapeVideoPlayer");
 const $escapeVideoSkip = document.querySelector("[data-video-skip]");
 const $escapeVideoPlay = document.querySelector("[data-video-play]");
+const $bossObjectiveBanner = document.getElementById("bossObjectiveBanner");
 
 let heroSelection = null;
 let mapImg, heroImg, potionTexture;
@@ -62,6 +63,7 @@ const touchControlState = {
   moveVector: null,
   attack: { held: false, justPressed: false },
   dashQueued: false,
+  dashHeld: false,
 };
 State.touchControls = touchControlState;
 State.orbPromptOpen = false;
@@ -221,6 +223,10 @@ function setupTouchControls() {
     bindTouchButton(dashBtn, {
       onPress: () => {
         touchControlState.dashQueued = true;
+        touchControlState.dashHeld = true;
+      },
+      onRelease: () => {
+        touchControlState.dashHeld = false;
       },
     });
   }
@@ -838,7 +844,7 @@ function syncDialogueOverlay() {
   State.bossRetryShown = false;
   State.pickups = [];
   spawnPotion(heroStart.x - 258, heroStart.y + 150);
-  State.ghosts = spawnGhosts(world, start, ghostAnimations, 10);
+  State.ghosts = spawnGhosts(world, start, ghostAnimations, 5);
 
   State.fog = new FogOfWar(world.w, world.h);
   State.fog.reveal(State.player.x, State.player.y, 180);
@@ -887,36 +893,38 @@ function syncDialogueOverlay() {
     State.statusMessage = text;
     State.statusTimer = duration;
   }
+  State.pushStatus = pushStatus;
 
-function showBossObjective(
-  title = "Vaincre Kael",
-  subtitle = "",
-  duration = 0.5
-) {
-  // Durée minimale pour éviter les divisions par zéro ou les fades instantanés
-  const max = Math.max(0.1, Number(duration) || 0);
-
-  State.bossObjective = {
-    title,
-    subtitle,
-    timer: max,
-    max,
-  };
-}
-
-
-function updateBossObjective(dt) {
-  const obj = State.bossObjective;
-  if (!obj) return;
-
-  const deltaSeconds = dt / 1000;
-
-  obj.timer = Math.max(0, obj.timer - deltaSeconds);
-  if (obj.timer <= 0) {
-    State.bossObjective = null;
+  function showBossObjective(title = "Vaincre Kael", subtitle = "", duration = 0.5) {
+    const max = Math.max(0.1, duration);
+    State.bossObjective = { title, subtitle, timer: max, max };
+    State.bossObjectiveReminder = { title, subtitle };
+    State.bossObjectiveReminderActive = true;
+    updateBossObjectiveBanner();
   }
-}
 
+  function updateBossObjective(dt) {
+    const obj = State.bossObjective;
+    if (!obj) return;
+    obj.timer = Math.max(0, obj.timer - dt * 3);
+    if (obj.timer <= 0) {
+      State.bossObjective = null;
+      State.bossObjectiveReminderActive = !State.flags.kaelDefeated;
+      updateBossObjectiveBanner();
+    }
+  }
+
+  function updateBossObjectiveBanner() {
+    if (!$bossObjectiveBanner) return;
+    const reminder = State.bossObjectiveReminder;
+    if (State.bossObjectiveReminderActive && reminder && !State.flags.kaelDefeated) {
+      const label = reminder.subtitle ? `${reminder.title} · ${reminder.subtitle}` : reminder.title;
+      $bossObjectiveBanner.textContent = label;
+      $bossObjectiveBanner.classList.remove("hidden");
+    } else {
+      $bossObjectiveBanner.classList.add("hidden");
+    }
+  }
 
   function spawnPotion(x, y) {
     State.pickups.push({
@@ -1127,6 +1135,7 @@ function updateBossObjective(dt) {
       State.attackInput = { lastTap: -Infinity, holdStart: 0, wasHeld: false, pendingDouble: false };
     }
     maybeStartBossMusic();
+    updateBossObjectiveBanner();
     const attackPressed = State.isMobile
       ? consumeMobileAttackPress()
       : DESKTOP_ATTACK_KEYS.some((key) => consume(key));
@@ -1158,6 +1167,7 @@ function updateBossObjective(dt) {
     const dashPressed = consume(" ") || (State.isMobile && consumeMobileDashPress());
     const potionPressed = consume("p");
     const quickItemPressed = consume("l") || consume("2");
+    const bossShortcutPressed = consume("9");
     const jumpPressed = consume("j");
     const interactPressed = consume("e");
     const rangedPressed = consume("3") || consume("m");
@@ -1188,6 +1198,11 @@ function updateBossObjective(dt) {
     if (rangedPressed && player.rangedCooldown <= 0) {
       fireRangedAttack(player, currentAim);
     }
+    if (bossShortcutPressed) {
+      triggerBossFightShortcut();
+    }
+
+    const dashHold = Keys.has(" ") || (touchControlState.dashHeld ?? false);
 
     if (interactPressed && !State.dialogue.isOpen()) tryInteract();
 
@@ -1204,7 +1219,45 @@ function updateBossObjective(dt) {
       moveVector: moveVectorInput,
       pointerDeadzone: CONFIG.playerMouseDeadzone,
       colliders: [...(State.puzzleOrbs ?? []), ...(State.pickups?.filter((p) => p.blocking) ?? [])],
+      dashHold,
     });
+    const dashTrailLife = 0.36;
+    const dashTrail = State.playerDashTrail ?? [];
+    if (player.isDashing) {
+      dashTrail.push({
+        x: player.x,
+        y: player.y,
+        life: dashTrailLife,
+        maxLife: dashTrailLife,
+      });
+      if (dashTrail.length > 28) {
+        dashTrail.splice(0, dashTrail.length - 28);
+      }
+    }
+    dashTrail.forEach((node) => {
+      node.life = Math.max(0, node.life - dt);
+    });
+    State.playerDashTrail = dashTrail.filter((node) => node.life > 0);
+
+    const attackTrailLife = 0.26;
+    const attackTrail = State.playerAttackTrail ?? [];
+    if (player.isAttackActive?.()) {
+      const facing = player.facing === "left" ? -1 : 1;
+      attackTrail.push({
+        x: player.x + facing * 12,
+        y: player.y,
+        life: attackTrailLife,
+        maxLife: attackTrailLife,
+        radius: 18 + Math.random() * 6,
+      });
+      if (attackTrail.length > 30) {
+        attackTrail.splice(0, attackTrail.length - 30);
+      }
+    }
+    attackTrail.forEach((node) => {
+      node.life = Math.max(0, node.life - dt);
+    });
+    State.playerAttackTrail = attackTrail.filter((node) => node.life > 0);
     enforcePreKaelBoundary(player);
     handlePickups();
     maybeTriggerPrincessHint();
@@ -1284,6 +1337,8 @@ function updateBossObjective(dt) {
       }
       if (!State.boss.alive && !State.flags.kaelDefeated) {
         State.flags.kaelDefeated = true;
+        State.bossObjectiveReminderActive = false;
+        updateBossObjectiveBanner();
         State.bossObjective = null;
         State.bossMusicPending = false;
         stopBossMusic(true);
@@ -1508,28 +1563,33 @@ function updateBossObjective(dt) {
     });
   }
 
-  function tryInteractOrb() {
-    if (State.orbPromptOpen) return true;
-    const orb = findNearbyOrb();
-    if (!orb) return false;
-    if (isKaelTooFarForOrb()) {
-      remindKaelToInspectOrb();
-      return true;
-    }
-    if (orb.activated) {
-      if (orb.repeatUsed) {
-        pushStatus("L'orbe est silencieuse.");
-        return true;
-      }
-      orb.repeatUsed = true;
-      const repeatMessage =
-        ORB_REPEAT_MESSAGES[orb.id ?? 0] ?? "L'écho de la pierre s'est déjà réveillé. Écoute plutôt le Coeur.";
-      showQueuedDialogue([{ speaker: "Moi", text: repeatMessage }]);
-      return true;
-    }
-    showOrbPrompt(orb);
+function tryInteractOrb() {
+  if (State.orbPromptOpen) return true;
+
+  const orb = findNearbyOrb();
+  if (!orb) return false;
+
+  if (isKaelTooFarForOrb()) {
+    remindKaelToInspectOrb();
     return true;
   }
+
+  // Orbe déjà activée : on ne rejoue pas la séquence, juste un feedback
+  if (orb.activated) {
+    if (orb.repeatUsed) {
+      pushStatus("L'orbe est silencieuse.");
+      return true;
+    }
+
+    // Cas de secours : activée mais pas encore de dialogue (bug / edge-case)
+    startOrbDialogueSequence(orb, 0);
+    return true;
+  }
+
+  // Première interaction → prompt Oui / Non
+  showOrbPrompt(orb);
+  return true;
+}
 
   function isKaelTooFarForOrb(distance = 100) {
     if (State.flags?.betrayalHappened) return false;
@@ -1576,10 +1636,12 @@ function updateBossObjective(dt) {
     const yesBtn = $orbPrompt.querySelector("[data-orb-yes]");
     const noBtn = $orbPrompt.querySelector("[data-orb-no]");
 
-    const handleYes = () => {
-      hideOrbPrompt();
-      activateOrb(orb);
-    };
+const handleYes = () => {
+  hideOrbPrompt();
+  const flashDuration = activateOrb(orb) || 0;
+  startOrbDialogueSequence(orb, flashDuration);
+};
+
     const handleNo = () => {
       hideOrbPrompt();
     };
@@ -1705,32 +1767,53 @@ function updateBossObjective(dt) {
     orbPromptState.previousPaused = false;
   }
 
-  function activateOrb(orb) {
-    if (!orb || orb.activated) return;
-    orb.activated = true;
-    playSound("orbActivate", 0.85);
-    const flashDuration = startOrbFlash();
-    pushStatus("L'orbe s'embrase.");
-    const message = ORB_MESSAGES[orb.id ?? 0];
-      if (message) {
-        setTimeout(() => {
-          showQueuedDialogue(
-            [{ speaker: "???", text: message }],
-            {
-              onComplete: () => {
-                if (orb.repeatUsed) return;
-                orb.repeatUsed = true;
-                const repeatMessage =
-                  ORB_REPEAT_MESSAGES[orb.id ?? 0] ??
-                  "L'écho de la pierre s'est déjà réveillé. Écoute plutôt le Coeur.";
-                showQueuedDialogue([{ speaker: "Moi", text: repeatMessage }]);
-              },
-            }
-          );
-        }, flashDuration + 150);
-      }
-    checkPrincessUnlock();
+function activateOrb(orb) {
+  if (!orb || orb.activated) return 0;
+
+  orb.activated = true;
+  playSound("orbActivate", 0.85);
+
+  const flashDuration = startOrbFlash();
+  pushStatus("L'orbe s'embrase.");
+
+  checkPrincessUnlock();
+
+  // On renvoie la durée du flash pour caler le dialogue derrière
+  return flashDuration || 0;
+}
+function startOrbDialogueSequence(orb, delay = 0) {
+  if (!orb) return;
+
+  const id = orb.id ?? 0;
+  const mysterious = ORB_MESSAGES[id];
+  const reply =
+    ORB_REPEAT_MESSAGES[id] ??
+    "L'écho de la pierre s'est déjà réveillé. Écoute plutôt le Coeur.";
+
+  const lines = [];
+  if (mysterious) {
+    lines.push({ speaker: "???", text: mysterious });
   }
+  if (reply) {
+    lines.push({ speaker: "Moi", text: reply });
+  }
+
+  if (lines.length === 0) return;
+
+  const run = () => {
+    // Un seul appel avec les deux lignes, l'ordre ne peut plus s’inverser
+    pauseForDialogue(lines);
+    // On marque l’orbe comme “déjà utilisée” pour les prochaines interactions
+    orb.repeatUsed = true;
+  };
+
+  if (delay > 0) {
+    setTimeout(run, delay + 150);
+  } else {
+    run();
+  }
+}
+
 
   function checkPrincessUnlock() {
     if (State.flags.princessUnlocked) return;
@@ -1795,25 +1878,16 @@ function updateBossObjective(dt) {
     return duration;
   }
 
-  const dialogueQueue = [];
-
-  function processDialogueQueue() {
-    if (!dialogueQueue.length || State.dialogue.isOpen()) return;
-    const entry = dialogueQueue.shift();
-    State.dialogue.show(entry.lines, {
-      onClose: () => {
-        if (typeof entry.onComplete === "function") entry.onComplete();
-        processDialogueQueue();
-      },
-    });
-  }
-
-  function showQueuedDialogue(lines, { onComplete } = {}) {
+  function showQueuedDialogue(lines) {
     if (!Array.isArray(lines) || lines.length === 0) return;
-    dialogueQueue.push({ lines, onComplete });
-    if (!State.dialogue.isOpen() && dialogueQueue.length === 1) {
-      processDialogueQueue();
-    }
+    const attempt = () => {
+      if (State.dialogue.isOpen()) {
+        setTimeout(attempt, 120);
+        return;
+      }
+      State.dialogue.show(lines);
+    };
+    attempt();
   }
 
   function pauseForDialogue(lines = [], onComplete) {
@@ -1951,6 +2025,23 @@ function updateBossObjective(dt) {
     State.flags.princessEscapeOffered = false;
     State.bossMusicPending = false;
     startBossMusic();
+  }
+
+  function triggerBossFightShortcut() {
+    if (!State.player || !State.boss) return;
+    if (State.flags.kaelDefeated) {
+      pushStatus("Kael est déjà vaincu.");
+      return;
+    }
+    if (!State.flags.betrayalHappened) {
+      triggerBetrayal();
+    }
+    State.awaitingEndingButton = true;
+    if (State.bossObjectiveReminder) {
+      State.bossObjectiveReminderActive = true;
+      updateBossObjectiveBanner();
+    }
+    pushStatus("Accès direct au combat Kael (touche 9)");
   }
 
   function playLabyrinthLaugh(onComplete) {
@@ -2360,8 +2451,10 @@ function updateGhosts(dt) {
     const vx = dir.x / mag;
     const vy = dir.y / mag;
     const speed = 600;
-    const maxDist = 70;
+    const maxDist = 170;
     const life = maxDist / speed;
+    const len = 21 * 2.5;
+    const hitRadius = 16;
     State.projectiles.push({
       x: player.x + vx * 12,
       y: player.y + vy * 12,
@@ -2369,6 +2462,9 @@ function updateGhosts(dt) {
       vy: vy * speed,
       lifetime: life,
       damage: 10,
+      len,
+      hitRadius: hitRadius * 2,
+      trail: [],
       hit: false,
     });
     player.rangedCooldown = 0.35;
@@ -2384,27 +2480,54 @@ function updateGhosts(dt) {
       p.lifetime -= dt;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
+      const trail = p.trail ?? [];
+      trail.push({
+        x: p.x,
+        y: p.y,
+        life: 0.18,
+        maxLife: 0.18,
+        radius: 12,
+      });
+      if (trail.length > 10) trail.splice(0, trail.length - 10);
+      trail.forEach((node) => {
+        node.life = Math.max(0, node.life - dt);
+      });
+      p.trail = trail.filter((node) => node.life > 0);
       // stop if blocked by wall
       if (map?.isBlocked?.(p.x, p.y)) return;
       let hit = false;
-      if (Array.isArray(ghosts)) {
-        for (const g of ghosts) {
-          if (!g || g.dead) continue;
-          const size = Math.max(28, (g.scale ?? 0.128) * 140);
-          const d = Math.hypot(p.x - g.x, p.y - g.y);
-          if (d < size * 0.5) {
-            g.hp = Math.max(0, g.hp - p.damage);
-            g.hurtTimer = 0.25;
-            g.hitFlash = 0.35;
-            spawnFloatingText(p.damage, g.x, g.y - 18, { color: "rgba(255,215,110,1)" });
-            if (g.hp === 0 && !g.dead) {
-              g.dead = true;
-              g.animator?.play?.("dead", { sticky: true, force: true });
-              unregisterKaelAggroTarget(g);
-            }
-            hit = true;
-            break;
+      const targets = [
+        ...(Array.isArray(ghosts) ? ghosts : []),
+        State.boss,
+        State.kael,
+      ].filter(Boolean);
+      for (const target of targets) {
+        if (target.dead || !Number.isFinite(target.hp)) continue;
+        const hitRadius =
+          p.hitRadius ??
+          Math.max(28, (target.scale ?? 0.128) * 140) * 0.5;
+        const d = Math.hypot(p.x - target.x, p.y - target.y);
+        if (d < hitRadius) {
+          const hadApply = typeof target.applyDamage === "function";
+          target.applyDamage?.(p.damage);
+          if (!hadApply) {
+            target.hp = Math.max(0, target.hp - p.damage);
           }
+          target.hurtTimer = Math.max(0, (target.hurtTimer ?? 0));
+          target.hitFlash = 0.35;
+          spawnFloatingText(p.damage, target.x, target.y - 18, {
+            color: "rgba(255,215,110,1)",
+          });
+          if (target.hp === 0 && !target.dead) {
+            target.dead = true;
+            target.animator?.play?.("dead", { sticky: true, force: true });
+            unregisterKaelAggroTarget(target);
+            if (target === State.boss) {
+              handleKaelDeath?.();
+            }
+          }
+          hit = true;
+          break;
         }
       }
       if (!hit && p.lifetime > 0) remaining.push(p);
@@ -2423,27 +2546,65 @@ function updateGhosts(dt) {
     arr.forEach((p) => {
       const sx = (p.x - camX) * scaleX;
       const sy = (p.y - camY) * scaleY;
-      const len = 21;
+      const len = p.len ?? 21;
       const dir = Math.atan2(p.vy, p.vx);
       ctx.save();
       ctx.translate(sx, sy);
       ctx.rotate(dir);
       const grad = ctx.createLinearGradient(-len, 0, len, 0);
-      grad.addColorStop(0, "rgba(255,215,80,0)");
-      grad.addColorStop(0.5, "rgba(255,230,130,0.95)");
-      grad.addColorStop(1, "rgba(255,215,80,0)");
+      grad.addColorStop(0, 'rgba(255,215,80,0)');
+      grad.addColorStop(0.3, 'rgba(255,255,255,0.9)');
+      grad.addColorStop(0.6, 'rgba(255,200,130,0.9)');
+      grad.addColorStop(1, 'rgba(255,145,60,0.1)');
       ctx.strokeStyle = grad;
-      ctx.lineWidth = 4;
-      ctx.lineCap = "round";
+      ctx.lineWidth = len * 0.35;
+      ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(-len, 0);
       ctx.lineTo(len, 0);
       ctx.stroke();
+      ctx.globalAlpha = 0.4;
+      ctx.lineWidth = len * 0.15;
+      ctx.stroke();
       ctx.restore();
+
+      const beamTrail = p.trail ?? [];
+      if (beamTrail.length) {
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        beamTrail.forEach((node) => {
+          const ratio = Math.max(
+            0,
+            Math.min(1, (node.life ?? 0) / Math.max(0.0001, node.maxLife ?? 1))
+          );
+          const radius = Math.max(6, (len * 0.15) * ratio);
+          const glow = ctx.createRadialGradient(
+            (node.x - camX) * scaleX,
+            (node.y - camY) * scaleY,
+            0,
+            (node.x - camX) * scaleX,
+            (node.y - camY) * scaleY,
+            radius * Math.max(scaleX, scaleY)
+          );
+          glow.addColorStop(0, `rgba(255,255,255,${0.45 * ratio})`);
+          glow.addColorStop(0.5, `rgba(255,200,130,${0.35 * ratio})`);
+          glow.addColorStop(1, 'rgba(255,120,70,0)');
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(
+            (node.x - camX) * scaleX,
+            (node.y - camY) * scaleY,
+            radius * Math.max(scaleX, scaleY),
+            0,
+            Math.PI * 2
+          );
+          ctx.fill();
+        });
+        ctx.restore();
+      }
     });
     ctx.restore();
   }
-
   function updateFloatingTexts(dt) {
     const arr = State.floatingTexts;
     if (!Array.isArray(arr)) return;
@@ -3014,10 +3175,6 @@ function drawGhosts(ctx) {
               speaker: "Moi",
               text: "Je devrais parler a Kael avant d'entrer dans le labyrinthe.",
             },
-            {
-              speaker: "???",
-              text: "Tu n'es pas digne de pénétrer en ces lieux.",
-            },
           ]
         );
       }
@@ -3098,7 +3255,7 @@ function drawGhosts(ctx) {
 
       ],
       () => {
-        showBossObjective("Vaincre Kael", "Objectif principal", 7);
+        showBossObjective("Vaincre Kael");
       }
     );
   }
@@ -3126,6 +3283,8 @@ function drawGhosts(ctx) {
     ctx.translate(-camX, -camY);
     drawPickups(ctx);
     drawGhosts(ctx);
+    drawPlayerDashTrail(ctx);
+    drawPlayerAttackTrail(ctx);
 
     if (State.flags.princessUnlocked) {
       State.princess.draw(ctx);
@@ -3229,6 +3388,7 @@ function resetGameOverSound() {
     if (State.flags.kaelGameOverShown) return;
     State.flags.kaelGameOverShown = true;
     State.paused = true;
+    State.awaitingEndingButton = true;
     State.dialogue?.close?.();
     const el = document.getElementById("ending");
     if (!el) return;
@@ -3244,7 +3404,15 @@ function resetGameOverSound() {
           <button data-retry-kael>Recommencer</button>
         </div>
       </div>`;
-    el.querySelector("[data-retry-kael]")?.addEventListener("click", () => location.reload());
+    el.querySelector("[data-retry-kael]")?.addEventListener(
+      "click",
+      () => {
+        State.awaitingEndingButton = false;
+        State.paused = false;
+        location.reload();
+      },
+      { once: true }
+    );
   }
 
   function renderBossGameOver() {
@@ -3255,6 +3423,7 @@ function resetGameOverSound() {
     State.bossMusicPending = false;
     State.bossRetryShown = true;
     State.paused = true;
+    State.awaitingEndingButton = true;
     playGameOverSound();
     el.classList.remove("hidden");
     el.innerHTML = `
@@ -3266,8 +3435,14 @@ function resetGameOverSound() {
           <button data-abandon>Abandonner</button>
         </div>
       </div>`;
-    el.querySelector("[data-retry-boss]")?.addEventListener("click", () => retryBossFight());
-    el.querySelector("[data-abandon]")?.addEventListener("click", () => goToTitle());
+    el.querySelector("[data-retry-boss]")?.addEventListener("click", () => {
+      State.awaitingEndingButton = false;
+      retryBossFight();
+    });
+    el.querySelector("[data-abandon]")?.addEventListener("click", () => {
+      State.awaitingEndingButton = false;
+      goToTitle();
+    });
   }
 
   function retryBossFight() {
@@ -3278,6 +3453,8 @@ function resetGameOverSound() {
     }
     State.bossRetryShown = false;
     State.paused = false;
+    State.awaitingEndingButton = false;
+    State.awaitingEndingButton = false;
     resetGameOverSound();
     const checkpoint = State.bossCheckpoint;
     if (checkpoint?.player) {
@@ -3315,6 +3492,7 @@ function resetGameOverSound() {
 
   function goToTitle() {
     State.paused = false;
+    State.awaitingEndingButton = false;
     State.started = false;
     resetGameOverSound();
     stopBossMusic(true);
@@ -3328,15 +3506,70 @@ function resetGameOverSound() {
     playGameOverSound();
     stopBossMusic(true);
     State.bossMusicPending = false;
+    State.paused = true;
+    State.awaitingEndingButton = true;
     el.classList.remove("hidden");
     el.innerHTML = `
       <div class="card">
         <h2>Les âmes défuntes t'emporte.</h2>
-        <p>Ton dernier souvenir disparais dans la poussière d'éphéria.</p>
+        <p>Ton dernier souvenir disparais dans la poussière d'Ephéria.</p>
         <div class="choices"><button data-abandon>Retour à l'accueil</button></div>
       </div>`;
     el.querySelector("[data-abandon]")?.addEventListener("click", () => goToTitle());
   }
+}
+
+function drawPlayerDashTrail(ctx) {
+  const trail = State.playerDashTrail;
+  if (!Array.isArray(trail) || trail.length === 0) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  trail.forEach((node) => {
+    const ratio = Math.max(
+      0,
+      Math.min(1, (node.life ?? 0) / Math.max(0.0001, node.maxLife ?? 1))
+    );
+    const radius = 16 + (1 - ratio) * 26;
+    const alpha = 0.2 + ratio * 0.4;
+    const grad = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, radius);
+    grad.addColorStop(0, `rgba(255,255,255,${alpha})`);
+    grad.addColorStop(0.4, `rgba(255,200,140,${alpha * 0.7})`);
+    grad.addColorStop(1, "rgba(255,120,80,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = alpha * 0.6;
+    ctx.fillStyle = "rgba(255,235,190,0.9)";
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, radius * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+function drawPlayerAttackTrail(ctx) {
+  const trail = State.playerAttackTrail;
+  if (!Array.isArray(trail) || trail.length === 0) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  trail.forEach((node) => {
+    const ratio = Math.max(
+      0,
+      Math.min(1, (node.life ?? 0) / Math.max(0.0001, node.maxLife ?? 1))
+    );
+    const radius = (node.radius ?? 18) * (1 + (1 - ratio) * 0.4);
+    const alpha = 0.25 + ratio * 0.45;
+    const grad = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, radius);
+    grad.addColorStop(0, `rgba(255,255,255,${alpha})`);
+    grad.addColorStop(0.4, `rgba(255,170,140,${alpha * 0.8})`);
+    grad.addColorStop(1, "rgba(255,100,60,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
 }
 
 setupBoot();
@@ -3474,73 +3707,4 @@ function drawHeroShroud(ctx, x, y) {
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   ctx.restore();
 }
-  function showPickupPrompt(pickup) {
-    return;
-    /*if (!$orbPrompt || State.orbPromptOpen || !pickup) return;
-    pickup.interacting = true;
-    State.orbPromptOpen = true;
-    orbPromptState.orb = pickup;
-    const text = pickup.promptText ?? "Ramasser cet objet ?";
-    $orbPrompt.innerHTML = `
-      <div class="prompt-card">
-        <h4>${pickup.name ?? "Objet inconnu"}</h4>
-        <p>${text}</p>
-        <div class="prompt-actions">
-          <button data-orb-no>Non</button>
-          <button data-orb-yes>Oui</button>
-        </div>
-      </div>`;
-    $orbPrompt.classList.remove("hidden");
-    requestAnimationFrame(() => $orbPrompt.classList.add("visible"));
-
-    const yesBtn = $orbPrompt.querySelector("[data-orb-yes]");
-    const noBtn = $orbPrompt.querySelector("[data-orb-no]");
-    const handleYes = () => {
-      if (pickup.type === "potion") {
-        const added = State.inventory.add(pickupFactory.potion());
-        if (added) {
-          pushStatus("Potion added");
-          pickup._remove = true;
-          pickup.blocking = false;
-          pickup.interacting = false;
-          hideOrbPrompt();
-        } else {
-          pushStatus("Inventory full");
-        }
-      } else {
-        pickup.interacting = false;
-        hideOrbPrompt();
-      }
-    };
-    const handleNo = () => {
-      pickup.interacting = false;
-      hideOrbPrompt();
-    };
-    const buttons = [noBtn, yesBtn].filter(Boolean);
-    orbPromptState.buttons = buttons;
-    orbPromptState.focusIndex = buttons.length === 2 ? 1 : 0;
-    updatePromptFocus();
-    const handleKey = (event) => {
-      if (!State.orbPromptOpen) return;
-      if (event.key === "Escape") {
-        event.preventDefault();
-        handleNo();
-      } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-        event.preventDefault();
-        rotatePromptFocus(event.key === "ArrowRight" ? 1 : -1);
-      } else if (event.key === "Enter") {
-        event.preventDefault();
-        const btn = orbPromptState.buttons[orbPromptState.focusIndex];
-        btn?.click();
-      } else if (event.key === "e" || event.key === "E") {
-        event.preventDefault();
-        handleYes();
-      }
-    };
-    orbPromptState.yesHandler = handleYes;
-    orbPromptState.noHandler = handleNo;
-    orbPromptState.keyHandler = handleKey;
-    yesBtn?.addEventListener("click", handleYes);
-    noBtn?.addEventListener("click", handleNo);
-    window.addEventListener("keydown", handleKey);*/
-  }
+  

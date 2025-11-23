@@ -184,11 +184,13 @@ export class WorldMap {
   }
 
   circleFree(x, y, r) {
+    const infl = Math.max(0, (CONFIG.collisionInflation ?? 1));
+    const radius = r * infl;
     return !(
-      this.isBlocked(x - r, y) || this.isBlocked(x + r, y) ||
-      this.isBlocked(x, y - r) || this.isBlocked(x, y + r) ||
-      this.isBlocked(x - r, y - r) || this.isBlocked(x + r, y - r) ||
-      this.isBlocked(x - r, y + r) || this.isBlocked(x + r, y + r)
+      this.isBlocked(x - radius, y) || this.isBlocked(x + radius, y) ||
+      this.isBlocked(x, y - radius) || this.isBlocked(x, y + radius) ||
+      this.isBlocked(x - radius, y - radius) || this.isBlocked(x + radius, y - radius) ||
+      this.isBlocked(x - radius, y + radius) || this.isBlocked(x + radius, y + radius)
     );
   }
 

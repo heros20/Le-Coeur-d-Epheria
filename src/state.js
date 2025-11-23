@@ -37,6 +37,9 @@ export const State = {
   projectiles: [],
   kaelAggroTargets: new Set(),
   lastAim: { x: 1, y: 0 },
+  bossObjectiveReminder: null,
+  bossObjectiveReminderActive: false,
+  awaitingEndingButton: false,
   flags: {
     foundShrine: 0,
     betrayalHappened: false,
