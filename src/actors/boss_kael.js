@@ -2,6 +2,7 @@ import { CONFIG } from "../config.js";
 import { Animator } from "../utils/animator.js";
 
 export class BossKael {
+  
   constructor(animations = {}, x, y, opts = {}) {
     this.x = x;
     this.y = y;
@@ -33,6 +34,12 @@ export class BossKael {
     this.dashDamage = cfg.dashDamage ?? 40;
     this.knockback = cfg.knockback ?? 24;
     this.knockbackResistance = cfg.knockbackResistance ?? 0.35;
+        // Distances "confort" pour l'IA de Kael
+    // distance où il arrête de reculer et accepte le corps-à-corps
+    this.meleeComfort = cfg.meleeComfort ?? 60;
+    // distance idéale où il aime rester (mid-range)
+    this.retreatStopDistance = cfg.retreatStopDistance ?? (this.preferredDistance + 10);
+
     this.orbCooldown = cfg.orbCooldown ?? 7;
     this.orbCount = cfg.orbCount ?? 3;
     this.orbLifetime = cfg.orbLifetime ?? 3.5;
@@ -165,31 +172,48 @@ export class BossKael {
         this.telegraph = null;
         this._finishAction("dash");
       }
-    } else {
+        } else {
       let moveX = 0;
       let moveY = 0;
-      const closeThreshold = this.preferredDistance - 20;
-      const farThreshold = this.preferredDistance + 30;
-      if (dist > farThreshold) {
-        moveX = dirX;
-        moveY = dirY;
-      } else if (dist < closeThreshold) {
+
+      const minMelee = this.meleeComfort;           // zone où il accepte le close combat
+      const ideal = this.preferredDistance;         // distance idéale (mid-range)
+
+      if (dist < minMelee) {
+        // Trop collé au joueur → petit recul, mais pas fuite infinie
+        const backSpeed = this.speed * 0.7;
         moveX = -dirX;
         moveY = -dirY;
+        const norm = Math.hypot(moveX, moveY) || 1;
+        moveX = (moveX / norm) * backSpeed * dt;
+        moveY = (moveY / norm) * backSpeed * dt;
+      } else if (dist > ideal) {
+        // Trop loin → il revient mettre la pression
+        const chaseSpeed = this.speed * 1.05;
+        moveX = dirX;
+        moveY = dirY;
+        const norm = Math.hypot(moveX, moveY) || 1;
+        moveX = (moveX / norm) * chaseSpeed * dt;
+        moveY = (moveY / norm) * chaseSpeed * dt;
       } else {
-        moveX = -dirY;
-        moveY = dirX;
+        // Zone idéale → il strafe autour de toi (duel)
+        const sideSpeed = this.speed * 0.85;
+        const sideX = -dirY;
+        const sideY = dirX;
+        const sideDir = (player.x < this.x) ? 1 : -1; // juste pour le faire tourner un peu
+        const norm = Math.hypot(sideX, sideY) || 1;
+        moveX = (sideX / norm) * sideSpeed * dt * sideDir;
+        moveY = (sideY / norm) * sideSpeed * dt * sideDir;
       }
-      const norm = Math.hypot(moveX, moveY) || 1;
-      moveX /= norm;
-      moveY /= norm;
-      const step = this.speed * (dist < closeThreshold ? 0.8 : 1) * dt;
+
       this.lastMoveVector = { x: moveX, y: moveY };
-      moved = this._move(world, moveX * step, moveY * step);
+      moved = this._move(world, moveX, moveY);
+
       if (!moved && dist < this.hitRadius + 20) {
         stuckAgainstWall = true;
       }
     }
+
 
     if (!this.windupTimer && !this.dashTimer && this.alive) {
       this.animator.setBase(moved ? this._directionalAction("run") : "idle");
@@ -365,45 +389,84 @@ export class BossKael {
 
   _move(world, mx, my) {
     if (!world) return false;
+
     const inside = (x, y) => {
       const w = world.w ?? Infinity;
       const h = world.h ?? Infinity;
       return x > 1 && y > 1 && x < w - 1 && y < h - 1;
     };
+
+    // Collision plus “épaisse” : on vérifie un petit disque autour de Kael
     const canOccupy = (x, y) => {
       if (!inside(x, y)) return false;
-      return !world.isBlocked(x, y);
+
+      const r = this.hitRadius ?? 18;
+      const edge = r * 0.9;
+      const diag = r * 0.65;
+
+      const samples = [
+        { x: 0, y: 0 },          // centre
+        { x: edge, y: 0 },
+        { x: -edge, y: 0 },
+        { x: 0, y: edge },
+        { x: 0, y: -edge },
+        { x: diag, y: diag },
+        { x: -diag, y: diag },
+        { x: diag, y: -diag },
+        { x: -diag, y: -diag },
+      ];
+
+      for (const s of samples) {
+        if (world.isBlocked(x + s.x, y + s.y)) {
+          return false;
+        }
+      }
+      return true;
     };
+
+    const dist = Math.hypot(mx, my);
+    if (dist < 0.0001) return false;
+
     let moved = false;
-    let collided = false;
     const prevX = this.x;
-    const stepSize = Math.max(2, this.hitRadius * 0.35);
-    const steps = Math.max(1, Math.ceil(Math.hypot(mx, my) / stepSize));
+    const prevY = this.y;
+
+    // On découpe le mouvement en petits pas pour éviter de “sauter” par-dessus
+    const stepSize = Math.max(2, (this.hitRadius ?? 18) * 0.25);
+    const steps = Math.max(1, Math.ceil(dist / stepSize));
+    const stepX = mx / steps;
+    const stepY = my / steps;
+
     for (let i = 0; i < steps; i++) {
-      const sx = mx / steps;
-      const sy = my / steps;
-      // move X then Y separately to avoid tunneling
-      if (sx !== 0) {
-        const nx = this.x + sx;
+      let blockedThisStep = false;
+
+      if (stepX !== 0) {
+        const nx = this.x + stepX;
         if (canOccupy(nx, this.y)) {
           this.x = nx;
           moved = true;
         } else {
-          collided = true;
+          blockedThisStep = true;
         }
       }
-      if (sy !== 0) {
-        const ny = this.y + sy;
+
+      if (stepY !== 0) {
+        const ny = this.y + stepY;
         if (canOccupy(this.x, ny)) {
           this.y = ny;
           moved = true;
         } else {
-          collided = true;
+          blockedThisStep = true;
         }
       }
-      if (collided && moved) break;
+
+      // Dès qu'on tape un mur, on arrête : pas de tunnel, pas de glissade sauvage
+      if (blockedThisStep) {
+        break;
+      }
     }
 
+    // Mise à jour de l'orientation
     if (moved) {
       const deltaX = this.x - prevX;
       if (Math.abs(deltaX) > 0.5) {
@@ -412,28 +475,10 @@ export class BossKael {
         this.facing = mx > 0 ? "right" : "left";
       }
     }
-    if (collided) {
-      this._handleCollisionResponse(mx, my);
-      // tentative d'esquive latérale pour ne pas rester collé aux murs
-      const len = Math.hypot(mx, my) || 1;
-      const nx = mx / len;
-      const ny = my / len;
-      const steer = Math.hypot(mx, my) * 0.8;
-      const options = [
-        { x: -ny * steer, y: nx * steer },
-        { x: ny * steer, y: -nx * steer },
-      ];
-      for (const opt of options) {
-        if (!world.isBlocked(this.x + opt.x, this.y + opt.y)) {
-          this.x += opt.x;
-          this.y += opt.y;
-          moved = true;
-          break;
-        }
-      }
-    }
+
     return moved;
   }
+
 
   _applyKnockback(source) {
     if (!this._lastWorld) return;
@@ -649,7 +694,7 @@ export class BossKael {
       clone.x += clone.dirX * step;
       clone.y += clone.dirY * step;
       if (!clone.hit && Math.hypot(player.x - clone.x, player.y - clone.y) < 40) {
-        player.applyDamage(this.phaseTwo.cloneDamage);
+        player.applyDamage(this.phaseTwo.cloneDamage * 0.75);
         clone.hit = true;
       }
     }
@@ -1235,12 +1280,14 @@ export class BossKael {
   _escapeFromWall(world, player) {
     if (!world) return;
     const offset = (this.hitRadius ?? 20) + 6;
+
     const tests = [
       { x: 1, y: 0, blocked: world.isBlocked(this.x + offset, this.y) },
       { x: -1, y: 0, blocked: world.isBlocked(this.x - offset, this.y) },
       { x: 0, y: 1, blocked: world.isBlocked(this.x, this.y + offset) },
       { x: 0, y: -1, blocked: world.isBlocked(this.x, this.y - offset) },
     ];
+
     let escapeDir = null;
     for (const test of tests) {
       if (test.blocked) {
@@ -1248,6 +1295,7 @@ export class BossKael {
         break;
       }
     }
+
     if (!escapeDir) {
       if (player) {
         escapeDir = { x: this.x - player.x, y: this.y - player.y };
@@ -1257,8 +1305,16 @@ export class BossKael {
         escapeDir = { x: Math.random() - 0.5, y: Math.random() - 0.5 };
       }
     }
-    this._forceEscapeDash(escapeDir, 200, false, false);
+
+    const len = Math.hypot(escapeDir.x, escapeDir.y) || 1;
+    const nX = escapeDir.x / len;
+    const nY = escapeDir.y / len;
+
+    // Petit déplacement local avec collisions, PAS un gros dash qui traverse tout
+    const nudge = 40; // distance max du “désencastrement”
+    this._move(world, nX * nudge, nY * nudge);
   }
+
 
   _handleCollisionResponse(mx, my) {
     if (this.dashTimer > 0 || this.windupTimer > 0) return;

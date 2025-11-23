@@ -35,6 +35,7 @@ export const State = {
   questPromptCooldown: 0,
   floatingTexts: [],
   projectiles: [],
+  kaelAggroTargets: new Set(),
   lastAim: { x: 1, y: 0 },
   flags: {
     foundShrine: 0,
@@ -43,6 +44,7 @@ export const State = {
     preQuestBoundaryWarned: false,
     enemyWarningSpoken: false,
     kaelDown: false,
+    kaelGameOverShown: false,
     kaelAggro: false,
     questCompletedShown: false,
     kaelMet: false,

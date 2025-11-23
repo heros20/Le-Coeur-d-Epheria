@@ -46,16 +46,16 @@ const SOUND_SOURCES = {
 
 const DESKTOP_ATTACK_KEYS = ["1", "&", "k"];
 const ORB_MESSAGES = [
-  "Toi qui entre dans ce labyrinthe, ne vois-tu pas ? ...",
-  "Certaines lumieres guident. D'autres eblouissent... pour mieux cacher la lame qu'elles portent.",
-  "Les promesses les plus sinceres sont celles qu'on fait en tremblant... Et elle ne tremble jamais.",
-  "Quand viendra la derniere porte, ne sois pas surpris... Ce n'est jamais l'ennemi qui ouvre la voie.",
+  "A toi qui n'a pas su écouter les voix, paye ton crime de ton âme.",
+  "Vous n'êtes pas les bienvenues en ces lieux.",
+  "Continuez et payer le prix.. Ou sortez et sacrifier votre coeur. ",
+  "Chaque pas dans une direction, vous éloigne de l'autre, jusqu'au point de non-retour.",
 ];
 const ORB_REPEAT_MESSAGES = [
-  "Qui a parle ? ...C'etait cense vouloir dire quoi, ca ?",
-  "Des lumieres ? Des lames ? Je n'y comprends rien !",
-  "Elle ne tremble jamais... Mais ce n'est pas un crime d'avoir du sang-froid.",
-  "L'ennemi n'ouvre jamais la voie... ok, la ca commence a devenir flippant.",
+  "Kael ? tout va bien ? Tu es tout pâle..",
+  "Tu as entendu ? D'ou venait cette voix ?",
+  "Encore une menace, nous sommes forcément sur la bonne voie.",
+  "On ne peux pas reculer maintenant, restons vigilant.",
 ];
 
 const touchControlState = {
@@ -78,6 +78,7 @@ const orbPromptState = {
   keyHandler: null,
   focusIndex: 0,
   buttons: [],
+  previousPaused: false,
 };
 let shakeTimeout = null;
 let flashTimeout = null;
@@ -747,22 +748,41 @@ function syncDialogueOverlay() {
 
   // === Spawn & POI ===
   const PLAYER_RADIUS = 8;
+  const HERO_SPAWN_OFFSET_Y = 100;
   // force spawn to the north for tests and snap to an open tile
   let start = world.nearestOpen(spawn.x, 120, PLAYER_RADIUS);
-  State.spawnPoint = { x: start.x, y: start.y };
+  const heroTargetY = Math.max(0, (start?.y ?? 0) - HERO_SPAWN_OFFSET_Y);
+  const heroStart = world.nearestOpen(start?.x ?? spawn.x, heroTargetY, PLAYER_RADIUS) ?? start;
+  State.spawnPoint = { x: heroStart.x, y: heroStart.y };
   let kaelStart = world.nearestOpen(world.w * 0.86, world.h * 0.18, PLAYER_RADIUS);
   let princessPos = world.nearestOpen(world.w * 0.5, world.h * 0.5 + 110, PLAYER_RADIUS);
-  const entrance = { x: start.x, y: start.y, r: 80 };
+  const entrance = { x: heroStart.x, y: heroStart.y, r: 80 };
 
   // === Actors / systems ===
   const heroAudioHooks = {
     onAttackSound: (soundKey) => playSound(soundKey ?? "heroSlash", 0.85),
     onDashSound: () => playSound("heroDash", 0.75),
   };
-  State.player = new Player(heroImg, start.x, start.y, heroAnimations, {
+  State.player = new Player(heroImg, heroStart.x, heroStart.y, heroAnimations, {
     scale: ACTOR_SCALE,
     ...heroAudioHooks,
   });
+  {
+    const originalApplyDamage = State.player.applyDamage.bind(State.player);
+    State.player.applyDamage = (amount) => {
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return originalApplyDamage(amount);
+      }
+      const result = originalApplyDamage(amount);
+      if (State.flags.betrayalHappened && !State.flags.kaelDefeated) {
+        spawnFloatingText(Math.round(amount), State.player.x, State.player.y - 20, {
+          color: "rgba(255,80,80,0.95)",
+          stroke: "rgba(0,0,0,0.7)",
+        });
+      }
+      return result;
+    };
+  }
   State.inventory = new Inventory({ capacity: 3 });
 
   // Dialogue layer (auto-closed at boot)
@@ -803,6 +823,7 @@ function syncDialogueOverlay() {
   });
   State.princess.follow = false;
   State.princess.freed = false;
+  
   State.boss = new BossKael(kaelAnimations, kaelStart.x, kaelStart.y, {
     scale: ACTOR_SCALE,
     hitRadius: PLAYER_RADIUS * 2.2,
@@ -816,8 +837,8 @@ function syncDialogueOverlay() {
   State.bossCheckpoint = null;
   State.bossRetryShown = false;
   State.pickups = [];
-  spawnPotion(start.x - 280, start.y - 10);
-  State.ghosts = spawnGhosts(world, start, ghostAnimations, 5);
+  spawnPotion(heroStart.x - 258, heroStart.y + 150);
+  State.ghosts = spawnGhosts(world, start, ghostAnimations, 10);
 
   State.fog = new FogOfWar(world.w, world.h);
   State.fog.reveal(State.player.x, State.player.y, 180);
@@ -866,6 +887,36 @@ function syncDialogueOverlay() {
     State.statusMessage = text;
     State.statusTimer = duration;
   }
+
+function showBossObjective(
+  title = "Vaincre Kael",
+  subtitle = "",
+  duration = 0.5
+) {
+  // Durée minimale pour éviter les divisions par zéro ou les fades instantanés
+  const max = Math.max(0.1, Number(duration) || 0);
+
+  State.bossObjective = {
+    title,
+    subtitle,
+    timer: max,
+    max,
+  };
+}
+
+
+function updateBossObjective(dt) {
+  const obj = State.bossObjective;
+  if (!obj) return;
+
+  const deltaSeconds = dt / 1000;
+
+  obj.timer = Math.max(0, obj.timer - deltaSeconds);
+  if (obj.timer <= 0) {
+    State.bossObjective = null;
+  }
+}
+
 
   function spawnPotion(x, y) {
     State.pickups.push({
@@ -974,23 +1025,67 @@ function syncDialogueOverlay() {
     ctx.restore();
   }
 
+  function drawBossObjective(ctx, screenX, screenY, objective) {
+    if (!objective) return;
+    const w = 360;
+    const h = 110;
+    const x = screenX - w / 2;
+    const y = screenY - h - 10;
+    const timer = objective.timer ?? 0;
+    const max = Math.max(0.1, objective.max ?? 1);
+    const ratio = Math.min(1, timer / max);
+    const alpha = Math.min(1, Math.max(0, ratio * 1.2));
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    const gradient = ctx.createLinearGradient(x, y, x, y + h);
+    gradient.addColorStop(0, "rgba(220, 48, 48, 0.98)");
+    gradient.addColorStop(1, "rgba(32, 6, 6, 0.93)");
+    ctx.fillStyle = gradient;
+    ctx.strokeStyle = "rgba(255, 200, 120, 0.97)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 18);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#ffe7b4";
+    ctx.font = "bold 24px 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "top";
+    ctx.fillText(objective.title ?? "Objectif", screenX, y + 12);
+    if (objective.subtitle) {
+      ctx.fillStyle = "#f5f8ff";
+      ctx.font = "17px 'Segoe UI', sans-serif";
+      ctx.fillText(objective.subtitle, screenX, y + 48);
+    }
+    ctx.restore();
+  }
+
   function drawLowHpOverlay(ctx, player) {
     if (!player) return;
     const maxHp = player.maxHp || 1;
-    const ratio = Math.max(0, (player.hp ?? maxHp) / maxHp);
-    if (ratio >= 0.35) return;
-    const t = 1 - ratio / 0.35;
+    const ratio = Math.max(0, Math.min(1, (player.hp ?? maxHp) / maxHp));
+    const threshold = 0.6;
+    if (ratio >= threshold) return;
+    const severity = Math.max(0, Math.min(1, (threshold - ratio) / threshold));
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     const w = $canvas.width;
     const h = $canvas.height;
     const cx = w / 2;
     const cy = h / 2;
-    const radial = ctx.createRadialGradient(cx, cy, Math.min(w, h) * 0.15, cx, cy, Math.max(w, h));
+    const radial = ctx.createRadialGradient(
+      cx,
+      cy,
+      Math.min(w, h) * 0.05,
+      cx,
+      cy,
+      Math.max(w, h)
+    );
     radial.addColorStop(0, "rgba(0,0,0,0)");
-    radial.addColorStop(0.55, "rgba(140,20,30,0.18)");
-    radial.addColorStop(1, "rgba(200,20,40,0.7)");
-    ctx.globalAlpha = Math.min(0.9, 0.5 + t * 0.6);
+    radial.addColorStop(0.4, `rgba(255,90,90,${0.15 * severity})`);
+    radial.addColorStop(0.75, `rgba(220,30,40,${0.35 * severity})`);
+    radial.addColorStop(1, `rgba(200,20,40,${0.8 * severity})`);
+    ctx.globalAlpha = Math.min(1, 0.3 + severity * 0.6);
     ctx.fillStyle = radial;
     ctx.fillRect(0, 0, w, h);
     ctx.restore();
@@ -1032,10 +1127,6 @@ function syncDialogueOverlay() {
       State.attackInput = { lastTap: -Infinity, holdStart: 0, wasHeld: false, pendingDouble: false };
     }
     maybeStartBossMusic();
-    if (consume("f3")) {
-      State.showCollisionDebug = !State.showCollisionDebug;
-      pushStatus(State.showCollisionDebug ? "Collisions affichées" : "Collisions masquées");
-    }
     const attackPressed = State.isMobile
       ? consumeMobileAttackPress()
       : DESKTOP_ATTACK_KEYS.some((key) => consume(key));
@@ -1167,6 +1258,8 @@ function syncDialogueOverlay() {
       maybeWarnEnemiesNearby();
     }
     updateQuestAnnouncement(dt);
+    maybeAutoAcceptKaelQuest();
+    updateBossObjective(dt);
 
     // Camera & fog
     clampCameraToPlayer(player.x, player.y);
@@ -1183,10 +1276,15 @@ function syncDialogueOverlay() {
       ) {
         const dmg = player.getCurrentAttackDamage?.() ?? 15;
         State.boss.hit(dmg);
+        spawnFloatingText(dmg, State.boss.x, State.boss.y - 30, {
+          color: "rgba(255,215,110,1)",
+          stroke: "rgba(0,0,0,0.6)",
+        });
         player.confirmAttackHit?.();
       }
       if (!State.boss.alive && !State.flags.kaelDefeated) {
         State.flags.kaelDefeated = true;
+        State.bossObjective = null;
         State.bossMusicPending = false;
         stopBossMusic(true);
         if (State.flags.kaelPhaseThreeStarted && !State.flags.kaelPhaseThreeDefeated) {
@@ -1196,11 +1294,15 @@ function syncDialogueOverlay() {
             [
               {
                 speaker: "Kael",
-                text: "Je... ne peux plus me relever. La route est à toi, Lioran...",
+                text: "Je... Pardonne... Moi...",
               },
               {
-                speaker: "Mur",
-                text: "Hâte-toi vers la princesse. Le labyrinthe se replie déjà.",
+                speaker: "???",
+                text: "Vous n'êtes pas les bienvenues en ces lieux... PARTEZ !",
+              },
+              {
+                speaker: "Moi",
+                text: "Aelya ! Prends ma main, partons vite !",
               },
             ],
             () => {
@@ -1212,15 +1314,15 @@ function syncDialogueOverlay() {
           preparePrincessForPhaseTwo();
           pauseForDialogue(
             [
-              { speaker: "Kael", text: "Ainsi soit-il... que tes pas trouvent enfin la lumière." },
-              { speaker: "Mur", text: "La princesse t'attend à l'entrée. C'est elle qui décidera de la suite." },
+              { speaker: "Kael", text: "ARGH... Tu es devenu fort mon ami.." },
+              { speaker: "Moi", text: "Je dois rejoindre la princesse au plus vite." },
             ],
             () => {
               pushStatus("Parle à Aelya pour quitter le labyrinthe.");
             }
           );
         } else {
-          State.dialogue.show([{ speaker: "Mur", text: "Le jugement approche. Ramene Aelya a la porte." }]);
+          State.dialogue.show([{ speaker: "Moi", text: "Les ombres ce rapproche, nous devons fuir, et vite." }]);
         }
       }
     }
@@ -1326,7 +1428,20 @@ function syncDialogueOverlay() {
     }
     if (dP < 60 && !State.princess.follow) {
       if (!State.flags.princessUnlocked) {
-        State.dialogue.show([{ speaker: "Princesse", text: "Kael tient encore... debarrasse-toi de lui !" }]);
+        State.dialogue.show([
+          {
+            speaker: "Princesse",
+            text: "Lorian, Kael.. Vous m'avez libéré de ce labyrinthe infernale. merci.",
+          },
+          {
+            speaker: "Moi",
+            text: "Princesse, veuillez me pardonner mais le temps presse, nous devons fuir !",
+          },
+          {
+            speaker: "Kael",
+            text: "Lorian.. les voix.. Je.. AHHHHH",
+          },
+        ]);
         return;
       }
       startPrincessEncounter();
@@ -1337,7 +1452,7 @@ function syncDialogueOverlay() {
   function teleportToBossArena() {
     const spawn = State.spawnPoint ?? { x: State.player.x, y: State.player.y - 120 };
     const heroX = spawn.x;
-    const heroY = spawn.y + 100;
+    const heroY = spawn.y + 150;
     const kaelX = heroX + 60;
     const kaelY = heroY;
     playSound("orbActivate", 0.9);
@@ -1356,9 +1471,21 @@ function syncDialogueOverlay() {
     if (State.flags.betrayalHappened) return;
     pauseForDialogue(
       [
+           {
+            speaker: "Princesse",
+            text: "Lorian, Kael.. Vous m'avez libéré de ce labyrinthe maudit. merci.",
+          },
+          {
+            speaker: "Moi",
+            text: "Princesse, veuillez me pardonner mais le temps presse, nous devons fuir !",
+          },
+          {
+            speaker: "Kael",
+            text: "Lorian.. les voix.. Je.. AHHHHH",
+          },
         {
           speaker: "Princesse",
-          text: "Lioran ! C'était lui.. depuis le début c'était LUI !!!!!",
+          text: "Lioran… j'entends le cœur d'Éphéria. L'ombre de Kael vacille.",
         },
       ],
       () => {
@@ -1395,8 +1522,9 @@ function syncDialogueOverlay() {
         return true;
       }
       orb.repeatUsed = true;
-      const repeatMessage = ORB_REPEAT_MESSAGES[orb.id ?? 0] ?? "Elle pulse deja. Je crois qu'elle est eveillee.";
-      State.dialogue.show([{ speaker: "Moi", text: repeatMessage }]);
+      const repeatMessage =
+        ORB_REPEAT_MESSAGES[orb.id ?? 0] ?? "L'écho de la pierre s'est déjà réveillé. Écoute plutôt le Coeur.";
+      showQueuedDialogue([{ speaker: "Moi", text: repeatMessage }]);
       return true;
     }
     showOrbPrompt(orb);
@@ -1417,12 +1545,12 @@ function syncDialogueOverlay() {
     if (State.time - lastKaelOrbReminderTime < 4) return;
     if (State.dialogue?.isOpen?.()) return;
     lastKaelOrbReminderTime = State.time;
-    State.dialogue?.show?.([
-      {
-        speaker: "Kael",
-        text: "Attends moi Lioran, je dois voir ça !",
-      },
-    ]);
+      State.dialogue?.show?.([
+        {
+          speaker: "Kael",
+          text: "Lioran… Je sens la présence du coeur. J'ignore ce que nous faisons, mais cela semble fonctionner !",
+        },
+      ]);
   }
 
   function showOrbPrompt(orb) {
@@ -1430,6 +1558,8 @@ function syncDialogueOverlay() {
     hideOrbPrompt();
     State.orbPromptOpen = true;
     orbPromptState.orb = orb;
+    orbPromptState.previousPaused = State.paused;
+    State.paused = true;
     const text = "Cette etrange orbe reagit a ma presence...";
     $orbPrompt.innerHTML = `
       <div class="prompt-card">
@@ -1465,13 +1595,15 @@ function syncDialogueOverlay() {
       } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
         event.preventDefault();
         rotatePromptFocus(event.key === "ArrowRight" ? 1 : -1);
+      } else if (event.key === "e" || event.key === "E") {
+        event.preventDefault();
+        event.stopPropagation();
+        const yesBtn = $orbPrompt.querySelector("[data-orb-yes]");
+        yesBtn?.click();
       } else if (event.key === "Enter") {
         event.preventDefault();
         const btn = orbPromptState.buttons[orbPromptState.focusIndex];
         btn?.click();
-      } else if (event.key === "e" || event.key === "E") {
-        event.preventDefault();
-        hideOrbPrompt();
       }
     };
     orbPromptState.yesHandler = handleYes;
@@ -1489,8 +1621,8 @@ function syncDialogueOverlay() {
     State.questPromptCooldown = 0.8;
     $orbPrompt.innerHTML = `
       <div class="prompt-card">
-        <h4>Quete : Retrouver Aelya</h4>
-        <p>Kael te demande de l'aider a retrouver la princesse dans le labyrinthe.</p>
+        <h4>Quête : Chercher le Cœur</h4>
+        <p>Kael et toi cherchez Aelya et le Cœur d'Éphéria. Ensemble, vous pouvez percer le labyrinthe.</p>
         <div class="prompt-actions">
           <button data-orb-no>Refuser</button>
           <button data-orb-yes>Accepter</button>
@@ -1509,7 +1641,7 @@ function syncDialogueOverlay() {
     const handleNo = () => {
       hideOrbPrompt();
       State.questPromptCooldown = 1.2;
-      State.dialogue?.show?.([{ speaker: "Kael", text: "Je comprends... mais le temps presse." }]);
+      State.dialogue?.show?.([{ speaker: "Kael", text: "Nous n'avons pas de temps à perdre, décide toi vite." }]);
     };
     const buttons = [noBtn, yesBtn].filter(Boolean);
     orbPromptState.buttons = buttons;
@@ -1520,6 +1652,11 @@ function syncDialogueOverlay() {
       if (event.key === "Escape") {
         event.preventDefault();
         hideOrbPrompt();
+      } else if (event.key === "e" || event.key === "E") {
+        event.preventDefault();
+        event.stopPropagation();
+        const btn = $orbPrompt.querySelector("[data-orb-yes]");
+        btn?.click();
       } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
         event.preventDefault();
         rotatePromptFocus(event.key === "ArrowRight" ? 1 : -1);
@@ -1564,6 +1701,8 @@ function syncDialogueOverlay() {
     if (currentTarget && currentTarget.interacting) {
       currentTarget.interacting = false;
     }
+    State.paused = orbPromptState.previousPaused;
+    orbPromptState.previousPaused = false;
   }
 
   function activateOrb(orb) {
@@ -1573,11 +1712,23 @@ function syncDialogueOverlay() {
     const flashDuration = startOrbFlash();
     pushStatus("L'orbe s'embrase.");
     const message = ORB_MESSAGES[orb.id ?? 0];
-    if (message) {
-      setTimeout(() => {
-        State.dialogue.show([{ speaker: "???", text: message }]);
-      }, flashDuration + 150);
-    }
+      if (message) {
+        setTimeout(() => {
+          showQueuedDialogue(
+            [{ speaker: "???", text: message }],
+            {
+              onComplete: () => {
+                if (orb.repeatUsed) return;
+                orb.repeatUsed = true;
+                const repeatMessage =
+                  ORB_REPEAT_MESSAGES[orb.id ?? 0] ??
+                  "L'écho de la pierre s'est déjà réveillé. Écoute plutôt le Coeur.";
+                showQueuedDialogue([{ speaker: "Moi", text: repeatMessage }]);
+              },
+            }
+          );
+        }, flashDuration + 150);
+      }
     checkPrincessUnlock();
   }
 
@@ -1644,6 +1795,27 @@ function syncDialogueOverlay() {
     return duration;
   }
 
+  const dialogueQueue = [];
+
+  function processDialogueQueue() {
+    if (!dialogueQueue.length || State.dialogue.isOpen()) return;
+    const entry = dialogueQueue.shift();
+    State.dialogue.show(entry.lines, {
+      onClose: () => {
+        if (typeof entry.onComplete === "function") entry.onComplete();
+        processDialogueQueue();
+      },
+    });
+  }
+
+  function showQueuedDialogue(lines, { onComplete } = {}) {
+    if (!Array.isArray(lines) || lines.length === 0) return;
+    dialogueQueue.push({ lines, onComplete });
+    if (!State.dialogue.isOpen() && dialogueQueue.length === 1) {
+      processDialogueQueue();
+    }
+  }
+
   function pauseForDialogue(lines = [], onComplete) {
     const hasLines = Array.isArray(lines) && lines.length > 0;
     if (!hasLines) {
@@ -1678,7 +1850,7 @@ function syncDialogueOverlay() {
     pauseForDialogue([
       {
         speaker: "Kael",
-        text: "C'est étrange... Tu as remarqué comme ces orbes aux quatre coins du labyrinthe sont étranges ?",
+        text: "Tu as remarqué ces étranges Orbes aux coins du Labyrinthe ?",
       },
     ]);
   }
@@ -1728,7 +1900,7 @@ function syncDialogueOverlay() {
     pauseForDialogue(
       [
         { speaker: "Kael", text: "Je ne mourrai pas pour si peu, Lioran." },
-        { speaker: "Kael", text: "Toi qui me connais bien... NE ME TOURNE PAS LE DOS !!!" },
+        { speaker: "Kael", text: "Toi qui me connais bien... NE ME TOURNE PAS LE DOS !" },
       ],
       () => {
         flashScreen(1200);
@@ -1753,7 +1925,7 @@ function syncDialogueOverlay() {
 
   function startPhaseTwoBattle() {
     const spawn = State.spawnPoint ?? { x: State.player.x, y: State.player.y };
-    const heroPos = { x: spawn.x + 40, y: spawn.y + 70 };
+    const heroPos = { x: spawn.x + 40, y: spawn.y + 120 };
     const bossPos = { x: heroPos.x + 110, y: heroPos.y - 20 };
     State.player.x = heroPos.x;
     State.player.y = heroPos.y;
@@ -1785,7 +1957,7 @@ function syncDialogueOverlay() {
     pauseForDialogue(
       [
         { speaker: "Chuchotement", text: "Vous entendez un rire venir du fond du labyrinthe." },
-        { speaker: "???", text: "h..h...h..hahahahahahahahahahahahaha" },
+        { speaker: "???", text: "h..h...h..ha ha ha ha HA HA HA HA HA HA HA" },
       ],
       () => {
         if (typeof onComplete === "function") onComplete();
@@ -1797,14 +1969,14 @@ function syncDialogueOverlay() {
     pauseForDialogue(
       [
         { speaker: "Princesse", text: "Lioran... Tu as fait ta part. Quittons cet endroit." },
-        { speaker: "Princesse", text: "Attends... Cette vibration... quelque chose s'éveille encore !" },
+        { speaker: "Princesse", text: "Attends... Cette vibration... L'ombre de Kael s'éveille encore !" },
       ],
       () => {
         playLabyrinthLaugh(() => {
           flashScreen(1200);
           startScreenShake(1200);
           pauseForDialogue(
-            [{ speaker: "Kael", text: "TU NE ME LAISSE PAS LE CHOIX LORIAN ! JE NE ME RETIENDRAI PLUS !!!!!!" }],
+            [{ speaker: "Kael", text: "TU NE ME LAISSE PAS LE CHOIX LORIAN ! LES VOIX M'ONT RENDU PLUS FORT QUE JAMAIS !!!" }],
             () => {
               startPhaseThreeBattle();
             }
@@ -1852,11 +2024,11 @@ function syncDialogueOverlay() {
       [
         {
           speaker: "Princesse",
-          text: "Il est tombé... vite, Lioran, fuyons de ce lieu maudit.",
+          text: "Le souffle de Kael s'est éteint. Viens, Lioran, quittons pour de bon.",
         },
         {
           speaker: "Princesse",
-          text: "Ne restons pas assez longtemps pour qu'il se réveille encore.",
+          text: "Puisse-tu reposer en Paix.. Kael.. Mage déchu qui aura sombré au voix de ce lieu maudit.",
         },
       ],
       () => {
@@ -1899,29 +2071,43 @@ function syncDialogueOverlay() {
     return ghosts;
   }
 
-  function createGhost(x, y, animations) {
-    const animator = new Animator(animations, "idle");
-    return {
-      x,
-      y,
-      hp: 70,
-      maxHp: 70,
-      speed: 60,
-      chaseSpeed: 115,
-      attackRange: 26,
-      attackDamage: 8,
-      attackCooldown: 0,
-      specialCooldown: 0,
-      specialFlash: 0,
-      specialState: null,
-      chargeTimer: 0,
-      chargeMax: 0,
-      hurtTimer: 0,
-      dead: false,
-      scale: 0.128,
-      animator,
-    };
-  }
+function createGhost(x, y, animations) {
+  const animator = new Animator(animations, "idle");
+  return {
+    x,
+    y,
+    hp: 70,
+    maxHp: 70,
+    speed: 60,
+    chaseSpeed: 115,
+    attackRange: 26,
+    attackDamage: 8,
+    attackCooldown: 0,
+
+    // Gestion ancienne / nouvelle spé
+    specialCooldown: 0,
+    specialFlash: 0,
+    specialState: null, // null | "warp_charge" | "warp_dash"
+
+    // Timers spéciaux
+    chargeTimer: 0,
+    chargeMax: 0,
+    warpTimer: 0,
+    warpDuration: 0,
+    warpHit: false,
+    warpDir: { x: 0, y: 0 },
+
+    // Visuel / feedback
+    hurtTimer: 0,
+    hitFlash: 0,
+    dead: false,
+    scale: 0.128,
+    animator,
+
+    // Trail fantomatique (servira si on pimpe drawGhosts plus tard)
+    ghostTrail: [], // { x, y, life, maxLife }
+  };
+}
 
   function isKaelAllyAlive() {
     return (
@@ -1937,119 +2123,224 @@ function syncDialogueOverlay() {
     if (State.flags.kaelDown) return;
     State.flags.kaelDown = true;
     State.kael.follow = false;
-    pushStatus("Kael s'effondre. Il faudra poursuivre sans lui.");
-    State.dialogue?.show?.([
-      { speaker: "Kael", text: "Je... continue sans moi. Trouve Aelya avant que le labyrinthe ne se referme." },
-    ]);
+    clearKaelAggroTargets();
+    showKaelAllyGameOver();
   }
 
-  function updateGhosts(dt) {
-    const ghosts = State.ghosts;
-    const player = State.player;
-    const kaelAlive = isKaelAllyAlive();
-    const kael = State.kael;
-    const map = State.map;
-    if (!Array.isArray(ghosts) || !player || !map) return;
-    for (const ghost of ghosts) {
-      if (!ghost) continue;
-      ghost.attackCooldown = Math.max(0, (ghost.attackCooldown ?? 0) - dt);
-      ghost.hurtTimer = Math.max(0, (ghost.hurtTimer ?? 0) - dt);
-      ghost.hitFlash = Math.max(0, (ghost.hitFlash ?? 0) - dt);
-      ghost.specialCooldown = Math.max(0, (ghost.specialCooldown ?? 0) - dt);
-      ghost.specialFlash = Math.max(0, (ghost.specialFlash ?? 0) - dt);
-      if (ghost.dead) {
-        ghost.animator?.update?.(dt);
-        continue;
-      }
-      const dxP = player.x - ghost.x;
-      const dyP = player.y - ghost.y;
-      const distP = Math.hypot(dxP, dyP) || 1;
-      const dxK = kaelAlive ? kael.x - ghost.x : 0;
-      const dyK = kaelAlive ? kael.y - ghost.y : 0;
-      const distK = kaelAlive ? Math.hypot(dxK, dyK) || 1 : Infinity;
+function updateGhosts(dt) {
+  const ghosts = State.ghosts;
+  const player = State.player;
+  const kaelAlive = isKaelAllyAlive();
+  const kael = State.kael;
+  const map = State.map;
+  if (!Array.isArray(ghosts) || !player || !map) return;
 
-      let target = player;
-      let dx = dxP;
-      let dy = dyP;
-      let dist = distP;
-      if (kaelAlive && distK < distP * 0.9) {
-        target = kael;
-        dx = dxK;
-        dy = dyK;
-        dist = distK;
-      }
+  for (const ghost of ghosts) {
+    if (!ghost) continue;
 
-      let baseAction = "idle";
+    // Timers généraux
+    ghost.attackCooldown = Math.max(0, (ghost.attackCooldown ?? 0) - dt);
+    ghost.hurtTimer = Math.max(0, (ghost.hurtTimer ?? 0) - dt);
+    ghost.hitFlash = Math.max(0, (ghost.hitFlash ?? 0) - dt);
+    ghost.specialCooldown = Math.max(0, (ghost.specialCooldown ?? 0) - dt);
+    ghost.specialFlash = Math.max(0, (ghost.specialFlash ?? 0) - dt);
 
-      // Attaque speciale (charge puis explosion type Zelda)
-      if (!ghost.specialState && ghost.specialCooldown <= 0 && dist < 120) {
-        ghost.specialState = "charging";
-        ghost.chargeMax = 0.9;
-        ghost.chargeTimer = ghost.chargeMax;
-      }
+    if (ghost.dead) {
+      ghost.animator?.update?.(dt);
+      continue;
+    }
 
-      if (ghost.specialState === "charging") {
-        ghost.chargeTimer = Math.max(0, ghost.chargeTimer - dt);
-        baseAction = "attack";
-        ghost.specialFlash = Math.max(ghost.specialFlash, 0.2);
-        if (ghost.chargeTimer <= 0) {
-          ghost.specialState = null;
-          ghost.specialCooldown = 5;
-          ghost.specialFlash = 0.65;
-          const blastRadius = 70;
-          const applyBlast = (t) => {
-            if (!t) return;
-            const dd = Math.hypot(t.x - ghost.x, t.y - ghost.y);
-            if (dd < blastRadius) {
-              t.applyDamage?.(ghost.attackDamage * 1.8);
-              State.flags.kaelAggro = true;
-              spawnFloatingText(-Math.round(ghost.attackDamage * 1.8), t.x, t.y - 14, {
-                color: "rgba(255,80,80,0.95)",
-                stroke: "rgba(0,0,0,0.7)",
-              });
-            }
-          };
-          applyBlast(player);
-          if (kaelAlive) applyBlast(kael);
-        }
-        ghost.animator?.setBase?.(baseAction);
-        ghost.animator?.update?.(dt);
-        continue;
-      }
+    // Cible : player par défaut, Kael allié si plus proche
+    const dxP = player.x - ghost.x;
+    const dyP = player.y - ghost.y;
+    const distP = Math.hypot(dxP, dyP) || 1;
 
-      if (dist < 50) {
-        const step = ghost.chaseSpeed * dt;
-        const moved = moveGhost(
-          ghost,
-          (dx / dist) * step,
-          (dy / dist) * step,
-          map,
-          { x: dx / dist, y: dy / dist }
-        );
-        baseAction = moved ? "run" : "idle";
-        if (dist < ghost.attackRange && ghost.attackCooldown <= 0) {
-          State.flags.kaelAggro = true;
-          const dmg = ghost.attackDamage;
-          if (target === kael) {
-            if (kael.applyDamage(dmg)) {
-              handleKaelDeath();
-            }
-          } else {
-            target.applyDamage?.(dmg);
-          }
-          spawnFloatingText(-dmg, target.x, target.y - 14, {
-            color: "rgba(255,80,80,0.95)",
-            stroke: "rgba(0,0,0,0.7)",
-          });
-          ghost.attackCooldown = 1.35;
-          ghost.animator?.play?.("attack", { force: true });
-        }
-        // attaque spéciale : impulsion visuelle et dégâts si trop proche
-      }
+    const dxK = kaelAlive ? kael.x - ghost.x : 0;
+    const dyK = kaelAlive ? kael.y - ghost.y : 0;
+    const distK = kaelAlive ? Math.hypot(dxK, dyK) || 1 : Infinity;
+
+    let target = player;
+    let dx = dxP;
+    let dy = dyP;
+    let dist = distP;
+    if (kaelAlive && distK < distP * 0.9) {
+      target = kael;
+      dx = dxK;
+      dy = dyK;
+      dist = distK;
+    }
+
+    let baseAction = "idle";
+
+    // =========================================================
+    //      NOUVELLE ATTAQUE SPÉCIALE : WARP SPECTRAL
+    // =========================================================
+
+    // 1) Déclenchement : quand assez proche, cooldown OK, pas déjà en spé
+    const canTriggerSpecial =
+      !ghost.specialState && ghost.specialCooldown <= 0 && dist > 40 && dist < 180;
+
+    if (canTriggerSpecial) {
+      ghost.specialState = "warp_charge";
+      ghost.chargeMax = 1.5;      // temps de charge
+      ghost.chargeTimer = ghost.chargeMax;
+      ghost.specialFlash = 0.3;
+    }
+
+    // === Phase de charge ===
+    if (ghost.specialState === "warp_charge") {
+      ghost.chargeTimer = Math.max(0, ghost.chargeTimer - dt);
+      baseAction = "attack"; // le sprite peut lever les bras, etc.
+
+      // petit clignotement visuel
+      ghost.specialFlash = Math.max(
+        ghost.specialFlash,
+        0.25 + 0.35 * Math.sin((ghost.chargeTimer * 18) % Math.PI)
+      );
+
+      // On ne se déplace pas pendant la charge
       ghost.animator?.setBase?.(baseAction);
       ghost.animator?.update?.(dt);
+
+      if (ghost.chargeTimer <= 0) {
+        // Transition vers le dash spectral
+        ghost.specialState = "warp_dash";
+        ghost.warpDuration = 0.4;
+        ghost.warpTimer = ghost.warpDuration;
+        ghost.warpHit = false;
+
+        // Direction figée vers la cible à l'instant T
+        const d = Math.hypot(dx, dy) || 1;
+        ghost.warpDir.x = dx / d;
+        ghost.warpDir.y = dy / d;
+
+        // petit flash d'impact
+        ghost.specialFlash = 0.8;
+      }
+
+      continue; // on ne fait rien d'autre ce frame
     }
+
+    // === Phase de dash spectral ===
+    if (ghost.specialState === "warp_dash") {
+      ghost.warpTimer = Math.max(0, ghost.warpTimer - dt);
+
+      // vitesse du dash
+      const dashSpeed = ghost.chaseSpeed * 2.4;
+      const step = dashSpeed * dt;
+
+      // PHASE : pas de collision pour le dash spectral
+      ghost.x += ghost.warpDir.x * step;
+      ghost.y += ghost.warpDir.y * step;
+
+      // trail fantomatique simple (données, rendu dans drawGhosts)
+      if (!ghost.ghostTrail) ghost.ghostTrail = [];
+      const trailLife = 0.35;
+      ghost.ghostTrail.push({
+        x: ghost.x,
+        y: ghost.y,
+        life: trailLife,
+        maxLife: trailLife,
+      });
+      if (ghost.ghostTrail.length > 24) {
+        ghost.ghostTrail.splice(0, ghost.ghostTrail.length - 24);
+      }
+
+      baseAction = "run";
+
+      // vecteur vers la cible
+      const tx = target.x - ghost.x;
+      const ty = target.y - ghost.y;
+      const distToTarget = Math.hypot(tx, ty) || 1;
+
+      // projection de la cible sur l'axe du dash
+      const proj = tx * ghost.warpDir.x + ty * ghost.warpDir.y;
+
+      // dégâts au moment où on traverse la cible pour la première fois
+      if (!ghost.warpHit && distToTarget < ghost.attackRange * 1.4) {
+        const dmg = Math.round(ghost.attackDamage * 2.1);
+        registerKaelAggroTarget(ghost);
+        if (target === kael) {
+          if (kael.applyDamage(dmg)) {
+            handleKaelDeath();
+          }
+        } else {
+          target.applyDamage?.(dmg);
+        }
+        spawnFloatingText(-dmg, target.x, target.y - 14, {
+          color: "rgba(120,220,255,0.98)",
+          stroke: "rgba(0,0,0,0.7)",
+        });
+        ghost.warpHit = true;
+        ghost.hitFlash = 0.25;
+      }
+
+      // Une fois qu'on a touché la cible, on laisse le fantôme continuer
+      // jusqu'à ce qu'elle soit derrière lui (proj <= 0 => cible dépassée)
+      if (ghost.warpHit && proj <= 0) {
+        ghost.warpTimer = 0; // on force la fin du dash spectral
+      }
+
+      ghost.animator?.setBase?.(baseAction);
+      ghost.animator?.update?.(dt);
+
+      if (ghost.warpTimer <= 0) {
+        ghost.specialState = null;
+        ghost.specialCooldown = 4.5; // délai avant prochaine spé
+      }
+
+      // On ne fait pas la logique de poursuite normale sur cette frame
+      continue;
+    }
+
+
+    // =========================================================
+    //       COMPORTEMENT NORMAL : POURSUITE + ATTAQUE
+    // =========================================================
+
+    if (dist < 50) {
+      const step = ghost.chaseSpeed * dt;
+      const moved = moveGhost(
+        ghost,
+        (dx / dist) * step,
+        (dy / dist) * step,
+        map,
+        { x: dx / dist, y: dy / dist }
+      );
+      baseAction = moved ? "run" : "idle";
+
+      if (dist < ghost.attackRange && ghost.attackCooldown <= 0) {
+        registerKaelAggroTarget(ghost);
+        const dmg = ghost.attackDamage;
+        if (target === kael) {
+          if (kael.applyDamage(dmg)) {
+            handleKaelDeath();
+          }
+        } else {
+          target.applyDamage?.(dmg);
+        }
+        spawnFloatingText(-dmg, target.x, target.y - 14, {
+          color: "rgba(255,80,80,0.95)",
+          stroke: "rgba(0,0,0,0.7)",
+        });
+        ghost.attackCooldown = 1.35;
+        ghost.animator?.play?.("attack", { force: true });
+      }
+    }
+
+    // Décroissance du trail fantomatique (si déjà généré)
+    if (ghost.ghostTrail && ghost.ghostTrail.length) {
+      for (const t of ghost.ghostTrail) {
+        t.life -= dt;
+      }
+      ghost.ghostTrail = ghost.ghostTrail.filter((t) => t.life > 0);
+    }
+
+    ghost.animator?.setBase?.(baseAction);
+    ghost.animator?.update?.(dt);
   }
+}
+
 
   function spawnFloatingText(value, x, y, opts = {}) {
     State.floatingTexts.push({
@@ -2109,9 +2400,9 @@ function syncDialogueOverlay() {
             if (g.hp === 0 && !g.dead) {
               g.dead = true;
               g.animator?.play?.("dead", { sticky: true, force: true });
+              unregisterKaelAggroTarget(g);
             }
             hit = true;
-            State.flags.kaelAggro = true;
             break;
           }
         }
@@ -2197,6 +2488,40 @@ function syncDialogueOverlay() {
     }
   }
 
+  function maybeAutoAcceptKaelQuest() {
+    if (State.flags.princessQuestAccepted) return;
+    if (!State.flags.princessUnlocked) return;
+    const player = State.player;
+    const princess = State.princess;
+    if (!player || !princess) return;
+    const dist = Math.hypot(player.x - princess.x, player.y - princess.y);
+    if (dist <= 50) {
+      acceptKaelQuest();
+    }
+  }
+
+  function registerKaelAggroTarget(ghost) {
+    if (!ghost) return;
+    const targets = State.kaelAggroTargets;
+    if (!targets) return;
+    targets.add(ghost);
+    State.flags.kaelAggro = true;
+  }
+
+  function unregisterKaelAggroTarget(ghost) {
+    const targets = State.kaelAggroTargets;
+    if (!targets || !targets.has(ghost)) return;
+    targets.delete(ghost);
+    State.flags.kaelAggro = targets.size > 0;
+  }
+
+  function clearKaelAggroTargets() {
+    const targets = State.kaelAggroTargets;
+    if (!targets) return;
+    targets.clear();
+    State.flags.kaelAggro = false;
+  }
+
   function damageGhostsFromPlayer() {
     const ghosts = State.ghosts;
     const player = State.player;
@@ -2221,21 +2546,30 @@ function syncDialogueOverlay() {
       if (ghost.hp === 0 && !ghost.dead) {
         ghost.dead = true;
         ghost.animator?.play?.("dead", { sticky: true, force: true });
+        unregisterKaelAggroTarget(ghost);
       }
       spawnFloatingText(damage, ghost.x, ghost.y - 20, { color: "rgba(255,215,110,1)" });
-      State.flags.kaelAggro = true;
     });
   }
 
   function handleKaelVsGhosts(dt) {
-    const ghosts = State.ghosts;
     const kael = State.kael;
-    if (!isKaelAllyAlive() || !Array.isArray(ghosts)) return;
+    if (!isKaelAllyAlive()) return;
+    const threats = State.kaelAggroTargets;
+    if (!threats || !threats.size) {
+      State.flags.kaelAggro = false;
+      return;
+    }
     kael.attackCooldown = Math.max(0, (kael.attackCooldown ?? 0) - dt);
     const range = kael.attackRange ?? 40;
     if (kael.attackCooldown > 0) return;
-    for (const ghost of ghosts) {
-      if (!ghost || ghost.dead) continue;
+
+    const targets = Array.from(threats);
+    for (const ghost of targets) {
+      if (!ghost || ghost.dead) {
+        threats.delete(ghost);
+        continue;
+      }
       const dist = Math.hypot(kael.x - ghost.x, kael.y - ghost.y);
       if (dist > range) continue;
       const dmg = kael.attackDamage ?? 14;
@@ -2249,10 +2583,12 @@ function syncDialogueOverlay() {
       if (ghost.hp === 0 && !ghost.dead) {
         ghost.dead = true;
         ghost.animator?.play?.("dead", { sticky: true, force: true });
+        unregisterKaelAggroTarget(ghost);
       }
       spawnFloatingText(dmg, ghost.x, ghost.y - 20, { color: "rgba(255,215,110,1)" });
       break;
     }
+    State.flags.kaelAggro = threats.size > 0;
   }
 
   function maybeWarnEnemiesNearby() {
@@ -2261,7 +2597,7 @@ function syncDialogueOverlay() {
     const player = State.player;
     const kael = State.kael;
     if (!Array.isArray(ghosts) || !player) return;
-    const threshold = 100;
+    const threshold = 150;
     if (State.dialogue?.isOpen?.()) return;
     for (const ghost of ghosts) {
       if (!ghost || ghost.dead) continue;
@@ -2348,81 +2684,177 @@ function syncDialogueOverlay() {
     return moved;
   }
 
-  function drawGhosts(ctx) {
-    const ghosts = State.ghosts;
-    if (!Array.isArray(ghosts)) return;
-    ghosts.forEach((ghost) => {
-      if (!ghost) return;
-      let flashWx = 26;
-      let flashWy = 26;
-      const frame = ghost.animator?.getFrame?.();
-      if (frame) {
-        const scale = ghost.scale ?? 0.32;
-        const dw = frame.sw * scale;
-        const dh = frame.sh * scale;
-        flashWx = dw * 0.35;
-        flashWy = dh * 0.35;
-        ctx.drawImage(
-          frame.image,
-          frame.sx,
-          frame.sy,
-          frame.sw,
-          frame.sh,
-          Math.round(ghost.x - dw / 2),
-          Math.round(ghost.y - dh / 2),
-          dw,
-          dh
-        );
-      }
-      if (!ghost.dead) {
-        const width = 34;
-        const height = 4;
-        const ratio = Math.max(0, ghost.hp) / (ghost.maxHp || 1);
-        ctx.save();
-        ctx.fillStyle = "rgba(0,0,0,0.55)";
-        ctx.fillRect(ghost.x - width / 2, ghost.y - 28, width, height);
-        ctx.fillStyle = "#7ff3ff";
-        ctx.fillRect(ghost.x - width / 2 + 1, ghost.y - 28 + 1, (width - 2) * ratio, height - 2);
-        ctx.restore();
-        if (ghost.hitFlash > 0) {
-          const alpha = Math.min(0.7, ghost.hitFlash / 0.35);
-          ctx.save();
-          ctx.globalCompositeOperation = "lighter";
-          ctx.globalAlpha = alpha;
-          ctx.fillStyle = "rgba(80,170,255,0.9)";
-          ctx.beginPath();
-          ctx.ellipse(ghost.x, ghost.y, flashWx, flashWy, 0, 0, Math.PI * 2);
-          ctx.fill();
-          ctx.restore();
-        }
-        if (ghost.specialState === "charging") {
-          const progress = 1 - ghost.chargeTimer / Math.max(ghost.chargeMax || 1, 0.0001);
-          const radius = Math.max(flashWx, flashWy) * (1.2 + progress * 1.0);
-          ctx.save();
-          ctx.globalAlpha = 0.7;
-          ctx.strokeStyle = "rgba(255,223,120,0.9)";
-          ctx.lineWidth = 4;
-          ctx.beginPath();
-          ctx.arc(ghost.x, ghost.y, radius, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.restore();
-        }
-        if (ghost.specialFlash > 0) {
-          const alpha = Math.min(0.55, ghost.specialFlash / 0.55);
-          ctx.save();
-          ctx.globalCompositeOperation = "lighter";
-          ctx.globalAlpha = alpha;
-          const radius = Math.max(flashWx, flashWy) * 1.6;
-          ctx.strokeStyle = "rgba(120,200,255,0.9)";
-          ctx.lineWidth = 6;
-          ctx.beginPath();
-          ctx.arc(ghost.x, ghost.y, radius, 0, Math.PI * 2);
-          ctx.stroke();
-          ctx.restore();
-        }
-      }
-    });
-  }
+function drawGhosts(ctx) {
+  const ghosts = State.ghosts;
+  if (!Array.isArray(ghosts)) return;
+
+  ghosts.forEach((ghost) => {
+    if (!ghost) return;
+
+    const frame = ghost.animator?.getFrame?.();
+    const scale = ghost.scale ?? 0.32;
+
+    // ============================================================
+    // 1) TRAIL FANTOMATIQUE (halo radial + afterimages)
+    // ============================================================
+
+    if (ghost.ghostTrail && ghost.ghostTrail.length > 0) {
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+
+      ghost.ghostTrail.forEach((t) => {
+        const ratio = t.life / t.maxLife;
+        const radius = 24 + (1 - ratio) * 32;
+        const alpha = 0.12 + ratio * 0.25;
+
+        // halo radial moderne
+        const grad = ctx.createRadialGradient(t.x, t.y, 0, t.x, t.y, radius);
+        grad.addColorStop(0, `rgba(120,180,255,${alpha})`);
+        grad.addColorStop(0.45, `rgba(80,140,255,${alpha * 0.85})`);
+        grad.addColorStop(1, "rgba(10,20,40,0)");
+
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Afterimages directionnelles (ombre bleutée)
+        ctx.globalAlpha = alpha * 0.55;
+        ctx.fillStyle = "rgba(90,160,255,0.55)";
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, radius * 0.55, 0, Math.PI * 2);
+        ctx.fill();
+      });
+
+      ctx.restore();
+    }
+
+    // ============================================================
+    // 2) SPRITE DU FANTÔME (dessin principal)
+    // ============================================================
+
+    let flashWx = 26;
+    let flashWy = 26;
+
+    if (frame) {
+      const dw = frame.sw * scale;
+      const dh = frame.sh * scale;
+
+      flashWx = dw * 0.35;
+      flashWy = dh * 0.35;
+
+      // Glow léger même idle
+      ctx.save();
+      ctx.globalCompositeOperation = "lighten";
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = "rgba(80,160,255,0.6)";
+      ctx.beginPath();
+      ctx.arc(ghost.x, ghost.y, flashWx * 0.9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // Sprite
+      ctx.drawImage(
+        frame.image,
+        frame.sx, frame.sy,
+        frame.sw, frame.sh,
+        Math.round(ghost.x - dw / 2),
+        Math.round(ghost.y - dh / 2),
+        dw, dh
+      );
+    }
+
+    // ============================================================
+    // 3) BARRE DE VIE
+    // ============================================================
+
+    if (!ghost.dead) {
+      const w = 34;
+      const h = 4;
+      const ratio = Math.max(0, ghost.hp) / (ghost.maxHp || 1);
+
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.fillRect(ghost.x - w / 2, ghost.y - 28, w, h);
+
+      ctx.fillStyle = "#7ff3ff";
+      ctx.fillRect(ghost.x - w / 2 + 1, ghost.y - 27, (w - 2) * ratio, h - 2);
+
+      ctx.restore();
+    }
+
+    // ============================================================
+    // 4) HIT FLASH (quand il prend un coup)
+    // ============================================================
+
+    if (ghost.hitFlash > 0) {
+      const alpha = Math.min(0.8, ghost.hitFlash / 0.35);
+
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = "rgba(120,200,255,0.95)";
+      ctx.beginPath();
+      ctx.ellipse(ghost.x, ghost.y, flashWx, flashWy, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // ============================================================
+    // 5) EFFET CHARGE (warp_charge)
+    // ============================================================
+
+    if (ghost.specialState === "warp_charge") {
+      const progress = 1 - ghost.chargeTimer / Math.max(ghost.chargeMax || 1, 0.0001);
+
+      ctx.save();
+      ctx.globalAlpha = 0.65;
+      ctx.globalCompositeOperation = "screen";
+
+      const radius = flashWx * (1.4 + progress * 1.8);
+
+      ctx.strokeStyle = `rgba(150,220,255,0.85)`;
+      ctx.lineWidth = 4;
+
+      ctx.beginPath();
+      ctx.arc(ghost.x, ghost.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // pulsation interne
+      ctx.globalAlpha = 0.5;
+      ctx.fillStyle = `rgba(120,180,255,0.45)`;
+      ctx.beginPath();
+      ctx.arc(ghost.x, ghost.y, radius * 0.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    // ============================================================
+    // 6) FLASH SPÉCIAL DURANT LE WARP
+    // ============================================================
+
+    if (ghost.specialFlash > 0) {
+      const alpha = Math.min(0.5, ghost.specialFlash / 0.55);
+
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.globalCompositeOperation = "lighter";
+
+      const radius = flashWx * 1.8;
+
+      ctx.strokeStyle = "rgba(120,200,255,0.95)";
+      ctx.lineWidth = 6;
+
+      ctx.beginPath();
+      ctx.arc(ghost.x, ghost.y, radius, 0, Math.PI * 2);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+  });
+}
+
 
   function playEscapeVideo(onComplete) {
     if (!$escapeVideo || !$escapeVideoPlayer) {
@@ -2511,7 +2943,7 @@ function syncDialogueOverlay() {
     pauseForDialogue(
       [
         { speaker: "Chuchotement", text: "Vous entendez un rire venir du fond du labyrinthe." },
-        { speaker: "???", text: "h..h...h..hahahahahahahahahahahahaha" },
+        { speaker: "???", text: "h..h...h..ha ha ha ha HA HA HA HA HA HA HA" },
       ],
       () => {
         playEscapeVideo(() => {
@@ -2534,7 +2966,19 @@ function syncDialogueOverlay() {
       [
         {
           speaker: "Moi",
-          text: "J'entends quelqu'un pleurer... C'est surement elle ! Je dois me depecher.",
+          text: "Tu entends ça ? ",
+        },
+         {
+          speaker: "Kael",
+          text: "Oui, et la présence du Coeur est encore plus forte, c'est forcément elle ! . . . Ahhhhh les voix.... ",
+        },
+        {
+          speaker: "Moi",
+          text: "Tu .. Tu va bien ? ",
+        },
+          {
+          speaker: "Kael",
+          text: "Ce n'es rien, allons y, Vite ! ",
         },
       ],
       () => {
@@ -2571,8 +3015,8 @@ function syncDialogueOverlay() {
               text: "Je devrais parler a Kael avant d'entrer dans le labyrinthe.",
             },
             {
-              speaker: "Mur",
-              text: "Les arches restent closes tant que la quete n'est pas acceptee.",
+              speaker: "???",
+              text: "Tu n'es pas digne de pénétrer en ces lieux.",
             },
           ]
         );
@@ -2612,9 +3056,18 @@ function syncDialogueOverlay() {
     if (State.flags.princessQuestAccepted) return;
     pauseForDialogue(
       [
-        { speaker: "Kael", text: "Enfin du renfort. Aelya s'est perdue dans ce labyrinthe mouvant." },
-        { speaker: "Kael", text: "Seul, je n'avance plus. J'ai besoin que tu m'aides a la retrouver avant que les arches ne se referment." },
-        { speaker: "Kael", text: "Tu acceptes ? Nous devrons faire vite et rester ensemble." },
+        {
+          speaker: "Kael",
+          text: "Lioran… te voilà enfin. Aëlya n’est plus très loin. Je sens sa présence quelque part dans les profondeurs du labyrinthe d’Éphéria.",
+        },
+        {
+          speaker: "Kael",
+          text: "On dit que ce labyrinthe résonne des voix et des ombres du passé… Restons sur nos gardes.",
+        },
+        {
+          speaker: "Kael",
+          text: "Allons y, retrouvons la princesse. Elle qui porte le 'Coeur'… et si nous la ramenons, nous pourrons enfin libérer ce monde des ténèbres.",
+        },
       ],
       () => {
         showKaelQuestPrompt();
@@ -2631,15 +3084,23 @@ function syncDialogueOverlay() {
       boss: { x: State.boss.x, y: State.boss.y },
     };
     State.bossMusicPending = true;
-    State.dialogue.show([
-     { speaker: "Kael", text: "Pardonne moi Lioran… " },
-      { speaker: "Kael", text: "Je t’ai guidé jusqu’ici, comme le destin me l’avait demandé. Tu as fait ta part du chemin." },
-      { speaker: "Kael", text: "La princesse… son âme porte une lumière que tu ne peux pas comprendre. Une lumière qui ne t’est pas destinée." },
-      { speaker: "Kael", text: "Je suis désolé, vraiment. Mais ce fragment… je ne peux pas te laisser l’approcher." },
-      { speaker: "Kael", text: "Tu croyais que je marchais à tes côtés. En vérité, je marchais vers elle." },
-      { speaker: "Kael", text: "Pardonne-moi si tu peux. Ou déteste-moi si tu dois. Le labyrinthe ne juge jamais… mais il réclame toujours son prix." },
+    State.questAnnouncement = null;
+    pauseForDialogue(
+      [
+        { speaker: "Kael", text: "..." },
+{ speaker: "Kael", text: "Lioran... les voix… elles ont gagné." },
+{ speaker: "Kael", text: "Le Cœur doit m'appartenir. Avec lui, je deviendrai aussi puissant qu’un dieu !" },
+{ speaker: "Kael", text: "Tu n'es pas digne de le garder pour toi." },
+{ speaker: "Kael", text: "Aëlya et toi allez mourir ici, de mes mains. Et lorsque ce sera fait, je ravagerai ce monde au nom des ténèbres." },
+{ speaker: "Kael", text: "Tourne-toi maintenant. Le coup sera bref, tu n’es pas obligé de souffrir." },
+{ speaker: "Moi", text: "Tu as perdu la tête ? Je ne peux pas te laisser faire ça… reprends-toi !" },
+{ speaker: "Kael", text: "Tu ne me laisses pas le choix. En garde !" },
 
-    ]);;
+      ],
+      () => {
+        showBossObjective("Vaincre Kael", "Objectif principal", 7);
+      }
+    );
   }
 
   // ===== Render =====
@@ -2647,7 +3108,6 @@ function syncDialogueOverlay() {
     const { map, player, boss, princess, puzzleOrbs } = State;
     const camera = State.camera;
 
-    // coords entiï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'Ã¢ï¿½,ï¿½Â ï¿½fÂ¢Ã¢ï¿½?sÂ¬Ã¢ï¿½?zÂ¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½,Â ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¡ï¿½,Â¬ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¾ï¿½,Â¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¡ï¿½,Â¬ï¿½fï¿½?sï¿½,Â ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?sï¿½,Â¢ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½.Â¡ï¿½fï¿½?sï¿½,Â¬ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½.Â¾ï¿½fï¿½?sï¿½,Â¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'Ã¢ï¿½,ï¿½Â ï¿½fÂ¢Ã¢ï¿½?sÂ¬Ã¢ï¿½?zÂ¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?sï¿½,Â¢ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½.Â¡ï¿½fï¿½?sï¿½,Â¬ï¿½fï¿½'Ã¢ï¿½,ï¿½Â¦ï¿½fï¿½?sï¿½,Â¡ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¡ï¿½,Â¬ï¿½fï¿½?ï¿½ï¿½,Â¡ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½.Â¡ï¿½fï¿½'Ã¢ï¿½,ï¿½Å¡ï¿½fï¿½?sï¿½,Â¨res pour ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'Ã¢ï¿½,ï¿½Â ï¿½fÂ¢Ã¢ï¿½?sÂ¬Ã¢ï¿½?zÂ¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½,Â ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¡ï¿½,Â¬ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¾ï¿½,Â¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¡ï¿½,Â¬ï¿½fï¿½?sï¿½,Â ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?sï¿½,Â¢ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½.Â¡ï¿½fï¿½?sï¿½,Â¬ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½.Â¾ï¿½fï¿½?sï¿½,Â¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'Ã¢ï¿½,ï¿½Â ï¿½fÂ¢Ã¢ï¿½?sÂ¬Ã¢ï¿½?zÂ¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?sï¿½,Â¢ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½.Â¡ï¿½fï¿½?sï¿½,Â¬ï¿½fï¿½'Ã¢ï¿½,ï¿½Â¦ï¿½fï¿½?sï¿½,Â¡ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¡ï¿½,Â¬ï¿½fï¿½?ï¿½ï¿½,Â¡ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½.Â¡ï¿½fï¿½'Ã¢ï¿½,ï¿½Å¡ï¿½fï¿½?sï¿½,Â©viter les ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'Ã¢ï¿½,ï¿½Â ï¿½fÂ¢Ã¢ï¿½?sÂ¬Ã¢ï¿½?zÂ¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½,Â ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¡ï¿½,Â¬ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¾ï¿½,Â¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¡ï¿½,Â¬ï¿½fï¿½?ï¿½ï¿½,Â¡ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½.Â¡ï¿½fï¿½'Ã¢ï¿½,ï¿½Å¡ï¿½fï¿½?sï¿½,Â¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'Ã¢ï¿½,ï¿½Â ï¿½fÂ¢Ã¢ï¿½?sÂ¬Ã¢ï¿½?zÂ¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½.Â¡ï¿½fï¿½'Ã¢ï¿½,ï¿½Å¡ï¿½fï¿½?sï¿½,Â¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'Ã¢ï¿½,ï¿½Å¡ï¿½fï¿½?sï¿½,Â¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?sï¿½,Â¢ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¡ï¿½,Â¬ï¿½fï¿½?ï¿½ï¿½,Â¡ï¿½fï¿½'Ã¢ï¿½,ï¿½Å¡ï¿½fï¿½?sï¿½,Â¬ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½,Â¦ï¿½fï¿½'Ã¢ï¿½,ï¿½Å¡ï¿½fï¿½?sï¿½,Â¡ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¡ï¿½,Â¬ï¿½fï¿½?ï¿½ï¿½,Â¡ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½.Â¡ï¿½fï¿½'Ã¢ï¿½,ï¿½Å¡ï¿½fï¿½?sï¿½,Â¬ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'Ã¢ï¿½,ï¿½Â ï¿½fÂ¢Ã¢ï¿½?sÂ¬Ã¢ï¿½?zÂ¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?sï¿½,Â¢ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½.Â¡ï¿½fï¿½?sï¿½,Â¬ï¿½fï¿½'Ã¢ï¿½,ï¿½Å¡ï¿½fï¿½?sï¿½,Â¦ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'Ã¢ï¿½,ï¿½Å¡ï¿½fï¿½?sï¿½,Â¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?sï¿½,Â¢ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¡ï¿½,Â¬ï¿½fï¿½?ï¿½ï¿½,Â¡ï¿½fï¿½'Ã¢ï¿½,ï¿½Å¡ï¿½fï¿½?sï¿½,Â¬ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½,Â¦ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¡ï¿½,Â¬ï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"sautsï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'Ã¢ï¿½,ï¿½Â ï¿½fÂ¢Ã¢ï¿½?sÂ¬Ã¢ï¿½?zÂ¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½,Â ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¡ï¿½,Â¬ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¾ï¿½,Â¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¡ï¿½,Â¬ï¿½fï¿½?ï¿½ï¿½,Â¡ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½.Â¡ï¿½fï¿½'Ã¢ï¿½,ï¿½Å¡ï¿½fï¿½?sï¿½,Â¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'Ã¢ï¿½,ï¿½Â ï¿½fÂ¢Ã¢ï¿½?sÂ¬Ã¢ï¿½?zÂ¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½.Â¡ï¿½fï¿½'Ã¢ï¿½,ï¿½Å¡ï¿½fï¿½?sï¿½,Â¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'Ã¢ï¿½,ï¿½Å¡ï¿½fï¿½?sï¿½,Â¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?sï¿½,Â¢ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¡ï¿½,Â¬ï¿½fï¿½?ï¿½ï¿½,Â¡ï¿½fï¿½'Ã¢ï¿½,ï¿½Å¡ï¿½fï¿½?sï¿½,Â¬ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½,Â¦ï¿½fï¿½'Ã¢ï¿½,ï¿½Å¡ï¿½fï¿½?sï¿½,Â¡ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¡ï¿½,Â¬ï¿½fï¿½?ï¿½ï¿½,Â¡ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½.Â¡ï¿½fï¿½'Ã¢ï¿½,ï¿½Å¡ï¿½fï¿½?sï¿½,Â¬ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'Ã¢ï¿½,ï¿½Â ï¿½fÂ¢Ã¢ï¿½?sÂ¬Ã¢ï¿½?zÂ¢ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?sï¿½,Â¢ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½.Â¡ï¿½fï¿½?sï¿½,Â¬ï¿½fï¿½'Ã¢ï¿½,ï¿½Â¦ï¿½fï¿½?sï¿½,Â¡ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fï¿½?ï¿½Ã¢ï¿½,ï¿½ï¿½"ï¿½ï¿½fï¿½'ï¿½,Â¢ï¿½fÂ¢Ã¢ï¿½,ï¿½Å¡ï¿½,Â¬ï¿½fï¿½?ï¿½ï¿½,Â¡ï¿½fï¿½'ï¿½?ï¿½?Tï¿½fÂ¢Ã¢ï¿½?sÂ¬ï¿½.Â¡ï¿½fï¿½'Ã¢ï¿½,ï¿½Å¡ï¿½fï¿½?sï¿½,Â
     const camX = camera.x | 0;
     const camY = camera.y | 0;
     const scaleX = $canvas.width / Math.max(1, camera.w);
@@ -2660,9 +3120,6 @@ function syncDialogueOverlay() {
     ctx.scale(scaleX, scaleY);
 
     ctx.drawImage(mapImg, camX, camY, camera.w, camera.h, 0, 0, camera.w, camera.h);
-    if (State.showCollisionDebug && map?.drawCollisionDebug) {
-      map.drawCollisionDebug(ctx, camX, camY, camera.w, camera.h);
-    }
 
     // actors in world space
     ctx.save();
@@ -2675,6 +3132,9 @@ function syncDialogueOverlay() {
     }
     if (!State.flags.betrayalHappened) {
       State.kael.draw(ctx);
+      if (State.flags.princessQuestAccepted && isKaelAllyAlive()) {
+        drawKaelAllyHpBar(ctx, State.kael);
+      }
       if (!State.flags.princessQuestAccepted) {
         drawQuestMarker(ctx, State.kael);
       }
@@ -2717,6 +3177,9 @@ function syncDialogueOverlay() {
     const playerScreenY = (player.y - camY) * scaleY;
     if (!State.flags.betrayalHappened || State.flags.kaelDefeated) {
       drawHeroShroud(ctx, playerScreenX, playerScreenY);
+    }
+    if (State.bossObjective) {
+      drawBossObjective(ctx, playerScreenX, playerScreenY, State.bossObjective);
     }
     if (State.questAnnouncement) {
       drawQuestBanner(ctx, playerScreenX, playerScreenY - 80, State.questAnnouncement);
@@ -2761,6 +3224,28 @@ function resetGameOverSound() {
   }
   State.gameOverSoundScheduled = false;
 }
+
+  function showKaelAllyGameOver() {
+    if (State.flags.kaelGameOverShown) return;
+    State.flags.kaelGameOverShown = true;
+    State.paused = true;
+    State.dialogue?.close?.();
+    const el = document.getElementById("ending");
+    if (!el) return;
+    playGameOverSound();
+    stopBossMusic(true);
+    State.bossMusicPending = false;
+    el.classList.remove("hidden");
+    el.innerHTML = `
+      <div class="card">
+        <h2>Game Over</h2>
+        <p>Kael n'a pas survécu. Le labyrinthe reprend sa colère.</p>
+        <div class="choices">
+          <button data-retry-kael>Recommencer</button>
+        </div>
+      </div>`;
+    el.querySelector("[data-retry-kael]")?.addEventListener("click", () => location.reload());
+  }
 
   function renderBossGameOver() {
     if (State.bossRetryShown) return;
@@ -2846,11 +3331,11 @@ function resetGameOverSound() {
     el.classList.remove("hidden");
     el.innerHTML = `
       <div class="card">
-        <h2>Le Labyrinthe ta lu.</h2>
-        <p>Ton dernier souvenir sefface dans le sable des murs.</p>
-        <div class="choices"><button data-retry>Recommencer</button></div>
+        <h2>Les âmes défuntes t'emporte.</h2>
+        <p>Ton dernier souvenir disparais dans la poussière d'éphéria.</p>
+        <div class="choices"><button data-abandon>Retour à l'accueil</button></div>
       </div>`;
-    el.querySelector("[data-retry]")?.addEventListener("click", () => location.reload());
+    el.querySelector("[data-abandon]")?.addEventListener("click", () => goToTitle());
   }
 }
 
@@ -2916,10 +3401,10 @@ function drawPuzzleOrb(ctx, orb) {
   ctx.restore();
 }
 
-function drawBossHpBar(ctx, boss) {
-  if (!ctx || !boss) return;
-  const maxHp = Math.max(1, boss.maxHp ?? boss.hp ?? 1);
-  const hp = Math.max(0, Math.min(maxHp, boss.hp ?? 0));
+  function drawBossHpBar(ctx, boss) {
+    if (!ctx || !boss) return;
+    const maxHp = Math.max(1, boss.maxHp ?? boss.hp ?? 1);
+    const hp = Math.max(0, Math.min(maxHp, boss.hp ?? 0));
   const ratio = hp / maxHp;
   const barWidth = 78;
   const barHeight = 7;
@@ -2936,8 +3421,32 @@ function drawBossHpBar(ctx, boss) {
   ctx.strokeStyle = "rgba(255,255,255,0.6)";
   ctx.lineWidth = 1.5;
   ctx.strokeRect(barX, barY, barWidth, barHeight);
-  ctx.restore();
-}
+    ctx.restore();
+  }
+
+  function drawKaelAllyHpBar(ctx, kael) {
+    if (!ctx || !kael) return;
+    const maxHp = Math.max(1, kael.maxHp ?? kael.hp ?? 1);
+    const current = Math.max(0, Math.min(maxHp, kael.hp ?? 0));
+    if (maxHp <= 0) return;
+    const ratio = current / maxHp;
+    const width = 33;
+    const height = 3;
+    const offset = (kael.hitRadius ?? 30) + 16;
+    const x = kael.x - width / 2;
+    const y = kael.y - offset;
+    const hue = Math.round(Math.max(0, Math.min(120, ratio * 120)));
+    ctx.save();
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = "rgba(0, 0, 0, 0.6)";
+    ctx.fillRect(x - 1, y - 1, width + 2, height + 2);
+    ctx.fillStyle = `hsl(${hue}, 78%, 49%)`;
+    ctx.fillRect(x, y, width * ratio, height);
+    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x, y, width, height);
+    ctx.restore();
+  }
 
 function drawAtmosphericFog(ctx, width, height) {
   if (!ctx) return;

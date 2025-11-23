@@ -126,7 +126,6 @@ export function createHUD() {
           </div>
           <div class="helper-keys">
             <span class="key">5</span>
-            <span class="key">\u00E9</span>
             <span class="key">O</span>
             <span class="helper-desc-inline">Sprint</span>
           </div>
@@ -136,8 +135,9 @@ export function createHUD() {
             <span class="helper-desc-inline">Attaque \u00e0 distance</span>
           </div>
           <div class="helper-keys">
+          <span class="key">2</span>
             <span class="key">L</span>
-            <span class="key">2</span>
+            
             <span class="helper-desc-inline">Objet rapide</span>
           </div>
           
@@ -544,5 +544,5 @@ function setupMobileControls() {
       State.dialogue.next?.();
     }
   });
-  bindHoldButton(btnSprint, ["2", "\u00E9"]);
+  bindHoldButton(btnSprint, ["2"]);
 }
