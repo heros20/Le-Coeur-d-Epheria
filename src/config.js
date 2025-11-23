@@ -10,6 +10,7 @@ export const CONFIG = {
   collisionOffset: { x: 13, y: -8 },
   // on élargit légèrement les collisions pour éviter de traverser les murs
   collisionInflation: 1.15,
+  collisionMargin: 2,
 
   playerAttackRadius: 25.3,
   playerAttackDuration: 0.28,
@@ -18,6 +19,7 @@ export const CONFIG = {
   dashCooldown: 1.05,
   dashStaminaCost: 18,
   dashDuration: 0.25,
+  dashHoldDrainMult: 4,
   comboDoubleTapWindow: 0.28,
   heavyHoldTime: 0.45,
   lightAttackDamage: 15,

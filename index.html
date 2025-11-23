@@ -445,6 +445,33 @@
           padding: 1.1rem 1rem;
         }
       }
+
+         /* À partir de 1100px : 2 colonnes, 2×2 boîtes */
+      /* ====== COMMANDES : layout responsive ====== */
+
+      /* Par défaut : 4 boîtes alignées (grand écran) */
+      .boot-commands-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 1rem;
+        width: 100%;
+      }
+
+      /* En dessous de 1100px : 2 colonnes → 2 boîtes en haut, 2 en bas */
+      @media (max-width: 1100px) {
+        .boot-commands-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+
+      /* Très petit écran (mobile) : 1 colonne si tu veux éviter que ça soit trop serré */
+      @media (max-width: 640px) {
+        .boot-commands-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
+
     </style>
   </head>
   <body>

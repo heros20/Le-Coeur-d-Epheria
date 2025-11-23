@@ -23,6 +23,10 @@ export class NPC {
     this.attackRange = opts.attackRange ?? null;
     this.attackCooldown = 0;
     this.hitFlash = 0;
+    this._dashTimer = 0;
+    this._dashDuration = 0;
+    this._dashSpeed = 0;
+    this._dashVector = { x: 1, y: 0 };
   }
 
   update(dt, target, world) {
@@ -30,7 +34,30 @@ export class NPC {
     let dx = 0;
     let dy = 0;
     const prevX = this.x;
-    if (this.follow && target && world) {
+    const blockedAt = (xx, yy) => world?.isBlocked?.(xx, yy) ?? false;
+
+    if (this._dashTimer > 0) {
+      const step = (this._dashSpeed || this.speed) * dt;
+      const nx = this.x + this._dashVector.x * step;
+      const ny = this.y + this._dashVector.y * step;
+      let movedX = false;
+      let movedY = false;
+      if (!blockedAt(nx, this.y)) {
+        this.x = nx;
+        movedX = true;
+      }
+      if (!blockedAt(this.x, ny)) {
+        this.y = ny;
+        movedY = true;
+      }
+      moving = movedX || movedY;
+      dx = this._dashVector.x;
+      dy = this._dashVector.y;
+      this._dashTimer = Math.max(0, this._dashTimer - dt);
+      if (!moving && world) {
+        this._tryUnstuck(world);
+      }
+    } else if (this.follow && target && world) {
       dx = target.x - this.x;
       dy = target.y - this.y;
       const dist = Math.hypot(dx, dy) || 1;
@@ -45,11 +72,11 @@ export class NPC {
         const ny = this.y + my;
         let movedX = false;
         let movedY = false;
-        if (!world.isBlocked(nx, this.y)) {
+        if (!blockedAt(nx, this.y)) {
           this.x = nx;
           movedX = true;
         }
-        if (!world.isBlocked(this.x, ny)) {
+        if (!blockedAt(this.x, ny)) {
           this.y = ny;
           movedY = true;
         }
@@ -57,7 +84,7 @@ export class NPC {
         if (!moving) {
           this._tryUnstuck(world);
         }
-      } else if (dist < desiredDist * 0.6 && !world.isBlocked(this.x - dx, this.y - dy)) {
+      } else if (dist < desiredDist * 0.6 && !blockedAt(this.x - dx, this.y - dy)) {
         this.x -= (dx / dist) * this.speed * dt;
         this.y -= (dy / dist) * this.speed * dt;
       }
@@ -147,6 +174,27 @@ export class NPC {
         break;
       }
     }
+  }
+
+  startPartnerDash(direction, opts = {}) {
+    if (!direction) return false;
+    const dx = Number(direction.x) || 0;
+    const dy = Number(direction.y) || 0;
+    const mag = Math.hypot(dx, dy);
+    if (mag === 0) return false;
+    const duration = Number.isFinite(opts.duration) ? opts.duration : (CONFIG.dashDuration ?? 0.25);
+    const speedCandidate =
+      Number.isFinite(opts.speed) && opts.speed > 0 ? opts.speed : this.speed * 2.5;
+    if (duration <= 0 || speedCandidate <= 0) return false;
+    this._dashVector = { x: dx / mag, y: dy / mag };
+    this._dashSpeed = speedCandidate;
+    this._dashDuration = duration;
+    this._dashTimer = duration;
+    return true;
+  }
+
+  isPartnerDashing() {
+    return this._dashTimer > 0;
   }
 
   applyDamage(dmg) {

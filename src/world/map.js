@@ -184,14 +184,28 @@ export class WorldMap {
   }
 
   circleFree(x, y, r) {
-    const infl = Math.max(0, (CONFIG.collisionInflation ?? 1));
-    const radius = r * infl;
-    return !(
-      this.isBlocked(x - radius, y) || this.isBlocked(x + radius, y) ||
-      this.isBlocked(x, y - radius) || this.isBlocked(x, y + radius) ||
-      this.isBlocked(x - radius, y - radius) || this.isBlocked(x + radius, y - radius) ||
-      this.isBlocked(x - radius, y + radius) || this.isBlocked(x + radius, y + radius)
-    );
+    const infl = Math.max(0, CONFIG.collisionInflation ?? 1);
+    const margin = Math.max(0, CONFIG.collisionMargin ?? 0);
+    const radius = r * infl + margin;
+    const ox = this.collisionOffset.x;
+    const oy = this.collisionOffset.y;
+    const cellMinX = Math.floor((x - radius - ox) / this.cell);
+    const cellMaxX = Math.floor((x + radius - ox) / this.cell);
+    const cellMinY = Math.floor((y - radius - oy) / this.cell);
+    const cellMaxY = Math.floor((y + radius - oy) / this.cell);
+    const startX = Math.max(0, Math.min(this.cols - 1, cellMinX));
+    const endX = Math.max(0, Math.min(this.cols - 1, cellMaxX));
+    const startY = Math.max(0, Math.min(this.rows - 1, cellMinY));
+    const endY = Math.max(0, Math.min(this.rows - 1, cellMaxY));
+    for (let cy = startY; cy <= endY; cy++) {
+      const rowStart = cy * this.cols;
+      for (let cx = startX; cx <= endX; cx++) {
+        if (this.collision[rowStart + cx] === 1) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   nearestOpen(px, py, r) {

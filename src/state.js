@@ -26,6 +26,8 @@ export const State = {
   touchControls: null,
   isMobile: false,
   puzzleOrbs: [],
+  playerDashTrail: [],
+  kaelDashTrail: [],
   showCollisionDebug: true,
   orbPromptOpen: false,
   princessHint: null,

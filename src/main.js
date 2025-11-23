@@ -1279,7 +1279,20 @@ function syncDialogueOverlay() {
         : keyboardVector
         ? keyboardVector
         : { x: player.facing === "left" ? -1 : 1, y: 0 };
-      player.tryDash(map, dashDir);
+      const dashed = player.tryDash(map, dashDir);
+      if (dashed && isKaelAllyAlive()) {
+        const heroDashDuration = Math.max(
+          0.05,
+          Number.isFinite(player.dashDuration)
+            ? player.dashDuration
+            : CONFIG.dashDuration ?? 0.25
+        );
+        const heroDashSpeed = player.dashDistance / heroDashDuration;
+        State.kael.startPartnerDash(dashDir, {
+          duration: heroDashDuration,
+          speed: heroDashSpeed,
+        });
+      }
     }
 
     // NPC/Princess
@@ -1301,6 +1314,24 @@ function syncDialogueOverlay() {
       }
     }
     State.kael.update(dt, kaelTarget, map);
+    const kaelDashTrailLife = 0.36;
+    const kaelDashTrail = State.kaelDashTrail ?? [];
+    const kael = State.kael;
+    if (kael?.isPartnerDashing?.()) {
+      kaelDashTrail.push({
+        x: kael.x,
+        y: kael.y,
+        life: kaelDashTrailLife,
+        maxLife: kaelDashTrailLife,
+      });
+      if (kaelDashTrail.length > 28) {
+        kaelDashTrail.splice(0, kaelDashTrail.length - 28);
+      }
+    }
+    kaelDashTrail.forEach((node) => {
+      node.life = Math.max(0, node.life - dt);
+    });
+    State.kaelDashTrail = kaelDashTrail.filter((node) => node.life > 0);
     State.kael.keepDistance = savedKeep;
     if (State.flags.princessUnlocked) {
       State.princess.update(dt, player, map);
@@ -3284,6 +3315,7 @@ function drawGhosts(ctx) {
     drawPickups(ctx);
     drawGhosts(ctx);
     drawPlayerDashTrail(ctx);
+    drawKaelDashTrail(ctx);
     drawPlayerAttackTrail(ctx);
 
     if (State.flags.princessUnlocked) {
@@ -3541,6 +3573,35 @@ function drawPlayerDashTrail(ctx) {
     ctx.fill();
     ctx.globalAlpha = alpha * 0.6;
     ctx.fillStyle = "rgba(255,235,190,0.9)";
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, radius * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+}
+
+function drawKaelDashTrail(ctx) {
+  const trail = State.kaelDashTrail;
+  if (!Array.isArray(trail) || trail.length === 0) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  trail.forEach((node) => {
+    const ratio = Math.max(
+      0,
+      Math.min(1, (node.life ?? 0) / Math.max(0.0001, node.maxLife ?? 1))
+    );
+    const radius = 16 + (1 - ratio) * 26;
+    const alpha = 0.2 + ratio * 0.35;
+    const grad = ctx.createRadialGradient(node.x, node.y, 0, node.x, node.y, radius);
+    grad.addColorStop(0, `rgba(255,160,160,${alpha})`);
+    grad.addColorStop(0.4, `rgba(255,80,80,${alpha * 0.8})`);
+    grad.addColorStop(1, "rgba(255,40,40,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(node.x, node.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = alpha * 0.65;
+    ctx.fillStyle = "rgba(255,130,130,0.9)";
     ctx.beginPath();
     ctx.arc(node.x, node.y, radius * 0.5, 0, Math.PI * 2);
     ctx.fill();

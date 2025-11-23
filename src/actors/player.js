@@ -154,7 +154,8 @@ export class Player {
           this._dashDir = { x: dashVector.x, y: dashVector.y };
         }
         if (this.stamina > 0) {
-          this.stamina = Math.max(0, this.stamina - this.dashCost * dt);
+          const dashHoldDrainMult = CONFIG.dashHoldDrainMult ?? 2;
+          this.stamina = Math.max(0, this.stamina - this.dashCost * dashHoldDrainMult * dt);
         }
       }
       const mag = Math.hypot(this._dashDir.x, this._dashDir.y) || 1;
@@ -222,7 +223,7 @@ export class Player {
         const before = this.stamina;
         this.stamina = Math.max(0, this.stamina - this.staminaDrain * dt);
         if (before > 0 && this.stamina === 0) this.recoveryCooldown = this.recoveryDelay;
-      } else if (this.recoveryCooldown <= 0) {
+      } else if (this.recoveryCooldown <= 0 && this._dashActive <= 0) {
         this.stamina = Math.min(this.staminaMax, this.stamina + this.staminaRegen * dt);
       }
 
