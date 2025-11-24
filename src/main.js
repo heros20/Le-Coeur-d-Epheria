@@ -3480,7 +3480,7 @@ function drawGhosts(ctx) {
         },
           {
           speaker: "Kael",
-          text: "Ce n'es rien, allons y, Vite ! ",
+          text: "Ce n'est rien, allons y, Vite ! ",
         },
       ],
       () => {
