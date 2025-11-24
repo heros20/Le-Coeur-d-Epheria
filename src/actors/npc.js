@@ -36,26 +36,34 @@ export class NPC {
     const prevX = this.x;
     const blockedAt = (xx, yy) => world?.isBlocked?.(xx, yy) ?? false;
 
+    const tryMoveTo = (nx, ny) => {
+      if (!world) return false;
+      const radius = this.hitRadius ?? CONFIG.actorRadius ?? 12;
+      const free = typeof world.circleFree === "function"
+        ? world.circleFree(nx, ny, radius)
+        : !blockedAt(nx, ny);
+      if (!free) return false;
+      this.x = nx;
+      this.y = ny;
+      return true;
+    };
+
     if (this._dashTimer > 0) {
       const step = (this._dashSpeed || this.speed) * dt;
-      const nx = this.x + this._dashVector.x * step;
-      const ny = this.y + this._dashVector.y * step;
-      let movedX = false;
-      let movedY = false;
-      if (!blockedAt(nx, this.y)) {
-        this.x = nx;
-        movedX = true;
+      const targetX = this.x + this._dashVector.x * step;
+      const targetY = this.y + this._dashVector.y * step;
+      const moved = tryMoveTo(targetX, targetY);
+      moving = Boolean(moved);
+      if (!moving && world) {
+        const splitX = tryMoveTo(targetX, this.y);
+        const splitY = tryMoveTo(this.x, targetY);
+        moving = splitX || splitY;
       }
-      if (!blockedAt(this.x, ny)) {
-        this.y = ny;
-        movedY = true;
-      }
-      moving = movedX || movedY;
       dx = this._dashVector.x;
       dy = this._dashVector.y;
       this._dashTimer = Math.max(0, this._dashTimer - dt);
       if (!moving && world) {
-        this._tryUnstuck(world);
+        this._tryUnstuck(world, dx, dy);
       }
     } else if (this.follow && target && world) {
       dx = target.x - this.x;
@@ -82,7 +90,7 @@ export class NPC {
         }
         moving = movedX || movedY;
         if (!moving) {
-          this._tryUnstuck(world);
+          this._tryUnstuck(world, dx, dy);
         }
       } else if (dist < desiredDist * 0.6 && !blockedAt(this.x - dx, this.y - dy)) {
         this.x -= (dx / dist) * this.speed * dt;
@@ -153,8 +161,9 @@ export class NPC {
     return action;
   }
 
-  _tryUnstuck(world) {
-    const attempts = [
+  _tryUnstuck(world, dx = 0, dy = 0) {
+    if (!world) return;
+    const baseAttempts = [
       { x: 1, y: 0 },
       { x: -1, y: 0 },
       { x: 0, y: 1 },
@@ -164,8 +173,18 @@ export class NPC {
       { x: 1, y: -1 },
       { x: -1, y: 1 },
     ];
+    const step = Math.max(6, (world.cell ?? 12) * 0.6);
+    const dist = Math.hypot(dx, dy);
+    const normalized = dist > 0 ? { x: dx / dist, y: dy / dist } : null;
+    const attempts = baseAttempts.map((dir) => ({ ...dir }));
+    if (normalized) {
+      attempts.sort((a, b) => {
+        const scoreA = a.x * normalized.x + a.y * normalized.y;
+        const scoreB = b.x * normalized.x + b.y * normalized.y;
+        return scoreB - scoreA;
+      });
+    }
     for (const dir of attempts) {
-      const step = 12;
       const nx = this.x + dir.x * step;
       const ny = this.y + dir.y * step;
       if (!world.isBlocked(nx, ny)) {

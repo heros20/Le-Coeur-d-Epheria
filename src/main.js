@@ -40,10 +40,47 @@ const SOUND_SOURCES = {
   kaelOrbLaunch: "./assets/sounds/Kael_Spell/Orb.mp3",
   gameOver: "./assets/sounds/game-over/game-over.mp3",
   ambient: "./assets/sounds/Ambiance/Ambiance.mp3",
+  themeAmbient: "./assets/sounds/Ambiance/Theme_ambiance.mp3",
   orbActivate: "./assets/sounds/orbes/orbes.mp3",
   princessCry: "./assets/sounds/princesse/crying_princesse.mp3",
   bossFight: "./assets/sounds/Kael_Spell/boss_fight.mp3",
+  ghostWall: "./assets/sounds/Ghost/Laby_ghost.mp3",
+  ghostDash: "./assets/sounds/Ghost/Ghost-attack.mp3",
+  ghostCreepy: "./assets/sounds/Ghost/Creepy_ghost.mp3",
 };
+const MENU_SFX_PATHS = {
+  start: "./assets/sounds/menu/start.mp3",
+  click: "./assets/sounds/menu/click-button.mp3",
+};
+const MENU_THEME_PATH = "./assets/sounds/Theme_menu/Eternal-Glory.mp3";
+const menuThemeAudio = (() => {
+  const audio = new Audio(MENU_THEME_PATH);
+  audio.loop = true;
+  audio.preload = "auto";
+  audio.volume = 0.55;
+  return audio;
+})();
+
+function updateMenuThemePlayback() {
+  if (!menuThemeAudio) return;
+  if (State.audioSettings?.menu) {
+    menuThemeAudio.play().catch(() => {});
+  } else {
+    menuThemeAudio.pause();
+  }
+}
+
+const resumeMenuThemeOnInteract = () => {
+  updateMenuThemePlayback();
+  window.removeEventListener("pointerdown", resumeMenuThemeOnInteract, { capture: true });
+  window.removeEventListener("keydown", resumeMenuThemeOnInteract, { capture: true });
+};
+window.addEventListener("pointerdown", resumeMenuThemeOnInteract, { once: true, capture: true });
+window.addEventListener("keydown", resumeMenuThemeOnInteract, { once: true, capture: true });
+window.addEventListener("DOMContentLoaded", () => {
+  updateMenuThemePlayback();
+  setTimeout(() => updateMenuThemePlayback(), 1400);
+});
 
 const DESKTOP_ATTACK_KEYS = ["1", "&", "k"];
 const ORB_MESSAGES = [
@@ -58,6 +95,58 @@ const ORB_REPEAT_MESSAGES = [
   "Encore une menace, nous sommes forcément sur la bonne voie.",
   "On ne peux pas reculer maintenant, restons vigilant.",
 ];
+
+const KAEL_MECHANIC_META = {
+  dash: { label: "Dash Spectral", color: "#ffd18b", accent: "#ff6f40", icon: "⚡" },
+  orb: { label: "Orbes d'Éphéria", color: "#ffe4c5", accent: "#ff853a", icon: "◎" },
+  fissure: { label: "Fissure Brûlante", color: "#ffd1b8", accent: "#e04b1d", icon: "⛰" },
+  sigil: { label: "Sigils Protecteurs", color: "#d1efff", accent: "#5fb7ff", icon: "✦" },
+  clone: { label: "Clones Sombres", color: "#c3e6ff", accent: "#4d8cff", icon: "〰" },
+  beam: { label: "Rayon de Feu", color: "#ffe7bc", accent: "#ffb31a", icon: "━" },
+  inferno: { label: "Souffle Infernal", color: "#ffd6aa", accent: "#ff3f1b", icon: "☄" },
+  meteor: { label: "Pluie de Météores", color: "#ffd1b2", accent: "#ff5c1b", icon: "☄" },
+  shockwave: { label: "Onde de Choc", color: "#fff0d9", accent: "#ffd600", icon: "◯" },
+  storm: { label: "Éclairs Orbitaux", color: "#dbe9ff", accent: "#5fb7ff", icon: "⚡" },
+};
+
+function hexToRgba(value, alpha = 1) {
+  if (!value) return `rgba(255,255,255,${alpha})`;
+  const normalized = value.trim();
+  if (/^(rgba?|hsla?|hsl)\(/i.test(normalized)) return normalized;
+  let hex = normalized.replace("#", "");
+  if (hex.length === 3) {
+    hex = hex
+      .split("")
+      .map((char) => `${char}${char}`)
+      .join("");
+  }
+  if (hex.length !== 6) return `rgba(255,255,255,${alpha})`;
+  const parsed = parseInt(hex, 16);
+  if (Number.isNaN(parsed)) return `rgba(255,255,255,${alpha})`;
+  const r = (parsed >> 16) & 0xff;
+  const g = (parsed >> 8) & 0xff;
+  const b = parsed & 0xff;
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+function enqueueKaelMechanic(action, phase, delay = 0) {
+  const meta = KAEL_MECHANIC_META[action];
+  if (!meta) return;
+  const now = State.time;
+  const dueAt = now + Math.max(0, delay);
+  const alert = {
+    action,
+    phase,
+    startAt: dueAt - 2,
+    dueAt,
+    label: meta.label,
+    color: meta.color,
+    accent: meta.accent,
+    icon: meta.icon,
+  };
+  State.kaelMechanicAlerts = (State.kaelMechanicAlerts ?? []).filter((a) => a.dueAt > now);
+  State.kaelMechanicAlerts.push(alert);
+}
 
 const touchControlState = {
   moveVector: null,
@@ -325,6 +414,7 @@ function consumeMobileDashPress() {
 }
 
 function playSound(name, volume = 1) {
+  if (!State.audioSettings?.game) return;
   const clip = State.sounds?.[name];
   if (!clip) return;
   try {
@@ -336,17 +426,111 @@ function playSound(name, volume = 1) {
   }
 }
 
+function createMenuClip(name, volume = 1) {
+  const path = MENU_SFX_PATHS[name];
+  if (!path) return null;
+  const audio = new Audio(path);
+  audio.preload = "auto";
+  audio.volume = Math.max(0, Math.min(1, volume));
+  return audio;
+}
+
+function playMenuClickSound(volume = 0.85) {
+  const clip = createMenuClip("click", volume);
+  if (!clip) return;
+  clip.play().catch(() => {});
+}
+
+let ghostDashActive = 0;
+function playGhostDashSound() {
+  if (!State.audioSettings?.game) return;
+  const clip = State.sounds?.ghostDash;
+  if (!clip) return;
+  if (ghostDashActive >= 2) return;
+  let node;
+  try {
+    node = clip.cloneNode();
+  } catch {
+    return;
+  }
+  ghostDashActive += 1;
+  const release = () => {
+    ghostDashActive = Math.max(0, ghostDashActive - 1);
+    node?.removeEventListener("ended", release);
+    node?.removeEventListener("error", release);
+  };
+  node.addEventListener("ended", release);
+  node.addEventListener("error", release);
+  node.volume = 0.05;
+  node.play().catch(() => release());
+}
+
+function playGhostWallSound() {
+  if (State.ghostWallSoundPlayed) return;
+  if (!State.audioSettings?.game) return;
+  State.ghostWallSoundPlayed = true;
+  playSound("ghostWall", 0.07);
+}
+
+function playGhostCreepy() {
+  if (!State.audioSettings?.game) return;
+  const clip = State.sounds?.ghostCreepy;
+  if (!clip) return;
+  const node = clip.cloneNode();
+  node.volume = 0.45;
+  node.play().catch(() => {});
+  const fadeDelay = 5000;
+  const fadeDuration = 1000;
+  const startVolume = node.volume;
+  const steps = Math.max(1, Math.ceil(fadeDuration / 50));
+  let stepCount = 0;
+  let fadeInterval = null;
+  const startFade = () => {
+    if (fadeInterval) return;
+    fadeInterval = setInterval(() => {
+      stepCount++;
+      const ratio = Math.min(1, stepCount / steps);
+      node.volume = Math.max(0, startVolume * (1 - ratio));
+      if (ratio >= 1 && fadeInterval) {
+        clearInterval(fadeInterval);
+        fadeInterval = null;
+      }
+    }, fadeDuration / steps);
+  };
+  const fadeTimeout = setTimeout(startFade, fadeDelay);
+  setTimeout(() => {
+    if (fadeInterval) {
+      clearInterval(fadeInterval);
+      fadeInterval = null;
+    }
+    clearTimeout(fadeTimeout);
+    node.pause();
+    node.currentTime = 0;
+  }, fadeDelay + fadeDuration);
+}
+
 function startAmbientMusic() {
   if (State.ambientMusicStarted) return;
-  const track = State.sounds?.ambient;
-  if (!track) return;
+  if (!State.audioSettings?.game) return;
+  const ambientTrack = State.sounds?.ambient;
+  const themeTrack = State.sounds?.themeAmbient;
+  if (!ambientTrack && !themeTrack) return;
   try {
-    track.loop = true;
-    track.volume = 0.35;
-    track.currentTime = 0;
-    track.play().catch(() => {});
+    if (ambientTrack) {
+      ambientTrack.loop = true;
+      ambientTrack.volume = 0.35 * 0.4; // reduce by 60%
+      ambientTrack.currentTime = 0;
+      ambientTrack.play().catch(() => {});
+      State.activeAmbientTrack = ambientTrack;
+    }
+    if (themeTrack) {
+      themeTrack.loop = true;
+      themeTrack.volume = 0.02;
+      themeTrack.currentTime = 0;
+      themeTrack.play().catch(() => {});
+      State.activeThemeAmbientTrack = themeTrack;
+    }
     State.ambientMusicStarted = true;
-    State.activeAmbientTrack = track;
   } catch {
     // ignore autoplay errors
   }
@@ -543,6 +727,8 @@ const ANIMATION_DEFAULTS = {
 function setupBoot() {
   const cards = [...document.querySelectorAll(".hero-card")];
   const startBtn = document.getElementById("startBtn");
+  const menuToggle = document.getElementById("toggleMenuSound");
+  const gameToggle = document.getElementById("toggleGameSound");
   if (cards.length === 0) return;
   heroSelection = cards[0].getAttribute("data-src");
   cards.forEach((card) => {
@@ -550,7 +736,75 @@ function setupBoot() {
     card.classList.add("selected");
   });
   startBtn.disabled = false;
-  startBtn.addEventListener("click", startGame);
+  let startSequenceTriggered = false;
+  const cleanupStartAnimation = () => {
+    if (!startBtn) return;
+    startBtn.classList.remove("menu-btn-launching");
+    startBtn.style.removeProperty("--launch-duration");
+  };
+  const handleStartClick = () => {
+    if (startSequenceTriggered) return;
+    startSequenceTriggered = true;
+    if (startBtn) startBtn.disabled = true;
+    menuThemeAudio.pause();
+    menuThemeAudio.currentTime = 0;
+    const clip = createMenuClip("start", 0.95);
+    const finalize = (() => {
+      let done = false;
+      return () => {
+        if (done) return;
+        done = true;
+        cleanupStartAnimation();
+        startGame();
+      };
+    })();
+    if (!clip) {
+      finalize();
+      return;
+    }
+    startBtn.classList.add("menu-btn-launching");
+    const applyDuration = () => {
+      const duration = clip.duration;
+      if (Number.isFinite(duration) && duration > 0) {
+        startBtn.style.setProperty("--launch-duration", `${duration}s`);
+      }
+    };
+    applyDuration();
+    clip.addEventListener("loadedmetadata", applyDuration, { once: true });
+    clip.addEventListener("ended", finalize, { once: true });
+    clip.addEventListener("error", finalize, { once: true });
+    clip.play().catch(() => finalize());
+  };
+  startBtn.addEventListener("click", handleStartClick);
+  const bindToggle = (element, settingKey, label) => {
+    if (!element) return;
+    const sync = () => {
+      const enabled = Boolean(State.audioSettings?.[settingKey]);
+      const labelEl = element.querySelector(".label") ?? element;
+      labelEl.textContent = `${label}: ${enabled ? "ON" : "OFF"}`;
+    };
+    element.addEventListener("click", () => {
+      State.audioSettings = State.audioSettings ?? { menu: true, game: true };
+      State.audioSettings[settingKey] = !State.audioSettings[settingKey];
+      if (settingKey === "menu") {
+        updateMenuThemePlayback();
+      }
+      if (settingKey === "game") {
+        if (State.audioSettings.game) {
+          startAmbientMusic();
+        } else {
+          State.activeAmbientTrack?.pause();
+          State.activeThemeAmbientTrack?.pause();
+        }
+      }
+      sync();
+      playMenuClickSound();
+    });
+    sync();
+  };
+  bindToggle(menuToggle, "menu", "Musique menu");
+  bindToggle(gameToggle, "game", "Son du jeu");
+  updateMenuThemePlayback();
 }
 
 async function loadImage(src) {
@@ -649,6 +903,8 @@ function sliceSheet(img) {
 async function startGame() {
   $boot.classList.add("hidden");
   $game.classList.remove("hidden");
+  menuThemeAudio.pause();
+  menuThemeAudio.currentTime = 0;
   State.started = true;
   resetGameOverSound();
   setupTouchControls();
@@ -709,6 +965,11 @@ function syncDialogueOverlay() {
   heroImg = byPath[heroSelection];
   potionTexture = potionImage;
   State.sounds = soundBank ?? {};
+  State.dialoguePortraits = {
+    hero1: byPath["./assets/hero1.png"],
+    hero2: byPath["./assets/hero2.png"],
+    hero3: byPath["./assets/hero3.png"],
+  };
   State.playSound = playSound;
   State.ambientMusicStarted = false;
   startAmbientMusic();
@@ -839,6 +1100,7 @@ function syncDialogueOverlay() {
       const vol = name === "kaelOrbLaunch" ? 0.6 : 1;
       playSound(name, vol);
     },
+    onMechanic: enqueueKaelMechanic,
   });
   State.bossCheckpoint = null;
   State.bossRetryShown = false;
@@ -897,7 +1159,7 @@ function syncDialogueOverlay() {
 
   function showBossObjective(title = "Vaincre Kael", subtitle = "", duration = 0.5) {
     const max = Math.max(0.1, duration);
-    State.bossObjective = { title, subtitle, timer: max, max };
+    State.bossObjective = { title, subtitle, timer: max, max, extraHoldRemaining: 0 };
     State.bossObjectiveReminder = { title, subtitle };
     State.bossObjectiveReminderActive = true;
     updateBossObjectiveBanner();
@@ -906,12 +1168,18 @@ function syncDialogueOverlay() {
   function updateBossObjective(dt) {
     const obj = State.bossObjective;
     if (!obj) return;
-    obj.timer = Math.max(0, obj.timer - dt * 3);
-    if (obj.timer <= 0) {
-      State.bossObjective = null;
-      State.bossObjectiveReminderActive = !State.flags.kaelDefeated;
-      updateBossObjectiveBanner();
+    if (obj.timer > 0) {
+      obj.timer = Math.max(0, obj.timer - dt * 3);
+      if (obj.timer > 0) return;
     }
+    if ((obj.extraHoldRemaining ?? 0) <= 0) {
+      obj.extraHoldRemaining = 1;
+    }
+    obj.extraHoldRemaining = Math.max(0, obj.extraHoldRemaining - dt);
+    if (obj.extraHoldRemaining > 0) return;
+    State.bossObjective = null;
+    State.bossObjectiveReminderActive = !State.flags.kaelDefeated;
+    updateBossObjectiveBanner();
   }
 
   function updateBossObjectiveBanner() {
@@ -930,8 +1198,10 @@ function syncDialogueOverlay() {
     State.pickups.push({
       type: "potion",
       x,
-      y,
-      radius: 9,
+      y: y + 2,
+      radius: 8,
+      blocking: true,
+      collisionShape: "potion",
       texture: potionTexture,
       iconSrc: POTION_SPRITE,
     });
@@ -939,22 +1209,7 @@ function syncDialogueOverlay() {
 
   function handlePickups() {
     if (!State.pickups.length) return;
-    const { player } = State;
-    State.pickups = State.pickups.filter((pickup) => {
-      const dist = Math.hypot(player.x - pickup.x, player.y - pickup.y);
-      if (dist <= pickup.radius + player.r + 4) {
-        if (pickup.type === "potion") {
-          const added = State.inventory.add(pickupFactory.potion());
-          if (added) {
-            pushStatus("Potion added");
-            return false;
-          }
-          pushStatus("Inventory full");
-          return true;
-        }
-      }
-      return true;
-    });
+    State.pickups = State.pickups.filter((pickup) => !pickup.collected);
   }
 
   function drawPickups(ctx) {
@@ -1041,7 +1296,8 @@ function syncDialogueOverlay() {
     const y = screenY - h - 10;
     const timer = objective.timer ?? 0;
     const max = Math.max(0.1, objective.max ?? 1);
-    const ratio = Math.min(1, timer / max);
+    const holding = (objective.extraHoldRemaining ?? 0) > 0;
+    const ratio = holding ? 1 : Math.min(1, timer / max);
     const alpha = Math.min(1, Math.max(0, ratio * 1.2));
     ctx.save();
     ctx.globalAlpha = alpha;
@@ -1280,7 +1536,7 @@ function syncDialogueOverlay() {
         ? keyboardVector
         : { x: player.facing === "left" ? -1 : 1, y: 0 };
       const dashed = player.tryDash(map, dashDir);
-      if (dashed && isKaelAllyAlive()) {
+      if (dashed && isKaelAllyAlive() && State.flags.princessQuestAccepted) {
         const heroDashDuration = Math.max(
           0.05,
           Number.isFinite(player.dashDuration)
@@ -1487,11 +1743,39 @@ function syncDialogueOverlay() {
     return true;
   }
 
+  function findNearbyPickup({ type = "potion", threshold = 14 } = {}) {
+    const player = State.player;
+    const pickups = State.pickups;
+    if (!player || !Array.isArray(pickups) || pickups.length === 0) return null;
+    const r = (player.r ?? 10) + (threshold ?? 0);
+    return pickups.find((pickup) => {
+      if (pickup.collected) return false;
+      if (type && pickup.type !== type) return false;
+      const reach = (pickup.radius ?? 10) + r;
+      return Math.hypot(player.x - pickup.x, player.y - pickup.y) <= reach;
+    });
+  }
+
+  function tryInteractPickup() {
+    const pickup = findNearbyPickup({ type: "potion", threshold: 12 });
+    if (!pickup) return false;
+    const added = State.inventory.add(pickupFactory.potion());
+    if (!added) {
+      pushStatus("Inventaire plein");
+      return true;
+    }
+    pickup.collected = true;
+    pushStatus("Potion récupérée");
+    handlePickups();
+    return true;
+  }
+
   // ===== Interactions =====
   function tryInteract() {
     if (State.dialogue.isOpen()) return;
     if (State.orbPromptOpen) return;
     if (tryInteractOrb()) return;
+    if (tryInteractPickup()) return;
     // Simple example: speak to Kael when close
     const dKael = Math.hypot(State.player.x - State.kael.x, State.player.y - State.kael.y);
     if (dKael < 70 && !State.flags.princessQuestAccepted && !State.orbPromptOpen) {
@@ -1802,6 +2086,7 @@ function activateOrb(orb) {
   if (!orb || orb.activated) return 0;
 
   orb.activated = true;
+  playGhostCreepy();
   playSound("orbActivate", 0.85);
 
   const flashDuration = startOrbFlash();
@@ -1846,11 +2131,21 @@ function startOrbDialogueSequence(orb, delay = 0) {
 }
 
 
+  function areAllPuzzleOrbsActivated() {
+    const orbs = State.puzzleOrbs;
+    return (
+      Array.isArray(orbs) &&
+      orbs.length >= 4 &&
+      orbs.every((orb) => orb?.activated)
+    );
+  }
+
   function checkPrincessUnlock() {
     if (State.flags.princessUnlocked) return;
-    const allActivated = Array.isArray(State.puzzleOrbs) && State.puzzleOrbs.every((orb) => orb?.activated);
+    const allActivated = areAllPuzzleOrbsActivated();
     if (allActivated && !State.flags.princessUnlocked) {
       State.flags.princessUnlocked = true;
+      State.flags.princessQuestBlockedForOrbs = false;
       const flashDuration = 2000; // approximate delay after the orb flash
       setTimeout(() => playSound("princessCry", 0.9), flashDuration);
       State.princessHint = {
@@ -2034,7 +2329,6 @@ function startOrbDialogueSequence(orb, delay = 0) {
     const bossPos = { x: heroPos.x + 110, y: heroPos.y - 20 };
     State.player.x = heroPos.x;
     State.player.y = heroPos.y;
-    State.player.hp = State.player.maxHp ?? 100;
     State.player.stamina = State.player.staminaMax;
     State.player.resetCombatState?.();
     State.player.animator?.setBase("idle");
@@ -2114,7 +2408,6 @@ function startOrbDialogueSequence(orb, delay = 0) {
     const bossPos = { x: heroPos.x + 140, y: heroPos.y - 10 };
     State.player.x = heroPos.x;
     State.player.y = heroPos.y;
-    State.player.hp = State.player.maxHp ?? 100;
     State.player.stamina = State.player.staminaMax;
     State.player.resetCombatState?.();
     State.player.animator?.setBase("idle");
@@ -2330,6 +2623,7 @@ function updateGhosts(dt) {
         ghost.warpDuration = 0.4;
         ghost.warpTimer = ghost.warpDuration;
         ghost.warpHit = false;
+        playGhostDashSound();
 
         // Direction figée vers la cible à l'instant T
         const d = Math.hypot(dx, dy) || 1;
@@ -2527,11 +2821,18 @@ function updateGhosts(dt) {
       // stop if blocked by wall
       if (map?.isBlocked?.(p.x, p.y)) return;
       let hit = false;
+      const kael = State.kael;
+      const canHitKael = !isKaelAllyAlive();
       const targets = [
         ...(Array.isArray(ghosts) ? ghosts : []),
         State.boss,
-        State.kael,
-      ].filter(Boolean);
+        kael,
+      ]
+        .filter(Boolean)
+        .filter((target) => {
+          if (target === kael && !canHitKael) return false;
+          return true;
+        });
       for (const target of targets) {
         if (target.dead || !Number.isFinite(target.hp)) continue;
         const hitRadius =
@@ -2672,6 +2973,15 @@ function updateGhosts(dt) {
     if (State.flags.questCompletedShown) return;
     const princess = State.princess;
     if (!princess) return;
+    const allActivated = areAllPuzzleOrbsActivated();
+    if (!allActivated) {
+      if (!State.flags.princessQuestBlockedForOrbs) {
+        State.flags.princessQuestBlockedForOrbs = true;
+        pushStatus("Active les quatre orbes avant de rejoindre la princesse.");
+      }
+      return;
+    }
+    State.flags.princessQuestBlockedForOrbs = false;
     const dist = Math.hypot(player.x - princess.x, player.y - princess.y);
     if (dist <= 50) {
       State.flags.questCompletedShown = true;
@@ -3188,14 +3498,15 @@ function drawGhosts(ctx) {
   }
 
   function enforcePreKaelBoundary(player) {
-    if (State.flags.princessQuestAccepted || !player) {
-      State.flags.preQuestBoundaryWarned = false;
-      return;
-    }
+    if (!player) return;
     const spawn = State.spawnPoint;
     if (!spawn) return;
     const limit = spawn.y + 300;
     if (player.y > limit) {
+      playGhostWallSound();
+      if (State.flags.princessQuestAccepted) {
+        return;
+      }
       player.y = limit - 5;
       clampCameraToPlayer(player.x, player.y);
       if (!State.flags.preQuestBoundaryWarned) {
@@ -3209,6 +3520,8 @@ function drawGhosts(ctx) {
           ]
         );
       }
+    } else {
+      State.flags.preQuestBoundaryWarned = false;
     }
   }
 
@@ -3333,6 +3646,7 @@ function drawGhosts(ctx) {
     if (State.flags.betrayalHappened && !State.flags.kaelDefeated) {
       State.boss.draw(ctx);
       drawBossHpBar(ctx, boss);
+      drawKaelMechanicIndicator(ctx, boss);
     }
     State.player.draw(ctx);
 
@@ -3609,6 +3923,57 @@ function drawKaelDashTrail(ctx) {
   ctx.restore();
 }
 
+
+function drawKaelMechanicIndicator(ctx, boss) {
+  if (!ctx || !boss) return;
+  const now = State.time ?? 0;
+  const queue = (State.kaelMechanicAlerts ?? []).filter((alert) => alert.dueAt > now);
+  State.kaelMechanicAlerts = queue;
+  if (!queue.length) return;
+  const alert =
+    queue.find((entry) => now >= (entry.startAt ?? 0) && now <= entry.dueAt) ?? queue[0];
+  if (!alert) return;
+  const start = alert.startAt ?? (alert.dueAt - 2);
+  const total = Math.max(0.01, alert.dueAt - start);
+  const remaining = Math.max(0, alert.dueAt - now);
+  const progress = Math.min(1, remaining / total);
+  const accent = alert.accent ?? alert.color ?? "#ffffff";
+  const label = alert.label ?? "Kael";
+  const ringRadius = (boss.hitRadius ?? 30) + 28;
+  const cx = boss.x;
+  const cy = boss.y;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = hexToRgba(accent, 0.9);
+  ctx.globalAlpha = 0.7;
+  ctx.beginPath();
+  const startAngle = -Math.PI / 2;
+  const sweep = Math.PI * 2 * (1 - progress);
+  ctx.arc(0, 0, ringRadius, startAngle, startAngle + sweep);
+  ctx.stroke();
+
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = hexToRgba(accent, 0.4);
+  ctx.beginPath();
+  ctx.arc(0, 0, ringRadius + 8, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalCompositeOperation = "source-over";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  ctx.font = "600 14px 'Inter', system-ui";
+  ctx.fillStyle = hexToRgba(accent, 0.95);
+  const labelY = cy - (boss.hitRadius ?? 30) - 12;
+  ctx.fillText(label, cx, labelY);
+  // no timer text, label only
+  ctx.restore();
+}
+
 function drawPlayerAttackTrail(ctx) {
   const trail = State.playerAttackTrail;
   if (!Array.isArray(trail) || trail.length === 0) return;
@@ -3673,25 +4038,81 @@ function drawPuzzleOrb(ctx, orb) {
   ctx.save();
   const glowColor = orb.color ?? "#ffffff";
   const activated = Boolean(orb.activated);
-  const pulse = activated ? (Math.sin(time * 5 + (orb.id ?? 0)) * 0.5 + 0.5) : 0;
   const radius = orb.radius ?? 9;
-  ctx.shadowColor = activated ? "#ffffff" : glowColor;
-  ctx.shadowBlur = activated ? 24 + pulse * 12 : 18;
-  ctx.globalAlpha = activated ? 0.85 + pulse * 0.15 : 0.95;
-  ctx.fillStyle = activated ? "#ffffff" : glowColor;
-  ctx.beginPath();
-  ctx.arc(orb.x, orb.y, radius, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.lineWidth = activated ? 3 : 2;
-  ctx.strokeStyle = activated ? glowColor : "rgba(255,255,255,0.8)";
-  ctx.stroke();
-  if (activated) {
-    ctx.globalAlpha = 0.25 + pulse * 0.2;
-    ctx.lineWidth = 1;
+  const center = { x: orb.x, y: orb.y };
+  const pulse = Math.sin(time * 3 + (orb.id ?? 0) * 1.3) * 0.25 + 0.75;
+  if (!activated) {
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 0.7;
+    const subtle = hexToRgba(glowColor, 0.35);
+    ctx.fillStyle = subtle;
     ctx.beginPath();
-    ctx.arc(orb.x, orb.y, radius + 6 + pulse * 6, 0, Math.PI * 2);
+    ctx.arc(center.x, center.y, radius * 0.85, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineWidth = 1.2;
+    ctx.strokeStyle = hexToRgba("#ffffff", 0.18);
+    ctx.stroke();
+    ctx.restore();
+    return;
+  }
+  const haloRadius = radius + 6 + pulse * 4;
+  const accent = hexToRgba(glowColor, 1);
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = 0.85;
+  const gradient = ctx.createRadialGradient(
+    center.x,
+    center.y,
+    radius * 0.25,
+    center.x,
+    center.y,
+    haloRadius
+  );
+  gradient.addColorStop(0, "#ffffff");
+  gradient.addColorStop(0.3, hexToRgba(glowColor, 0.9));
+  gradient.addColorStop(1, hexToRgba(glowColor, 0.25));
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = hexToRgba(glowColor, 0.7);
+  ctx.stroke();
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 30;
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, haloRadius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  const shineCount = 5;
+  for (let i = 0; i < shineCount; i++) {
+    const angle = time * 1.1 + i * (Math.PI * 2) / shineCount;
+    const lx = center.x + Math.cos(angle) * (radius + 3 + pulse * 3);
+    const ly = center.y + Math.sin(angle) * (radius + 3 + pulse * 3);
+    ctx.strokeStyle = hexToRgba(glowColor, 0.6);
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(
+      center.x + Math.cos(angle) * (radius - 2),
+      center.y + Math.sin(angle) * (radius - 2)
+    );
+    ctx.lineTo(lx, ly);
     ctx.stroke();
   }
+  ctx.globalCompositeOperation = "source-over";
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = hexToRgba(glowColor, 0.95);
+  ctx.beginPath();
+  ctx.arc(center.x, center.y, radius * 0.45, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = hexToRgba("#ffffff", 0.65);
+  ctx.moveTo(center.x, center.y - radius * 0.15);
+  ctx.lineTo(center.x, center.y + radius * 0.15);
+  ctx.moveTo(center.x - radius * 0.15, center.y);
+  ctx.lineTo(center.x + radius * 0.15, center.y);
+  ctx.stroke();
   ctx.restore();
 }
 

@@ -1,4 +1,5 @@
 // src/systems/dialogue.js
+import { State } from "../state.js";
 class DialogueUI {
   constructor() {
     this.active = false;
@@ -32,18 +33,24 @@ class DialogueUI {
 
   _normalize(lines) {
     if (!Array.isArray(lines)) return [];
-    return lines
-      .map((l) => {
-        if (typeof l === "string") return l;
-        if (l && typeof l === "object") {
-          const who = l.speaker ?? l.who ?? l.name ?? "";
-          const txt = l.text ?? l.t ?? "";
-          return (who ? who + " : " : "") + String(txt);
-        }
-        return String(l ?? "");
-      })
-      .map((s) => s.replace(/\s+/g, " ").trim())
-      .filter((s) => s.length > 0);
+    const result = [];
+    for (const entry of lines) {
+      let speaker = "";
+      let text = "";
+      if (typeof entry === "string") {
+        text = entry;
+      } else if (entry && typeof entry === "object") {
+        speaker = String(entry.speaker ?? entry.who ?? entry.name ?? "").trim();
+        text = String(entry.text ?? entry.t ?? "");
+      } else {
+        text = String(entry ?? "");
+      }
+      if (typeof text !== "string") text = String(text ?? "");
+      const trimmedText = text.replace(/\s+/g, " ").trim();
+      if (trimmedText.length === 0) continue;
+      result.push({ speaker, text: trimmedText });
+    }
+    return result;
   }
 
   open({ lines, sourceId = null, onClose = null }) {
@@ -72,13 +79,15 @@ class DialogueUI {
   }
 
   _hasCurrent() {
+    const entry = this.lines?.[this.index];
     return (
       this.active &&
       Array.isArray(this.lines) &&
       this.index >= 0 &&
       this.index < this.lines.length &&
-      typeof this.lines[this.index] === "string" &&
-      this.lines[this.index].trim().length > 0
+      entry &&
+      typeof entry.text === "string" &&
+      entry.text.trim().length > 0
     );
   }
 
@@ -128,7 +137,8 @@ class DialogueUI {
       dt = 0;
     }
 
-    const line = this.lines[this.index] || "";
+    const entry = this.lines[this.index];
+    const line = entry?.text ?? "";
     const len = line.length;
 
     if (len > 0 && !this._isFullyShown()) {
@@ -148,15 +158,15 @@ class DialogueUI {
 
   skip() {
     if (!this.active || !this._hasCurrent()) return;
-    const line = this.lines[this.index];
-    if (line) this.visibleChars = line.length;
+    const entry = this.lines[this.index];
+    if (entry) this.visibleChars = entry.text.length;
   }
 
   _isFullyShown() {
     if (!this._hasCurrent()) return true;
-    const line = this.lines[this.index];
-    if (typeof line !== "string") return true;
-    return this.visibleChars >= line.length;
+    const entry = this.lines[this.index];
+    const text = entry?.text ?? "";
+    return this.visibleChars >= text.length;
   }
 
   close() {
@@ -221,15 +231,58 @@ class DialogueUI {
     ctx.stroke();
     ctx.restore();
 
-    const line = this.lines[this.index];
-    const shown =
-      typeof line === "string"
-        ? line.slice(0, Math.max(0, Math.floor(this.visibleChars)))
-        : "";
+    const entry = this.lines[this.index];
+    const fullText = entry?.text ?? "";
+    const speaker = (entry?.speaker ?? "").trim();
+    const shown = fullText.slice(0, Math.max(0, Math.floor(this.visibleChars)));
+    const portrait = getDialoguePortrait(speaker);
+    const portraitSize = portrait ? Math.min(112, boxH - padding * 2) : 0;
+    const portraitGap = portrait ? 12 : 0;
+    const portraitAreaWidth = portrait ? portraitSize + portraitGap : 0;
+    const textMaxWidth = Math.max(64, boxW - padding * 2 - portraitAreaWidth);
+    const labelHeight = speaker ? 20 : 0;
+    const labelSpacing = speaker ? 8 : 0;
+    const textStartY = y + padding + labelHeight + labelSpacing + 6;
+    const textX = x + padding + portraitAreaWidth;
+
+    if (portrait) {
+      const srcHeight = Math.max(1, portrait.height * 0.7);
+      const destX = x + padding;
+      const destY = y + padding;
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(destX - 4, destY - 4, portraitSize + 8, portraitSize + 8);
+      ctx.fillStyle = "rgba(0,0,0,0.25)";
+      ctx.fill();
+      ctx.clip();
+      ctx.drawImage(
+        portrait,
+        0,
+        0,
+        portrait.width,
+        srcHeight,
+        destX,
+        destY,
+        portraitSize,
+        portraitSize
+      );
+      ctx.restore();
+      ctx.globalAlpha = 0.65;
+      ctx.strokeStyle = "rgba(255,255,255,0.65)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(destX, destY, portraitSize, portraitSize);
+      ctx.globalAlpha = 1;
+    }
+
+    if (speaker) {
+      ctx.font = "600 16px system-ui, -apple-system, Segoe UI, Roboto, Arial";
+      ctx.fillStyle = "#fbd38d";
+      ctx.fillText(speaker, textX, y + padding + 16);
+    }
 
     ctx.font = "18px system-ui, -apple-system, Segoe UI, Roboto, Arial";
     ctx.fillStyle = "#ffffff";
-    wrapText(ctx, shown, x + padding, y + padding + 8, boxW - padding * 2, 26);
+    wrapText(ctx, shown, textX, textStartY, textMaxWidth, 26);
 
     ctx.globalAlpha = 0.85;
     ctx.font = "14px system-ui, -apple-system, Segoe UI, Roboto, Arial";
@@ -237,7 +290,8 @@ class DialogueUI {
     const hint = this._isFullyShown()
       ? "Appuie sur E pour continuer — Échap pour afficher instantanément"
       : "E : afficher la phrase — Échap : finir l'affichage";
-    ctx.fillText(hint, x + padding, y + boxH - 16);
+    const hintY = y + boxH - 8;
+    ctx.fillText(hint, x + padding, hintY);
     ctx.globalAlpha = 1;
   }
 }
@@ -257,6 +311,30 @@ function wrapText(ctx, text, x, y, maxWidth, lineHeight) {
     }
   }
   if (line) ctx.fillText(line, x, yy);
+}
+
+const SPEAKER_PORTRAITS = {
+  kael: "hero2",
+  moi: "hero1",
+  princesse: "hero3",
+  princess: "hero3",
+  aelya: "hero3",
+};
+
+function normalizeSpeakerName(name) {
+  if (!name) return "";
+  const normalized = name.trim().toLowerCase();
+  if (!normalized) return "";
+  return normalized
+    .normalize?.("NFD")
+    .replace(/[\u0300-\u036f]/g, "") ?? normalized;
+}
+
+function getDialoguePortrait(speaker) {
+  const key = normalizeSpeakerName(speaker);
+  const portraitKey = SPEAKER_PORTRAITS[key] ?? SPEAKER_PORTRAITS[speaker];
+  if (!portraitKey) return null;
+  return State.dialoguePortraits?.[portraitKey] ?? null;
 }
 
 function drawRoundedRect(ctx, x, y, width, height, radius) {

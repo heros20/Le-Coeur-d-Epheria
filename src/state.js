@@ -28,11 +28,15 @@ export const State = {
   puzzleOrbs: [],
   playerDashTrail: [],
   kaelDashTrail: [],
+  kaelMechanicAlerts: [],
   showCollisionDebug: true,
   orbPromptOpen: false,
   princessHint: null,
   bossMusicPending: false,
   activeBossTrack: null,
+  lastGhostWallSoundTime: -Infinity,
+  activeAmbientTrack: null,
+  activeThemeAmbientTrack: null,
   questAnnouncement: null,
   questPromptCooldown: 0,
   floatingTexts: [],
@@ -42,6 +46,16 @@ export const State = {
   bossObjectiveReminder: null,
   bossObjectiveReminderActive: false,
   awaitingEndingButton: false,
+  dialoguePortraits: {
+    hero1: null,
+    hero2: null,
+    hero3: null,
+  },
+  audioSettings: {
+    menu: true,
+    game: true,
+  },
+  ghostWallSoundPlayed: false,
   flags: {
     foundShrine: 0,
     betrayalHappened: false,
@@ -62,5 +76,6 @@ export const State = {
     endingPending: false,
     visited: new Set(),
     princessUnlocked: false,
+    princessQuestBlockedForOrbs: false,
   }
 };

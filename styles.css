@@ -240,6 +240,9 @@ h3 {
 /* Layout : zone de jeu + HUD à droite (desktop) / en colonne (mobile) */
 
 .game-layout {
+  position: relative;
+  z-index: 12;
+  pointer-events: auto;
   display: grid;
   grid-template-columns: minmax(0, 2.4fr) 260px;
   gap: 0.6rem;
@@ -559,6 +562,7 @@ h3 {
 }
 
 .inventory-slot.filled {
+  cursor: pointer;
   border-color: rgba(255, 235, 190, 0.8);
   background:
     radial-gradient(circle at top left, rgba(255, 255, 255, 0.15), transparent 40%),

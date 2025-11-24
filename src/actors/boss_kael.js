@@ -1,3 +1,4 @@
+
 import { CONFIG } from "../config.js";
 import { Animator } from "../utils/animator.js";
 
@@ -25,7 +26,9 @@ export class BossKael {
     const phaseTwo = cfg.phaseTwo ?? {};
     const phaseThree = cfg.phaseThree ?? {};
     this.speed = cfg.speed ?? 120;
-    this.preferredDistance = cfg.preferredDistance ?? 120;
+    this.preferredDistance = (cfg.preferredDistance ?? 120) * 0.5;
+    this._defaultPreferredDistance = this.preferredDistance;
+    this._phaseThreePreferredDistance = this._defaultPreferredDistance * 0.5;
     this.attackRange = cfg.attackRange ?? 150;
     this.attackCooldown = cfg.attackCooldown ?? 2.4;
     this.windupDuration = cfg.attackWindup ?? 0.75;
@@ -86,11 +89,15 @@ export class BossKael {
     this.shockwaves = [];
     this.stormBolts = [];
     this.dragonBreath = null;
+    this.infernoStorms = [];
     this.phase = 1;
+    this._pendingMechanic = null;
     this.onPlaySound = typeof opts.onPlaySound === "function" ? opts.onPlaySound : null;
+    this.onMechanic = typeof opts.onMechanic === "function" ? opts.onMechanic : null;
     this.currentAction = null;
     this.lastAction = null;
     this.lastMoveVector = { x: 0, y: 0 };
+    this._meteorLaunchActive = 0;
   }
 
   enterPhaseThree(opts = {}) {
@@ -123,6 +130,8 @@ export class BossKael {
     this.dragonBreath = null;
     this.scale = this.phaseThreeCfg.dragonScale ?? this.dragonScale;
     this.hitRadius = Math.max(this.baseHitRadius * 1.4, this.hitRadius);
+    this.preferredDistance = this._phaseThreePreferredDistance;
+    this.retreatStopDistance = this.preferredDistance + 10;
     this.currentAction = null;
     this.lastAction = null;
     this.animator.setAnimations(this.dragonAnimations);
@@ -140,6 +149,16 @@ export class BossKael {
     }
 
     this.cooldownTimer = Math.max(0, this.cooldownTimer - dt);
+      if (this._pendingMechanic) {
+        this._pendingMechanic.timer -= dt;
+        if (this._pendingMechanic.timer <= 0) {
+          this._pendingMechanic = null;
+          this._spawnClones(player);
+          this.currentAction = "clone";
+        } else {
+          return;
+        }
+      }
 
     const dx = player.x - this.x;
     const dy = player.y - this.y;
@@ -230,7 +249,7 @@ export class BossKael {
       this._updateMeteors(dt, player);
       this._updateShockwaves(dt, player);
       this._updateStormBolts(dt, player);
-      this._updateDragonBreath(dt, player);
+      this._updateInferno(dt, player);
     }
     this._cleanupActions();
     if (stuckAgainstWall && !this.windupTimer && !this.dashTimer) {
@@ -251,6 +270,8 @@ export class BossKael {
     this.animator.setAnimations(this.baseAnimations);
     this.scale = this.baseScale;
     this.hitRadius = this.baseHitRadius;
+    this.preferredDistance = this._defaultPreferredDistance;
+    this.retreatStopDistance = this.preferredDistance + 10;
     this.cooldownTimer = this.attackCooldown * 0.5;
     this.windupTimer = 0;
     this.dashTimer = 0;
@@ -281,6 +302,8 @@ export class BossKael {
     this.maxHp = Math.round(CONFIG.kael.hp * Math.max(1, multiplier));
     this.hp = this.maxHp;
     this.alive = true;
+    this.preferredDistance = this._defaultPreferredDistance;
+    this.retreatStopDistance = this.preferredDistance + 10;
     if (opts.position && Number.isFinite(opts.position.x) && Number.isFinite(opts.position.y)) {
       this.x = opts.position.x;
       this.y = opts.position.y;
@@ -382,8 +405,8 @@ export class BossKael {
     } else if (this.phase === 3) {
       this._drawMeteors(ctx);
       this._drawShockwaves(ctx);
-      this._drawStormBolts(ctx);
-      this._drawDragonBreath(ctx);
+    this._drawStormBolts(ctx);
+    this._drawInferno(ctx);
     }
 
     const frame = this.animator.getFrame();
@@ -557,12 +580,14 @@ export class BossKael {
 
   _updateOrbs(dt, player) {
     if (this.orbs.length === 0) return;
+
     for (const orb of this.orbs) {
       if (orb.state === "orbit") {
         orb.angle += this.orbSpinSpeed * dt;
         orb.timer -= dt;
         orb.x = this.x + Math.cos(orb.angle) * this.orbOrbitRadius;
         orb.y = this.y + Math.sin(orb.angle) * this.orbOrbitRadius;
+
         if (orb.timer <= 0) {
           const dx = player.x - orb.x;
           const dy = player.y - orb.y;
@@ -578,17 +603,21 @@ export class BossKael {
         orb.x += orb.dirX * step;
         orb.y += orb.dirY * step;
         orb.timer -= dt;
+
         if (Math.hypot(player.x - orb.x, player.y - orb.y) < 30) {
           player.applyDamage(this.orbDamage);
           orb.timer = -1;
         }
+
         if (this._lastWorld && this._lastWorld.isBlocked(orb.x, orb.y)) {
           orb.timer = -1;
         }
       }
     }
+
     this.orbs = this.orbs.filter((o) => o.timer > 0);
   }
+
 
   _drawOrbs(ctx) {
     if (this.orbs.length === 0) return;
@@ -652,16 +681,15 @@ export class BossKael {
   }
 
   _spawnSigils(player) {
-    const base = Math.atan2(player.y - this.y, player.x - this.x);
     this.sigils = [];
     for (let i = 0; i < 3; i++) {
-      const angle = base + (i - 1) * 0.45;
-      const distance = 90 + i * 25;
+      const offsetAngle = Math.random() * Math.PI * 2;
+      const offsetDist = 40 + Math.random() * 160;
       this.sigils.push({
-        x: player.x + Math.cos(angle) * distance,
-        y: player.y + Math.sin(angle) * distance,
-        radius: 60 + i * 5,
-        timer: 0.85 + i * 0.25,
+        x: player.x + Math.cos(offsetAngle) * offsetDist,
+        y: player.y + Math.sin(offsetAngle) * offsetDist,
+        radius: 60 + Math.random() * 20,
+        timer: 0.85 + Math.random() * 0.4,
         explode: 0.45,
         exploding: false,
         done: false,
@@ -772,7 +800,7 @@ export class BossKael {
 
   _spawnClones(player) {
     this.clones = [];
-    const spreads = [-0.55, 0, 0.55];
+    const spreads = [-1.1, -0.7, -0.35, 0, 0.35, 0.7, 1.05];
     const base = Math.atan2(player.y - this.y, player.x - this.x);
     for (const spread of spreads) {
       const angle = base + spread;
@@ -996,7 +1024,7 @@ export class BossKael {
   }
 
   _spawnMeteorRain(player) {
-    const count = 6;
+    const count = 18;
     this.meteors = [];
     for (let i = 0; i < count; i++) {
       const offsetAngle = Math.random() * Math.PI * 2;
@@ -1023,7 +1051,7 @@ export class BossKael {
         meteor.telegraph -= dt;
         if (meteor.telegraph <= 0) {
           meteor.state = "fall";
-          this._playSound("kaelOrbLaunch");
+          this._playMeteorLaunchSound();
         }
       } else if (meteor.state === "fall") {
         meteor.fall -= dt;
@@ -1128,11 +1156,21 @@ export class BossKael {
     const waves = [];
     const count = 3;
     for (let i = 0; i < count; i++) {
+      const gapCount = 3;
+      const gapWidth = Math.PI / 3;
+      const gaps = Array.from({ length: gapCount }, (_, idx) => {
+        const base = (Math.PI * 2 * idx) / gapCount;
+        return {
+          center: base + Math.random() * 0.25 - 0.125,
+        };
+      });
       waves.push({
         radius: 30 + i * 20,
-        speed: 160 + i * 40,
-        width: 28 + i * 8,
-        timer: 2.2,
+        speed: (160 + i * 40) * 0.5,
+        width: 20 + i * 4,
+        timer: 2.4,
+        gapWidth,
+        gaps,
       });
     }
     this.shockwaves = waves;
@@ -1141,13 +1179,26 @@ export class BossKael {
 
   _updateShockwaves(dt, player) {
     if (!this.shockwaves.length) return;
+    const playerAngle = Math.atan2(player.y - this.y, player.x - this.x);
+    const normalizedPlayerAngle = (playerAngle + Math.PI * 2) % (Math.PI * 2);
     for (const wave of this.shockwaves) {
       wave.radius += wave.speed * dt;
       wave.timer -= dt;
       const dist = Math.hypot(player.x - this.x, player.y - this.y);
       const halfWidth = wave.width * 0.5;
       if (Math.abs(dist - wave.radius) <= halfWidth) {
-        player.applyDamage(this.phaseThreeCfg.shockwaveDamage * dt);
+        const inGap = wave.gaps.some((gap) => {
+          const center = gap.start ?? gap.center;
+          const gapStart = (center - wave.gapWidth * 0.5 + Math.PI * 2) % (Math.PI * 2);
+          const gapEnd = (center + wave.gapWidth * 0.5 + Math.PI * 2) % (Math.PI * 2);
+          if (gapStart < gapEnd) {
+            return normalizedPlayerAngle >= gapStart && normalizedPlayerAngle <= gapEnd;
+          }
+          return normalizedPlayerAngle >= gapStart || normalizedPlayerAngle <= gapEnd;
+        });
+        if (!inGap) {
+          player.applyDamage(this.phaseThreeCfg.shockwaveDamage * dt);
+        }
       }
     }
     this.shockwaves = this.shockwaves.filter((w) => w.timer > 0 && w.radius < 520);
@@ -1357,6 +1408,10 @@ export class BossKael {
     }
   }
 
+  _updateInferno(dt, player) {
+    this._updateDragonBreath(dt, player);
+  }
+
   _drawDragonBreath(ctx) {
     if (!this.dragonBreath) return;
     const breath = this.dragonBreath;
@@ -1419,6 +1474,10 @@ export class BossKael {
     ctx.fill();
     ctx.restore();
     ctx.restore();
+  }
+
+  _drawInferno(ctx) {
+    this._drawDragonBreath(ctx);
   }
 
   _spawnFissure(player) {
@@ -1510,6 +1569,39 @@ export class BossKael {
     }
   }
 
+  _announceMechanic(action, delay = 0) {
+    if (!this.onMechanic || !action) return;
+    this.onMechanic(action, this.phase, Math.max(0, delay));
+  }
+
+  _getMechanicDelay(action) {
+    if (!action) return 0;
+    switch (action) {
+      case "dash":
+        return this.windupDuration ?? 0.85;
+      case "orb":
+        return this.orbLifetime ?? 3.5;
+      case "fissure":
+        return this.fissureWindup ?? 1;
+      case "sigil":
+        return 0.9;
+      case "clone":
+        return 2.0;
+      case "beam":
+        return 0.6;
+      case "inferno":
+        return 0.5;
+      case "meteor":
+        return 1;
+      case "shockwave":
+        return 0.4;
+      case "storm":
+        return 1.1;
+      default:
+        return 0;
+    }
+  }
+
   _hasActiveFissures() {
     return this.fissures.some((f) => !f.completed);
   }
@@ -1547,6 +1639,12 @@ export class BossKael {
     const pool = actions.filter((a) => a !== this.lastAction);
     const choicePool = pool.length ? pool : actions;
     const action = choicePool[Math.floor(Math.random() * choicePool.length)];
+    const mechanicDelay = this._getMechanicDelay(action);
+    this._announceMechanic(action, mechanicDelay);
+    if (action === "clone" && mechanicDelay > 0) {
+      this._pendingMechanic = { action: "clone", timer: mechanicDelay };
+      return;
+    }
     switch (action) {
       case "dash":
         this.currentAction = "dash";
@@ -1670,23 +1768,12 @@ export class BossKael {
       const endY = fissure.startY + fissure.dirY * maxLength;
       const baseColor = fissure.active ? "255,150,60" : "255,200,120";
       const alpha = fissure.active ? 0.95 : 0.6;
-      ctx.lineWidth = this.fissureWidth + (fissure.active ? 2 : 0);
-      ctx.shadowColor = `rgba(${baseColor}, ${0.8 * alpha})`;
-      ctx.shadowBlur = fissure.active ? 25 : 12;
-      const gradient = ctx.createLinearGradient(fissure.startX, fissure.startY, endX, endY);
-      gradient.addColorStop(0, `rgba(${baseColor}, ${alpha})`);
-      gradient.addColorStop(0.5, `rgba(255,255,255,${alpha * 0.6})`);
-      gradient.addColorStop(1, `rgba(${baseColor}, ${alpha * 0.5})`);
-      ctx.strokeStyle = gradient;
-      ctx.globalAlpha = alpha;
-      ctx.beginPath();
-      ctx.moveTo(fissure.startX, fissure.startY);
-      ctx.lineTo(endX, endY);
-      ctx.stroke();
 
       if (!fissure.active) {
+        ctx.lineWidth = this.fissureWidth * 0.8;
+        ctx.shadowColor = `rgba(${baseColor}, ${0.65 * alpha})`;
+        ctx.shadowBlur = 15;
         ctx.globalAlpha = 0.35;
-        ctx.lineWidth = this.fissureWidth * 0.6;
         ctx.setLineDash([10, 16]);
         ctx.strokeStyle = `rgba(255, 205, 145, 0.7)`;
         ctx.beginPath();
@@ -1694,25 +1781,77 @@ export class BossKael {
         ctx.lineTo(endX, endY);
         ctx.stroke();
         ctx.setLineDash([]);
-      } else {
-        ctx.globalAlpha = 0.6;
-        ctx.lineWidth = 1.5;
-        for (let i = 0; i < 4; i++) {
-          const offset = (i / 3) * maxLength;
-          const px = fissure.startX + fissure.dirX * offset;
-          const py = fissure.startY + fissure.dirY * offset;
-          const sparkAngle = time * 4 + i * 1.2;
-          const sparkLength = 10 + Math.sin(time * 6 + i) * 4;
-          ctx.strokeStyle = `rgba(255,255,255,${0.35 + Math.sin(sparkAngle) * 0.25})`;
-          ctx.beginPath();
-          ctx.moveTo(px - fissure.dirX * sparkLength * 0.3, py - fissure.dirY * sparkLength * 0.3);
-          ctx.lineTo(
-            px + Math.cos(sparkAngle) * sparkLength,
-            py + Math.sin(sparkAngle) * sparkLength
-          );
-          ctx.stroke();
-        }
+        ctx.globalAlpha = 1;
+        continue;
       }
+
+      const perpX = -fissure.dirY;
+      const perpY = fissure.dirX;
+      const halfWidth = (this.fissureWidth + 4) * 0.5;
+      const headLength = Math.min(60, maxLength * 0.35);
+      const shaftOffset = headLength * 0.3;
+      const shaftEndX = endX - fissure.dirX * shaftOffset;
+      const shaftEndY = endY - fissure.dirY * shaftOffset;
+      const tipX = endX + fissure.dirX * headLength;
+      const tipY = endY + fissure.dirY * headLength;
+      const startLower = {
+        x: fissure.startX - perpX * halfWidth,
+        y: fissure.startY - perpY * halfWidth,
+      };
+      const startUpper = {
+        x: fissure.startX + perpX * halfWidth,
+        y: fissure.startY + perpY * halfWidth,
+      };
+      const shaftLower = {
+        x: shaftEndX - perpX * halfWidth,
+        y: shaftEndY - perpY * halfWidth,
+      };
+      const shaftUpper = {
+        x: shaftEndX + perpX * halfWidth,
+        y: shaftEndY + perpY * halfWidth,
+      };
+
+      const gradient = ctx.createLinearGradient(fissure.startX, fissure.startY, tipX, tipY);
+      gradient.addColorStop(0, `rgba(${baseColor}, ${alpha})`);
+      gradient.addColorStop(0.5, `rgba(255,255,255,${alpha * 0.6})`);
+      gradient.addColorStop(1, `rgba(${baseColor}, ${alpha * 0.6})`);
+
+      ctx.shadowColor = `rgba(${baseColor}, ${Math.min(0.9, alpha)})`;
+      ctx.shadowBlur = 28;
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.moveTo(startLower.x, startLower.y);
+      ctx.lineTo(shaftLower.x, shaftLower.y);
+      ctx.lineTo(tipX, tipY);
+      ctx.lineTo(shaftUpper.x, shaftUpper.y);
+      ctx.lineTo(startUpper.x, startUpper.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.shadowBlur = 0;
+
+      ctx.lineWidth = 1.2;
+      ctx.strokeStyle = "rgba(255,255,255,0.45)";
+      ctx.stroke();
+
+      ctx.globalAlpha = 0.6;
+      ctx.lineWidth = 1.5;
+      for (let i = 0; i < 4; i++) {
+        const offset = (i / 3) * maxLength;
+        const px = fissure.startX + fissure.dirX * offset;
+        const py = fissure.startY + fissure.dirY * offset;
+        const sparkAngle = time * 4 + i * 1.2;
+        const sparkLength = 10 + Math.sin(time * 6 + i) * 4;
+        ctx.strokeStyle = `rgba(255,255,255,${0.35 + Math.sin(sparkAngle) * 0.25})`;
+        ctx.beginPath();
+        ctx.moveTo(px - fissure.dirX * sparkLength * 0.3, py - fissure.dirY * sparkLength * 0.3);
+        ctx.lineTo(
+          px + Math.cos(sparkAngle) * sparkLength,
+          py + Math.sin(sparkAngle) * sparkLength
+        );
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
     }
     ctx.restore();
   }
@@ -1727,6 +1866,15 @@ export class BossKael {
     const vx = px - lx;
     const vy = py - ly;
     return (vx * -dy + vy * dx);
+  }
+
+  _playMeteorLaunchSound() {
+    if (this._meteorLaunchActive >= 3) return;
+    this._meteorLaunchActive += 1;
+    this._playSound("kaelOrbLaunch");
+    setTimeout(() => {
+      this._meteorLaunchActive = Math.max(0, this._meteorLaunchActive - 1);
+    }, 900);
   }
 
   _playSound(name) {

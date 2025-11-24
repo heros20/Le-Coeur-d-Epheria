@@ -392,6 +392,47 @@
         border-style: dashed;
       }
 
+      .menu-btn-launching {
+        --launch-duration: 1.6s;
+        animation: menu-launch-pulse var(--launch-duration) ease-in-out infinite;
+        transform: scale(1.03);
+        box-shadow: 0 0 32px rgba(255, 230, 180, 0.55),
+          0 0 48px rgba(129, 175, 255, 0.65);
+      }
+
+      @keyframes menu-launch-pulse {
+        0% {
+          transform: scale(1);
+          filter: drop-shadow(0 0 10px rgba(255, 244, 210, 0.45));
+        }
+        45% {
+          transform: scale(1.08);
+          filter: drop-shadow(0 0 26px rgba(255, 204, 128, 0.9));
+        }
+        75% {
+          transform: scale(1.03) rotate(-0.5deg);
+        }
+        100% {
+          transform: scale(1);
+        }
+      }
+
+      .menu-options {
+        display: flex;
+        flex-direction: column;
+        gap: 0.45rem;
+        margin-top: 0.6rem;
+      }
+
+      .menu-btn.secondary {
+        border-color: rgba(255, 255, 255, 0.45);
+        background: rgba(8, 10, 16, 0.75);
+      }
+
+      .menu-options .menu-btn::after {
+        content: "";
+      }
+
       /* Aide en bas */
 
       .help {
@@ -641,6 +682,14 @@
                 <button id="startBtn" class="menu-btn primary" disabled>
                   <span class="label">Nouvelle partie</span>
                 </button>
+                <div class="menu-options">
+                  <button id="toggleMenuSound" class="menu-btn secondary" type="button">
+                    <span class="label">Musique menu : On</span>
+                  </button>
+                  <button id="toggleGameSound" class="menu-btn secondary" type="button">
+                    <span class="label">Son du jeu : On</span>
+                  </button>
+                </div>
 
               </div>
             </section>

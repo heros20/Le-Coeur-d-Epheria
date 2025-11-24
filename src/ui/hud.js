@@ -28,7 +28,11 @@ export function createHUD() {
   const inventory = makeCard("hud-inventory");
   const helper = makeCard("hud-helper");
   const handleInventoryClick = (event) => {
-    const slot = event.target.closest(".inventory-slot[data-inventory-index]");
+    if (event.button !== undefined && event.button !== 0) return;
+    const rawTarget = event.target;
+    const targetElement =
+      rawTarget instanceof Element ? rawTarget : rawTarget?.parentElement ?? null;
+    const slot = targetElement?.closest?.(".inventory-slot[data-inventory-index]");
     if (!slot) return;
     const idx = Number(slot.dataset.inventoryIndex);
     const inv = State.inventory;
@@ -44,7 +48,12 @@ export function createHUD() {
       State.pushStatus?.(`${item.name ?? item.id} impossible à utiliser`);
     }
   };
-  inventory.addEventListener("click", handleInventoryClick);
+  inventory.addEventListener("pointerdown", (event) => {
+    handleInventoryClick(event);
+    if (event.pointerType === "mouse") {
+      event.preventDefault();
+    }
+  });
   const dashCooldownButton = document.getElementById("btn-dash");
   const dashCooldownText = dashCooldownButton?.querySelector(".cooldown-text");
 
@@ -108,7 +117,7 @@ export function createHUD() {
           </div>`
         );
       } else {
-        slots.push(`<div class="inventory-slot"><span>Empty</span></div>`);
+        slots.push(`<div class="inventory-slot"><span>Vide</span></div>`);
       }
     }
 
@@ -118,7 +127,7 @@ export function createHUD() {
     const statusText = status || indicators.join(" • ") || "All clear";
 
     inventory.innerHTML = `
-      <div class="inventory-title">Inventory</div>
+      <div class="inventory-title">Inventaire</div>
       <div class="inventory-grid">${slots.join("")}</div>
       <div class="status-line">${escapeHtml(statusText)}</div>
     `;
@@ -141,21 +150,25 @@ export function createHUD() {
           <div class="helper-group-label">Clavier</div>
           <div class="helper-keys">
             <span class="key">1</span>
+            <span> - </span>
             <span class="key">K</span>
             <span class="helper-desc-inline">Attaquer</span>
           </div>
           <div class="helper-keys">
             <span class="key">5</span>
+            <span> - </span>
             <span class="key">O</span>
             <span class="helper-desc-inline">Sprint</span>
           </div>
           <div class="helper-keys">
             <span class="key">3</span>
+            <span> - </span>
             <span class="key">M</span>
             <span class="helper-desc-inline">Attaque \u00e0 distance</span>
           </div>
           <div class="helper-keys">
           <span class="key">2</span>
+          <span> - </span>
             <span class="key">L</span>
             
             <span class="helper-desc-inline">Objet rapide</span>
