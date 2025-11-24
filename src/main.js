@@ -3476,7 +3476,7 @@ function drawGhosts(ctx) {
         },
         {
           speaker: "Moi",
-          text: "Tu .. Tu va bien ? ",
+          text: "Tu ... Tu va bien ? ",
         },
           {
           speaker: "Kael",
