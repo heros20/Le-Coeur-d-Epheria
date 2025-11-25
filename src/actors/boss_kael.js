@@ -42,6 +42,10 @@ export class BossKael {
     this.meleeComfort = cfg.meleeComfort ?? 60;
     // distance idéale où il aime rester (mid-range)
     this.retreatStopDistance = cfg.retreatStopDistance ?? (this.preferredDistance + 10);
+    this.orbitDirection = Math.random() < 0.5 ? 1 : -1;
+    this._orbitSwitchTimer = 0;
+    this._orbitJumpTimer = 0;
+    this._orbitNoise = Math.random() * Math.PI * 2;
 
     this.orbCooldown = cfg.orbCooldown ?? 7;
     this.orbCount = cfg.orbCount ?? 3;
@@ -195,34 +199,49 @@ export class BossKael {
       let moveX = 0;
       let moveY = 0;
 
-      const minMelee = this.meleeComfort;           // zone où il accepte le close combat
-      const ideal = this.preferredDistance;         // distance idéale (mid-range)
+      const minMelee = this.meleeComfort;
+      const ideal = this.preferredDistance;
+      const tangentX = -dirY;
+      const tangentY = dirX;
+      const sideSpeed = this.speed * 0.9;
+      const chaseSpeed = this.speed * 1.05;
+      const nowTime = (typeof performance !== "undefined" ? performance.now() : Date.now()) * 0.001;
+      const timeNoise = nowTime * 2 + this._orbitNoise;
+      const jitter = Math.sin(timeNoise) * 0.4;
 
       if (dist < minMelee) {
-        // Trop collé au joueur → petit recul, mais pas fuite infinie
-        const backSpeed = this.speed * 0.7;
-        moveX = -dirX;
-        moveY = -dirY;
-        const norm = Math.hypot(moveX, moveY) || 1;
-        moveX = (moveX / norm) * backSpeed * dt;
-        moveY = (moveY / norm) * backSpeed * dt;
-      } else if (dist > ideal) {
-        // Trop loin → il revient mettre la pression
-        const chaseSpeed = this.speed * 1.05;
+        this._orbitSwitchTimer -= dt;
+        const dirMul = this.orbitDirection * (1 + jitter * 0.5);
+        moveX = tangentX * sideSpeed * dt * dirMul * 1.1;
+        moveY = tangentY * sideSpeed * dt * dirMul * 1.1;
+        const radialPush = ((minMelee - dist) / Math.max(0.1, minMelee)) * this.speed * 0.35;
+        moveX += dirX * radialPush * dt;
+        moveY += dirY * radialPush * dt;
+      } else if (dist > ideal * 1.15) {
         moveX = dirX;
         moveY = dirY;
         const norm = Math.hypot(moveX, moveY) || 1;
         moveX = (moveX / norm) * chaseSpeed * dt;
         moveY = (moveY / norm) * chaseSpeed * dt;
       } else {
-        // Zone idéale → il strafe autour de toi (duel)
-        const sideSpeed = this.speed * 0.85;
-        const sideX = -dirY;
-        const sideY = dirX;
-        const sideDir = (player.x < this.x) ? 1 : -1; // juste pour le faire tourner un peu
-        const norm = Math.hypot(sideX, sideY) || 1;
-        moveX = (sideX / norm) * sideSpeed * dt * sideDir;
-        moveY = (sideY / norm) * sideSpeed * dt * sideDir;
+        this._orbitSwitchTimer -= dt;
+        this._orbitJumpTimer -= dt;
+        if (this._orbitSwitchTimer <= 0) {
+          this._orbitSwitchTimer = 1.2 + Math.random() * 1.5;
+          this.orbitDirection *= -1;
+        }
+        const dirMul = this.orbitDirection + jitter * 0.6;
+        moveX = tangentX * sideSpeed * dt * dirMul;
+        moveY = tangentY * sideSpeed * dt * dirMul;
+        const radialCorrection = (dist - ideal) * 0.35;
+        moveX += dirX * radialCorrection * dt;
+        moveY += dirY * radialCorrection * dt;
+        if (this._orbitJumpTimer <= 0) {
+          this._orbitJumpTimer = 2 + Math.random() * 1.5;
+          const impulse = (Math.random() * 2 - 1) * this.speed * 0.4;
+          moveX += dirX * impulse * dt;
+          moveY += dirY * impulse * dt;
+        }
       }
 
       this.lastMoveVector = { x: moveX, y: moveY };

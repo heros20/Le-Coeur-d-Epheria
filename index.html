@@ -429,8 +429,39 @@
         background: rgba(8, 10, 16, 0.75);
       }
 
+      .menu-options .menu-btn-clicked {
+        animation: menu-toggle-click 0.35s ease;
+      }
+
+      .menu-options .menu-btn:hover,
+      .menu-options .menu-btn:focus-visible {
+        border-color: rgba(255, 255, 255, 0.9);
+        background:
+          radial-gradient(circle at 0 0, rgba(255, 255, 255, 0.15), transparent 55%),
+          rgba(18, 20, 26, 0.85);
+        box-shadow:
+          0 10px 20px rgba(0, 0, 0, 0.55),
+          inset 0 0 0 1px rgba(255, 255, 255, 0.15);
+        transform: translateY(-1px);
+      }
+
       .menu-options .menu-btn::after {
         content: "";
+      }
+
+      @keyframes menu-toggle-click {
+        0% {
+          transform: translateY(0);
+          filter: brightness(1);
+        }
+        30% {
+          transform: translateY(-1px) scale(1.02);
+          filter: brightness(1.1);
+        }
+        100% {
+          transform: translateY(0);
+          filter: brightness(1);
+        }
       }
 
       /* Aide en bas */
@@ -549,6 +580,22 @@
                   </button>
                   <button type="button" class="escape-video-skip" data-video-skip>
                     Passer la cinématique
+                  </button>
+                </div>
+                <div id="introScroll" class="intro-scroll hidden">
+                  <div class="intro-scroll-pattern" aria-hidden="true"></div>
+                  <div class="intro-scroll-inner">
+                    <div class="intro-scroll-header">
+                      <span class="intro-scroll-title">Prologue</span>
+                    </div>
+                    <div class="intro-scroll-content" data-intro-content></div>
+                  </div>
+                  <button
+                    type="button"
+                    class="escape-video-skip intro-scroll-skip"
+                    data-intro-skip
+                  >
+                    Passer l'intro (E)
                   </button>
                 </div>
                 <div id="screenFlash" class="screen-flash hidden"></div>

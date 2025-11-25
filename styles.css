@@ -672,6 +672,124 @@ h3 {
   color: #fff;
 }
 
+.intro-scroll {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at top, rgba(255, 255, 255, 0.12), transparent 45%),
+    linear-gradient(120deg, rgba(5, 5, 10, 0.95), rgba(15, 7, 34, 0.98));
+  z-index: 40;
+  overflow: hidden;
+  isolation: isolate;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.45s ease, visibility 0.45s ease;
+}
+
+.intro-scroll.visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.intro-scroll.hidden {
+  display: none;
+}
+
+.intro-scroll-pattern {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.06) 0%, transparent 45%),
+    radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 48%),
+    radial-gradient(circle, rgba(255, 255, 255, 0.03) 0%, transparent 70%);
+  background-size: 80px 80px, 140px 140px, 220px 220px;
+  opacity: 0.35;
+  filter: blur(0.5px);
+  animation: intro-stars 14s linear infinite;
+}
+
+.intro-scroll-inner {
+  position: relative;
+  width: min(720px, 92%);
+  max-height: 100%;
+  padding: 2.5rem 1.75rem 1.75rem;
+  color: #f8f6ff;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+  text-shadow: 0 6px 18px rgba(5, 0, 12, 0.9);
+}
+
+.intro-scroll-header {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.25rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(0, 0, 0, 0.35);
+  letter-spacing: 0.35em;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  font-family: "Cinzel", "Cinzel Decorative", serif;
+}
+
+.intro-scroll-title {
+  display: inline-block;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.intro-scroll-content {
+  font-family: "Crimson Text", "Cinzel", serif;
+  font-size: clamp(1rem, 1.1vw, 1.2rem);
+  line-height: 1.8;
+  letter-spacing: 0.12em;
+  white-space: pre-line;
+  opacity: 0.95;
+  transform: translateY(80%);
+  margin-top: 4rem;
+}
+
+.intro-scroll.intro-scroll-active .intro-scroll-content {
+  animation: intro-crawl var(--intro-duration, 16s) linear forwards;
+}
+
+.intro-scroll-skip {
+  pointer-events: auto;
+  top: 16px;
+  right: 16px;
+}
+
+@keyframes intro-crawl {
+  0% {
+    transform: translateY(80%);
+    opacity: 0;
+  }
+  10% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-120%);
+    opacity: 0;
+  }
+}
+
+@keyframes intro-stars {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-30px, -25px, 0);
+  }
+}
+
 .escape-video-play {
   position: absolute;
   inset: 0;

@@ -27,6 +27,106 @@ const $escapeVideoPlayer = document.getElementById("escapeVideoPlayer");
 const $escapeVideoSkip = document.querySelector("[data-video-skip]");
 const $escapeVideoPlay = document.querySelector("[data-video-play]");
 const $bossObjectiveBanner = document.getElementById("bossObjectiveBanner");
+const $introScroll = document.getElementById("introScroll");
+const $introScrollContent = document.querySelector("[data-intro-content]");
+const $introScrollSkip = document.querySelector("[data-intro-skip]");
+const INTRO_CRAWL_TEXT = [
+  "Au cœur du labyrinthe titanesque d'Éphéria, les parois murmurent les serments des anciens sentinelles.",
+  "Lioran, héritier des flammes, revient pour rallumer la lumière qui repousse les ténèbres.",
+  "À ses côtés avance Kael, compagnon spectral qui connaît chaque piège et chaque détour interdit.",
+  "Ensemble, ils se dirigent vers le Cœur d'obsidienne pour sceller une relique qui garde les abîmes en éveil.",
+  "Chaque couloir est un serment, chaque souffle partagés; le labyrinthe est beau, mortel et exigeant.",
+].join("\n\n");
+const INTRO_CRAWL_DURATION = 16000;
+const INTRO_FADE_DURATION = 450;
+let introScrollActive = false;
+
+function showIntroCrawl() {
+  if (!($introScroll && $introScrollContent)) return Promise.resolve();
+  if (introScrollActive) return Promise.resolve();
+  return new Promise((resolve) => {
+    introScrollActive = true;
+    let resolved = false;
+    let timer;
+    let introClip = null;
+    let introFadeStarted = false;
+    const menuAudioEnabled = State.audioSettings?.menu ?? true;
+    const handleSkipClick = (event) => {
+      event?.preventDefault?.();
+      finish();
+    };
+    const handleSkipKey = (event) => {
+      if (event?.key?.toLowerCase?.() === "e") {
+        event.preventDefault();
+        finish();
+      }
+    };
+    const fadeIntroAudio = () => {
+      if (!introClip || introFadeStarted) return;
+      introFadeStarted = true;
+      fadeAudio(introClip, 0, 1200, () => {
+        try {
+          introClip.pause();
+          introClip.currentTime = 0;
+        } catch {
+          // ignore cleanup errors
+        }
+        introClip = null;
+      });
+    };
+    const startIntroAudio = () => {
+      if (!menuAudioEnabled) return;
+      const source = State.sounds?.intro;
+      if (!source) return;
+      try {
+        introClip = source.cloneNode();
+      } catch {
+        introClip = source;
+      }
+      if (!introClip) return;
+      introClip.loop = false;
+      introClip.currentTime = 0;
+      introClip.volume = 0.75;
+      introClip.playbackRate = 0.5;
+      introClip.play().catch(() => {});
+    };
+    const finish = () => {
+      if (resolved) return;
+      resolved = true;
+      introScrollActive = false;
+      clearTimeout(timer);
+      window.removeEventListener("keydown", handleSkipKey);
+      if ($introScrollSkip) {
+        $introScrollSkip.removeEventListener("click", handleSkipClick);
+      }
+      const completeHide = () => {
+        $introScroll.classList.add("hidden");
+        resolve();
+      };
+      fadeIntroAudio();
+      $introScroll.classList.remove("intro-scroll-active");
+      $introScroll.classList.remove("visible");
+      setTimeout(() => {
+        if (!$introScroll.classList.contains("visible")) {
+          completeHide();
+        }
+      }, INTRO_FADE_DURATION);
+    };
+    $introScrollContent.textContent = INTRO_CRAWL_TEXT;
+    $introScroll.style.setProperty("--intro-duration", `${INTRO_CRAWL_DURATION}ms`);
+    $introScroll.classList.remove("hidden");
+    requestAnimationFrame(() => {
+      $introScroll.classList.add("visible");
+      requestAnimationFrame(() => $introScroll.classList.add("intro-scroll-active"));
+    });
+    window.addEventListener("keydown", handleSkipKey);
+    if ($introScrollSkip) {
+      $introScrollSkip.addEventListener("click", handleSkipClick);
+    }
+    startIntroAudio();
+    timer = setTimeout(finish, INTRO_CRAWL_DURATION);
+  });
+}
 
 let heroSelection = null;
 let mapImg, heroImg, potionTexture;
@@ -38,7 +138,8 @@ const SOUND_SOURCES = {
   kaelFireCone: "./assets/sounds/Kael_Spell/Fire_Cone.mp3",
   kaelOrbCast: "./assets/sounds/Kael_Spell/Invok_Orb.mp3",
   kaelOrbLaunch: "./assets/sounds/Kael_Spell/Orb.mp3",
-  gameOver: "./assets/sounds/game-over/game-over.mp3",
+  gameOver: "./assets/sounds/game-over/Theme_game_over.mp3",
+  gameOverPost: "./assets/sounds/game-over/game-over.mp3",
   ambient: "./assets/sounds/Ambiance/Ambiance.mp3",
   themeAmbient: "./assets/sounds/Ambiance/Theme_ambiance.mp3",
   orbActivate: "./assets/sounds/orbes/orbes.mp3",
@@ -47,6 +148,7 @@ const SOUND_SOURCES = {
   ghostWall: "./assets/sounds/Ghost/Laby_ghost.mp3",
   ghostDash: "./assets/sounds/Ghost/Ghost-attack.mp3",
   ghostCreepy: "./assets/sounds/Ghost/Creepy_ghost.mp3",
+  intro: "./assets/sounds/Intro/Intro.mp3",
 };
 const MENU_SFX_PATHS = {
   start: "./assets/sounds/menu/start.mp3",
@@ -95,6 +197,11 @@ const ORB_REPEAT_MESSAGES = [
   "Encore une menace, nous sommes forcément sur la bonne voie.",
   "On ne peux pas reculer maintenant, restons vigilant.",
 ];
+const ORB_NAMES = {
+  0: "red",
+  1: "gold",
+  3: "green",
+};
 
 const KAEL_MECHANIC_META = {
   dash: { label: "Dash Spectral", color: "#ffd18b", accent: "#ff6f40", icon: "⚡" },
@@ -411,6 +518,51 @@ function consumeMobileDashPress() {
   if (!State.isMobile || !touchControlState.dashQueued) return false;
   touchControlState.dashQueued = false;
   return true;
+}
+
+
+const gameOverAudioNodes = new Set();
+
+function trackGameOverAudio(node) {
+  if (!node) return;
+  gameOverAudioNodes.add(node);
+  const cleanup = () => {
+    gameOverAudioNodes.delete(node);
+    node.removeEventListener("ended", cleanup);
+    node.removeEventListener("error", cleanup);
+  };
+  node.addEventListener("ended", cleanup);
+  node.addEventListener("error", cleanup);
+}
+
+function stopGameOverAudioPlayback() {
+  if (!gameOverAudioNodes.size) return;
+  for (const node of Array.from(gameOverAudioNodes)) {
+    try {
+      node.pause();
+      node.currentTime = 0;
+    } catch {
+      try {
+        node.pause();
+      } catch {}
+    }
+    gameOverAudioNodes.delete(node);
+  }
+}
+
+function playTrackedGameOverClip(name, volume = 1) {
+  if (!State.audioSettings?.game) return null;
+  const clip = State.sounds?.[name];
+  if (!clip) return null;
+  try {
+    const node = clip.cloneNode();
+    node.volume = Math.max(0, Math.min(1, volume));
+    node.play().catch(() => {});
+    trackGameOverAudio(node);
+    return node;
+  } catch {
+    return null;
+  }
 }
 
 function playSound(name, volume = 1) {
@@ -783,6 +935,15 @@ function setupBoot() {
       const labelEl = element.querySelector(".label") ?? element;
       labelEl.textContent = `${label}: ${enabled ? "ON" : "OFF"}`;
     };
+    const triggerClickAnimation = () => {
+      element.classList.add("menu-btn-clicked");
+      const cleanup = () => {
+        element.classList.remove("menu-btn-clicked");
+        element.removeEventListener("animationend", cleanup);
+      };
+      element.addEventListener("animationend", cleanup);
+    };
+
     element.addEventListener("click", () => {
       State.audioSettings = State.audioSettings ?? { menu: true, game: true };
       State.audioSettings[settingKey] = !State.audioSettings[settingKey];
@@ -799,6 +960,7 @@ function setupBoot() {
       }
       sync();
       playMenuClickSound();
+      triggerClickAnimation();
     });
     sync();
   };
@@ -1116,6 +1278,8 @@ function syncDialogueOverlay() {
   setupKeyboard();
   setupPointer($canvas);
   setupPointer($canvas);
+
+  await showIntroCrawl();
 
   // Boucle principale
   function frame(ts) {
@@ -3713,13 +3877,14 @@ function drawGhosts(ctx) {
 function playGameOverSound() {
   if (State.gameOverSoundScheduled) return;
   State.gameOverSoundScheduled = true;
+  playTrackedGameOverClip("gameOver", 0.2);
   if (State.gameOverSoundTimeout) {
     clearTimeout(State.gameOverSoundTimeout);
   }
   State.gameOverSoundTimeout = setTimeout(() => {
-    playSound("gameOver", 0.8);
+    playTrackedGameOverClip("gameOverPost", 0.2);
     State.gameOverSoundTimeout = null;
-  }, 2000);
+  }, 1000);
 }
 
 function resetGameOverSound() {
@@ -3728,6 +3893,7 @@ function resetGameOverSound() {
     State.gameOverSoundTimeout = null;
   }
   State.gameOverSoundScheduled = false;
+  stopGameOverAudioPlayback();
 }
 
   function showKaelAllyGameOver() {
@@ -3755,6 +3921,7 @@ function resetGameOverSound() {
       () => {
         State.awaitingEndingButton = false;
         State.paused = false;
+        resetGameOverSound();
         location.reload();
       },
       { once: true }
@@ -4025,10 +4192,37 @@ function createPuzzleOrbs(world) {
   const topY = Math.min(world.h - radius, topBase + 3);
   const bottomY = Math.min(world.h - radius, bottomBase + 3);
   return [
-    { id: 0, x: leftX, y: topY, radius, color: "#f94144", activated: false, repeatUsed: false },
-    { id: 1, x: rightX, y: topY, radius, color: "#f9c74f", activated: false, repeatUsed: false },
+    {
+      id: 0,
+      x: leftX,
+      y: topY,
+      radius,
+      color: "#f94144",
+      name: ORB_NAMES[0],
+      activated: false,
+      repeatUsed: false,
+    },
+    {
+      id: 1,
+      x: rightX,
+      y: topY,
+      radius,
+      color: "#f9c74f",
+      name: ORB_NAMES[1],
+      activated: false,
+      repeatUsed: false,
+    },
     { id: 2, x: leftX, y: bottomY, radius, color: "#43aa8b", activated: false, repeatUsed: false },
-    { id: 3, x: rightX, y: bottomY, radius, color: "#577590", activated: false, repeatUsed: false },
+    {
+      id: 3,
+      x: rightX,
+      y: bottomY,
+      radius,
+      color: "#577590",
+      name: ORB_NAMES[3],
+      activated: false,
+      repeatUsed: false,
+    },
   ];
 }
 
