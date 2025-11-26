@@ -15,6 +15,9 @@ import { vignette, strokeText } from "./utils/draw.js";
 import { Animator } from "./utils/animator.js";
 import { createHUD } from "./ui/hud.js";
 console.log("### VERSION CURSOR OK ###");
+let heroAnimations = null;
+let heroGoldAnimations = null;
+let goldAnimActive = false;
 const $boot = document.getElementById("boot");
 const $game = document.getElementById("game");
 const $canvas = document.getElementById("gameCanvas");
@@ -30,15 +33,15 @@ const $bossObjectiveBanner = document.getElementById("bossObjectiveBanner");
 const $introScroll = document.getElementById("introScroll");
 const $introScrollContent = document.querySelector("[data-intro-content]");
 const $introScrollSkip = document.querySelector("[data-intro-skip]");
+const $goldOrbPortal = document.getElementById("goldOrbPortal");
 const INTRO_CRAWL_TEXT = [
-  "Au cœur du labyrinthe titanesque d'Éphéria, les parois murmurent les serments des anciens sentinelles.",
-  "Lioran, héritier des flammes, revient pour rallumer la lumière qui repousse les ténèbres.",
-  "À ses côtés avance Kael, compagnon spectral qui connaît chaque piège et chaque détour interdit.",
-  "Ensemble, ils se dirigent vers le Cœur d'obsidienne pour sceller une relique qui garde les abîmes en éveil.",
-  "Chaque couloir est un serment, chaque souffle partagés; le labyrinthe est beau, mortel et exigeant.",
+"Dans les entrailles d’Éphéria, un labyrinthe ancien né d’une magie oubliée, le jeune héros Lioran s’avance, porté par l’espoir et l’inquiétude. À ses côtés, marchant comme son ombre, se tient Kael, son compagnon d’armes, son frère d’âme… ", 
+  "Ils sont venus pour retrouver Aëlya, la princesse qui porte le mystérieux Cœur, une relique vivante capable de guérir un royaume… ou de le réduire en poussière. Disparue dans les profondeurs du labyrinthe, elle semble appeler Lioran à travers des échos, des murmures, des traces d’elle éparpillées comme des lucioles dans l’obscurité.", 
+  "Mais Éphéria n’est pas qu’un dédale, c est un esprit, un piège, un cimetière d anciens voyageurs dont les voix hantent chaque orbe, chaque pierre, chaque recoin. Lioran et Kael avancent, percés par des énigmes sibyllines et des avertissements menaçants, tandis que quelque chose, dans les ténèbres, observe… grignote… s insinue.", 
 ].join("\n\n");
-const INTRO_CRAWL_DURATION = 16000;
+const INTRO_CRAWL_DURATION = 40000;
 const INTRO_FADE_DURATION = 450;
+const GOLD_PORTAL_FADE_DURATION = 450;
 let introScrollActive = false;
 
 function showIntroCrawl() {
@@ -202,6 +205,50 @@ const ORB_NAMES = {
   1: "gold",
   3: "green",
 };
+const HUD_ROOT_ID = "hud";
+const GOLD_MAP_SRC = "./assets/map/Gold_orb.png";
+const GOLD_ORB_START_Y = 64;
+const GOLD_ORB_RETURN_RADIUS = 28;
+const GOLD_BARRIER_RATIO = 0.3;
+const GOLD_BARRIER_OFFSET = 60;
+const GOLD_BARRIER_VISIBLE = false;
+const GOLD_BARRIER_COLOR = "rgba(57, 255, 20, 0.55)";
+const GOLD_RETURN_ZONE_VISIBLE = true;
+const GOLD_RETURN_ZONE_RADIUS_EXTRA = 14;
+const GOLD_RETURN_ZONE_FILL = "rgba(250, 218, 39, 0.64)";
+const GOLD_RETURN_ZONE_STROKE = "rgba(153, 99, 0, 0.9)";
+const GOLD_RETURN_ZONE_VERTICAL_OFFSET = -90;
+const GOLD_REALM_CENTER = { x: 0, y: 0 };
+const goldMapImage = new Image();
+let goldMapLoaded = false;
+goldMapImage.src = GOLD_MAP_SRC;
+goldMapImage.addEventListener("load", () => {
+  goldMapLoaded = true;
+});
+let goldRealmState = {
+  active: false,
+  returnPoint: null,
+  returnCamera: null,
+  restore: null,
+  onReturn: null,
+  playerScale: null,
+  dashDistance: null,
+};
+
+function applyHeroAnimations(useGold) {
+  const player = State.player;
+  if (!player || !player.animator) return;
+  if (useGold && heroGoldAnimations) {
+    player.animator.setAnimations(heroGoldAnimations);
+    player.animator.setBase("idle");
+    goldAnimActive = true;
+  } else if (!useGold && heroAnimations) {
+    player.animator.setAnimations(heroAnimations);
+    player.animator.setBase("idle");
+    goldAnimActive = false;
+  }
+}
+let goldSpeedBackup = null;
 
 const KAEL_MECHANIC_META = {
   dash: { label: "Dash Spectral", color: "#ffd18b", accent: "#ff6f40", icon: "⚡" },
@@ -760,6 +807,22 @@ const HERO_ANIMATION_SOURCES = {
   hurt: ["./assets/hero/hurt/Hurt.png"],
   dead: ["./assets/hero/dead/Dead.png"],
 };
+const HERO_GOLD_ANIMATION_SOURCES = {
+  idle: ["./assets/hero/idle/Idle.png", "./assets/hero/idle/Idle_2.png"],
+  walk_left: ["./assets/hero/walk/Walk_left.png"],
+  walk_right: ["./assets/hero/walk/Walk_right.png"],
+  run_left: ["./assets/hero/run/Run_left.png"],
+  run_right: ["./assets/hero/run/Run_right.png"],
+  attack: [
+    "./assets/hero/attack/Attack_1.png",
+    "./assets/hero/attack/Attack_2.png",
+    "./assets/hero/attack/Attack_3.png",
+  ],
+  jump: ["./assets/hero/jump/Jump.png"],
+  dash: ["./assets/hero/run/Run_right.png"],
+  hurt: ["./assets/hero/hurt/Hurt.png"],
+  dead: ["./assets/hero/dead/Dead.png"],
+};
 
 const KAEL_ANIMATION_SOURCES = {
   idle: ["./assets/Kael/idle/Idle.png", "./assets/Kael/idle/Idle_2.png"],
@@ -1100,7 +1163,8 @@ function syncDialogueOverlay() {
     h1,
     h2,
     h3,
-    heroAnimations,
+    heroAnimationsLoaded,
+    heroGoldAnimationsLoaded,
     kaelAnimations,
     dragonKaelAnimations,
     princessAnimations,
@@ -1112,6 +1176,7 @@ function syncDialogueOverlay() {
     loadImage("./assets/hero2.png"),
     loadImage("./assets/hero3.png"),
     loadAnimations(HERO_ANIMATION_SOURCES),
+    loadAnimations(HERO_GOLD_ANIMATION_SOURCES),
     loadAnimations(KAEL_ANIMATION_SOURCES),
     loadAnimations(KAEL_DRAGON_ANIMATION_SOURCES),
     loadAnimations(PRINCESS_ANIMATION_SOURCES),
@@ -1127,6 +1192,8 @@ function syncDialogueOverlay() {
   heroImg = byPath[heroSelection];
   potionTexture = potionImage;
   State.sounds = soundBank ?? {};
+  heroAnimations = heroAnimationsLoaded;
+  heroGoldAnimations = heroGoldAnimationsLoaded;
   State.dialoguePortraits = {
     hero1: byPath["./assets/hero1.png"],
     hero2: byPath["./assets/hero2.png"],
@@ -1218,7 +1285,21 @@ function syncDialogueOverlay() {
   State.dialogue = createDialogueLayer();
   State.dialogue.close();
 
-  const hud = createHUD();
+  applyHeroAnimations(false);
+
+  let hud = createHUD();
+  setHudMode(false);
+  let activeHud = hud;
+
+  function setHudMode(gold) {
+    const root = document.getElementById(HUD_ROOT_ID);
+    if (!root) return;
+    if (gold) {
+      root.classList.add("hud-gold");
+    } else {
+      root.classList.remove("hud-gold");
+    }
+  }
 
   State.kael = new NPC(kaelAnimations, kaelStart.x, kaelStart.y, "Kael", {
     scale: ACTOR_SCALE,
@@ -1520,9 +1601,9 @@ function syncDialogueOverlay() {
   }
   // ===== Update =====
   function update(dt) {
-    const { player, map } = State;
+  const { player, map } = State;
 
-    State.questPromptCooldown = Math.max(0, (State.questPromptCooldown ?? 0) - dt);
+  State.questPromptCooldown = Math.max(0, (State.questPromptCooldown ?? 0) - dt);
     updateFloatingTexts(dt);
 
     const camera = State.camera;
@@ -1588,15 +1669,17 @@ function syncDialogueOverlay() {
     const potionPressed = consume("p");
     const quickItemPressed = consume("l") || consume("2");
     const bossShortcutPressed = consume("9");
+    const goldTeleportPressed = consume("8");
     const jumpPressed = consume("j");
     const interactPressed = consume("e");
     const rangedPressed = consume("3") || consume("m");
 
     // E pour interagir uniquement si aucun dialogue en cours
-    if (State.paused || State.orbPromptOpen) {
+    const goldFlag = State.flags?.goldRealm;
+    if ((State.paused && !goldFlag) || State.orbPromptOpen) {
       State.dialogue.update({ dt: 0 });
       syncDialogueOverlay();
-      hud.update({
+      activeHud.update({
         hp: player.hp,
         hpMax: player.maxHp ?? 100,
         stamina: player.stamina,
@@ -1680,6 +1763,33 @@ function syncDialogueOverlay() {
     State.playerAttackTrail = attackTrail.filter((node) => node.life > 0);
     enforcePreKaelBoundary(player);
     handlePickups();
+    if (goldTeleportPressed && !goldRealmState.active) {
+      enterGoldRealm();
+    }
+if (goldRealmState.active) {
+      processGoldInputs({
+        player,
+        map,
+        dashPressed,
+        moveVector: moveVectorInput,
+        pointerData,
+      });
+      checkGoldRealmReturn(player);
+      enforceGoldBarrier(player);
+      updateGoldRealmCamera(player);
+      activeHud.update?.({
+        hp: player.hp,
+        hpMax: player.maxHp ?? 100,
+        stamina: player.stamina,
+        staminaMax: player.staminaMax ?? 100,
+        status: "Exploration dorée",
+        dashCooldown: player.getDashCooldown?.() ?? 0,
+        dashCooldownMax: player.dashCooldown ?? 1,
+      });
+      clampCameraToPlayer(player?.x ?? 0, player?.y ?? 0);
+      State.fog.reveal(player?.x ?? 0, player?.y ?? 0, 170);
+      return;
+    }
     maybeTriggerPrincessHint();
     checkPrincessQuestCompletion(player);
     updateProjectiles(dt);
@@ -1860,7 +1970,7 @@ function syncDialogueOverlay() {
     maybeStartBossMusic();
     syncDialogueOverlay();
     // HUD
-    hud.update({
+    activeHud.update({
       hp: player.hp,
       hpMax: player.maxHp ?? 100,
       stamina: player.stamina,
@@ -2081,6 +2191,7 @@ function tryInteractOrb() {
 
   function remindKaelToInspectOrb() {
     if (!State || typeof State.time !== "number") return;
+    if (isGoldRealmActive()) return;
     if (State.time - lastKaelOrbReminderTime < 4) return;
     if (State.dialogue?.isOpen?.()) return;
     lastKaelOrbReminderTime = State.time;
@@ -2115,11 +2226,15 @@ function tryInteractOrb() {
     const yesBtn = $orbPrompt.querySelector("[data-orb-yes]");
     const noBtn = $orbPrompt.querySelector("[data-orb-no]");
 
-const handleYes = () => {
-  hideOrbPrompt();
-  const flashDuration = activateOrb(orb) || 0;
-  startOrbDialogueSequence(orb, flashDuration);
-};
+    const handleYes = () => {
+      hideOrbPrompt();
+      if (orb?.id === 1) {
+        handleGoldOrbActivation(orb);
+        return;
+      }
+      const flashDuration = activateOrb(orb) || 0;
+      startOrbDialogueSequence(orb, flashDuration);
+    };
 
     const handleNo = () => {
       hideOrbPrompt();
@@ -2153,6 +2268,185 @@ const handleYes = () => {
     yesBtn?.addEventListener("click", handleYes);
     noBtn?.addEventListener("click", handleNo);
     window.addEventListener("keydown", handleKey);
+  }
+
+  function handleGoldOrbActivation(orb) {
+    if (!orb) return;
+    enterGoldRealm().then(() => {
+      const flashDuration = activateOrb(orb) || 0;
+      startOrbDialogueSequence(orb, flashDuration);
+    });
+  }
+
+function pauseWorldForGold() {
+  const flags = State.flags || (State.flags = {});
+  flags.goldRealm = true;
+  State.dialogue?.close?.();
+  stopBossMusic(true);
+  State.activeAmbientTrack?.pause();
+  State.activeThemeAmbientTrack?.pause();
+}
+
+function resumeWorldAfterGold() {
+  const flags = State.flags || (State.flags = {});
+  flags.goldRealm = false;
+  startAmbientMusic();
+}
+
+function isGoldRealmActive() {
+  return Boolean(State.flags?.goldRealm || goldRealmState.active);
+}
+
+async function enterGoldRealm() {
+    if (goldRealmState.active) return Promise.resolve();
+    if (!goldMapLoaded) {
+      await new Promise((resolve) => {
+        const done = () => {
+          resolve();
+        };
+        goldMapImage.addEventListener("load", done, { once: true });
+        goldMapImage.addEventListener("error", done, { once: true });
+      });
+    }
+    if (!goldMapLoaded) return Promise.resolve();
+    const player = State.player;
+    const camera = State.camera;
+    if (!player || !camera) return Promise.resolve();
+    goldRealmState.returnPoint = { x: player.x, y: player.y };
+    goldRealmState.returnCamera = { x: camera.x, y: camera.y };
+    goldRealmState.restore = {
+      map: State.map,
+      mapImg,
+      fog: State.fog,
+      cameraW: camera.w,
+      cameraH: camera.h,
+    };
+    pauseWorldForGold();
+    State.map = createGoldWorld();
+    mapImg = goldMapImage;
+    State.fog = new FogOfWar(State.map.w, State.map.h);
+    State.fog.reveal(State.map.w / 2, State.map.h / 2, Math.max(State.map.w, State.map.h));
+    player.x = Math.max(30, State.map.w / 2);
+    player.y = GOLD_ORB_START_Y;
+    if (!goldRealmState.playerScale) {
+      goldRealmState.playerScale = player.scale;
+      player.scale = (player.scale ?? 1) * 2;
+    }
+    if (!goldSpeedBackup) {
+      goldSpeedBackup = player.speed;
+    }
+    player.speed = (player.speed ?? 1) * 2;
+    if (!goldRealmState.dashDistance) {
+      goldRealmState.dashDistance = player.dashDistance;
+      player.dashDistance = (player.dashDistance ?? 120) * 2;
+    }
+    const goldZoom = CAMERA_ZOOM * 0.35;
+    camera.w = Math.min(Math.max(1, $canvas.width / goldZoom), State.map.w);
+    camera.h = Math.min(Math.max(1, $canvas.height / goldZoom), State.map.h);
+    clampCameraToPlayer(player.x, player.y);
+    setHudMode(true);
+    applyHeroAnimations(true);
+    activeHud.update?.({
+      hp: player.hp,
+      hpMax: player.maxHp ?? 100,
+      stamina: player.stamina,
+      staminaMax: player.staminaMax ?? 100,
+      status: "Exploration dorée",
+      dashCooldown: player.getDashCooldown?.() ?? 0,
+      dashCooldownMax: player.dashCooldown ?? 1,
+    });
+    goldRealmState.active = true;
+    return new Promise((resolve) => {
+    goldRealmState.onReturn = resolve;
+    });
+  }
+
+  function exitGoldRealm() {
+    if (!goldRealmState.active) return;
+    goldRealmState.active = false;
+    const player = State.player;
+    const camera = State.camera;
+    restoreWorldFromGold();
+    if (player && goldRealmState.returnPoint) {
+      player.x = goldRealmState.returnPoint.x;
+      player.y = goldRealmState.returnPoint.y;
+    }
+    if (camera && goldRealmState.returnCamera) {
+      camera.x = goldRealmState.returnCamera.x;
+      camera.y = goldRealmState.returnCamera.y;
+    }
+    clampCameraToPlayer(player?.x ?? 0, player?.y ?? 0);
+    const callback = goldRealmState.onReturn;
+    goldRealmState.onReturn = null;
+    if (typeof callback === "function") {
+      callback();
+    }
+    if (player && goldRealmState.playerScale) {
+      player.scale = goldRealmState.playerScale;
+      goldRealmState.playerScale = null;
+    }
+    if (player && goldSpeedBackup) {
+      player.speed = goldSpeedBackup;
+      goldSpeedBackup = null;
+    }
+    if (player && goldRealmState.dashDistance) {
+      player.dashDistance = goldRealmState.dashDistance;
+      goldRealmState.dashDistance = null;
+    }
+    if (player && State.fog) {
+      State.fog.reveal(player.x, player.y, 170);
+    }
+    setHudMode(false);
+    resumeWorldAfterGold();
+    applyHeroAnimations(false);
+    hud = createHUD();
+    activeHud = hud;
+  }
+
+  function restoreWorldFromGold() {
+    if (!goldRealmState.restore) return;
+    State.map = goldRealmState.restore.map;
+    mapImg = goldRealmState.restore.mapImg;
+    State.fog = goldRealmState.restore.fog;
+    const camera = State.camera;
+    if (camera) {
+      camera.w = goldRealmState.restore.cameraW ?? camera.w;
+      camera.h = goldRealmState.restore.cameraH ?? camera.h;
+    }
+    goldRealmState.restore = null;
+  }
+
+  function createGoldWorld() {
+    const width = Math.max(1, goldMapImage.width || 512);
+    const height = Math.max(1, goldMapImage.height || 384);
+    GOLD_REALM_CENTER.x = width / 2;
+    GOLD_REALM_CENTER.y = height / 2 + GOLD_RETURN_ZONE_VERTICAL_OFFSET;
+    return {
+      w: width,
+      h: height,
+      nearestOpen: (x = width * 0.5, y = height * 0.5) => ({
+        x: Math.max(2, Math.min(width - 2, x)),
+        y: Math.max(2, Math.min(height - 2, y)),
+      }),
+      isBlocked: () => false,
+      circleFree: (px, py, radius) => {
+        if (radius == null) radius = 0;
+        const minX = radius;
+        const maxX = width - radius;
+        const minY = radius;
+        const maxY = height - radius;
+        return px >= minX && px <= maxX && py >= minY && py <= maxY;
+      },
+      getTiles: () => [],
+    };
+  }
+
+  function checkGoldRealmReturn(player) {
+    if (!goldRealmState.active || !player) return;
+    const dist = Math.hypot(player.x - GOLD_REALM_CENTER.x, player.y - GOLD_REALM_CENTER.y);
+    if (dist <= GOLD_ORB_RETURN_RADIUS) {
+      exitGoldRealm();
+    }
   }
 
   function showKaelQuestPrompt() {
@@ -2407,6 +2701,7 @@ function startOrbDialogueSequence(orb, delay = 0) {
   function maybeSpeakKaelOrbHint() {
     const flags = State.flags || (State.flags = {});
     if (!flags.kaelMet || flags.kaelOrbHintSpoken) return;
+    if (isGoldRealmActive()) return;
     const orbs = State.puzzleOrbs;
     const anyActivated = Array.isArray(orbs) && orbs.some((orb) => orb?.activated);
     if (anyActivated) return;
@@ -3769,7 +4064,7 @@ function drawGhosts(ctx) {
   }
 
   // ===== Render =====
-  function render() {
+function render() {
     const { map, player, boss, princess, puzzleOrbs } = State;
     const camera = State.camera;
 
@@ -3786,9 +4081,20 @@ function drawGhosts(ctx) {
 
     ctx.drawImage(mapImg, camX, camY, camera.w, camera.h, 0, 0, camera.w, camera.h);
 
-    // actors in world space
     ctx.save();
     ctx.translate(-camX, -camY);
+    if (goldRealmState.active) {
+      drawPlayerWithinGoldRealm(ctx);
+      drawGoldReturnZone(ctx);
+      drawGoldBarrier(ctx, camX, camY, camera);
+      ctx.restore();
+      ctx.restore();
+      State.fog.drawTo(ctx, camX, camY, camera.w, camera.h);
+      applyLighting(ctx, State.mode, camX + camera.w / 2, camY + camera.h / 2, 0);
+      vignette(ctx, $canvas.width, $canvas.height, 0.35);
+      State.dialogue.draw(ctx, $canvas);
+      return;
+    }
     drawPickups(ctx);
     drawGhosts(ctx);
     drawPlayerDashTrail(ctx);
@@ -3881,6 +4187,7 @@ function playGameOverSound() {
   if (State.gameOverSoundTimeout) {
     clearTimeout(State.gameOverSoundTimeout);
   }
+
   State.gameOverSoundTimeout = setTimeout(() => {
     playTrackedGameOverClip("gameOverPost", 0.2);
     State.gameOverSoundTimeout = null;
@@ -4032,6 +4339,46 @@ function resetGameOverSound() {
   }
 }
 
+function drawPlayerWithinGoldRealm(ctx) {
+  if (!ctx || !State.player) return;
+  State.player.draw(ctx);
+}
+
+function updateGoldRealmCamera(player) {
+  const camera = State.camera;
+    if (!camera || !player) return;
+    const mapW = State.map?.w ?? camera.w;
+    const mapH = State.map?.h ?? camera.h;
+    const targetX = player.x - camera.w / 2;
+    const targetY = player.y - camera.h / 2;
+    const minX = Math.min(0, mapW - camera.w);
+    const maxX = Math.max(0, mapW - camera.w);
+    const minY = Math.min(0, mapH - camera.h);
+    const maxY = Math.max(0, mapH - camera.h);
+    const clampedX = Math.min(maxX, Math.max(minX, targetX));
+    const clampedY = Math.min(maxY, Math.max(minY, targetY));
+    const smooth = 0.12;
+    camera.x += (clampedX - camera.x) * smooth;
+    camera.y += (clampedY - camera.y) * smooth;
+}
+
+function processGoldInputs({ player, map, dashPressed, moveVector, pointerData }) {
+  if (!player || !map || !dashPressed) return;
+  const pointerVector = pointerData
+    ? { x: pointerData.x - player.x, y: pointerData.y - player.y }
+    : null;
+  const pointerValid =
+    pointerVector && (Math.abs(pointerVector.x) > 0.01 || Math.abs(pointerVector.y) > 0.01);
+  const moveVectorValid =
+    moveVector && (Math.abs(moveVector.x) > 0.01 || Math.abs(moveVector.y) > 0.01);
+  const dashDir = pointerValid
+    ? pointerVector
+    : moveVectorValid
+    ? { x: moveVector.x, y: moveVector.y }
+    : undefined;
+  player.tryDash(map, dashDir);
+}
+
 function drawPlayerDashTrail(ctx) {
   const trail = State.playerDashTrail;
   if (!Array.isArray(trail) || trail.length === 0) return;
@@ -4058,6 +4405,45 @@ function drawPlayerDashTrail(ctx) {
     ctx.arc(node.x, node.y, radius * 0.5, 0, Math.PI * 2);
     ctx.fill();
   });
+  ctx.restore();
+}
+
+function enforceGoldBarrier(player) {
+  if (!goldRealmState.active || !player || !State.map) return;
+  const mapH = State.map.h ?? 0;
+  const baseY = mapH * (1 - GOLD_BARRIER_RATIO);
+  const barrierY = Math.min(mapH, baseY + GOLD_BARRIER_OFFSET);
+  if (player.y > barrierY) {
+    player.y = barrierY;
+  }
+}
+
+function drawGoldReturnZone(ctx) {
+  if (!ctx || !goldRealmState.active || !GOLD_RETURN_ZONE_VISIBLE) return;
+  if (!Number.isFinite(GOLD_REALM_CENTER.x) || !Number.isFinite(GOLD_REALM_CENTER.y)) return;
+  const radius = Math.max(1, GOLD_ORB_RETURN_RADIUS + GOLD_RETURN_ZONE_RADIUS_EXTRA);
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.fillStyle = GOLD_RETURN_ZONE_FILL;
+  ctx.strokeStyle = GOLD_RETURN_ZONE_STROKE;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(GOLD_REALM_CENTER.x, GOLD_REALM_CENTER.y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawGoldBarrier(ctx, camX, camY, camera) {
+  if (!ctx || !goldRealmState.active || !State.map || !GOLD_BARRIER_VISIBLE) return;
+  const mapH = State.map.h ?? 0;
+  const baseY = mapH * (1 - GOLD_BARRIER_RATIO);
+  const barrierY = Math.min(mapH, baseY + GOLD_BARRIER_OFFSET);
+  const startY = barrierY - camY;
+  ctx.save();
+  ctx.globalAlpha = 0.85;
+  ctx.fillStyle = GOLD_BARRIER_COLOR;
+  ctx.fillRect(0, startY, camera.w, State.map.h - barrierY);
   ctx.restore();
 }
 

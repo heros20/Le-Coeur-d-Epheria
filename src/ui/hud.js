@@ -16,6 +16,8 @@ function escapeHtml(text = "") {
 export function createHUD() {
   const hud = document.getElementById("hud");
   hud.innerHTML = "";
+  hud.classList.remove("hud-gold");
+  hud.classList.remove("hud-gold");
 
   const makeCard = (cls) => {
     const el = document.createElement("div");

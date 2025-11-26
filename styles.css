@@ -450,6 +450,28 @@ h3 {
   font-size: 0.78rem;
 }
 
+.hud-gold .hud-card {
+  border-color: rgba(250, 204, 21, 0.75);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 217, 102, 0.35),
+    0 8px 22px rgba(255, 204, 80, 0.25);
+  background:
+    radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.08), transparent 40%),
+    linear-gradient(180deg, rgba(10, 5, 16, 0.95), rgba(22, 11, 32, 0.9));
+}
+
+.hud-gold .chip-gold {
+  background: rgba(255, 234, 166, 0.35);
+  color: #be6f00;
+}
+
+.helper-grid-gold .helper-group {
+  border: 1px solid rgba(255, 208, 120, 0.35);
+  border-radius: 10px;
+  padding: 0.5rem;
+  background: rgba(4, 0, 12, 0.55);
+}
+
 .hud-vitals,
 .hud-inventory,
 .hud-helper {
@@ -814,6 +836,74 @@ h3 {
 
 .escape-video-play.hidden {
   display: none;
+}
+
+.gold-orb-portal {
+  position: absolute;
+  inset: 0;
+  display: block;
+  background:
+    linear-gradient(145deg, rgba(5, 0, 10, 0.9), rgba(15, 5, 25, 0.95)),
+    url("./assets/map/Gold_orb.png") center/cover;
+  z-index: 40;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.45s ease, visibility 0.45s ease;
+  isolation: isolate;
+}
+
+.gold-orb-portal.visible {
+  opacity: 1;
+  visibility: visible;
+}
+.gold-orb-background {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 25% 20%, rgba(255, 255, 255, 0.15), transparent 35%),
+    radial-gradient(circle at 75% 10%, rgba(255, 195, 120, 0.4), transparent 55%);
+  mix-blend-mode: screen;
+  filter: blur(1px);
+  animation: gold-orb-background-move 12s linear infinite;
+}
+
+.gold-orb-glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 82px;
+  height: 82px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  box-shadow:
+    0 0 40px rgba(255, 215, 90, 0.6),
+    0 0 120px rgba(255, 215, 70, 0.5),
+    inset 0 0 30px rgba(255, 255, 255, 0.5);
+  background:
+    radial-gradient(circle, rgba(255, 255, 255, 0.8) 0%, rgba(255, 200, 120, 0.4) 45%, rgba(255, 150, 60, 0));
+  animation: gold-orb-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes gold-orb-pulse {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+  50% {
+    transform: translate(-50%, -50%) scale(1.2);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@keyframes gold-orb-background-move {
+  0% {
+    transform: translate3d(0, 0, 0);
+  }
+  100% {
+    transform: translate3d(-30px, -30px, 0);
+  }
 }
 
 .dialogue .box {
