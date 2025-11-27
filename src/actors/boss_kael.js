@@ -644,7 +644,7 @@ export class BossKael {
     ctx.globalCompositeOperation = "lighter";
     const time = (typeof performance !== "undefined" ? performance.now() : Date.now()) * 0.001;
     for (const orb of this.orbs) {
-      const baseRadius = orb.state === "orbit" ? 16 : 18;
+      const baseRadius = (orb.state === "orbit" ? 16 : 18) * 2;
       const glowRadius = baseRadius * 1.7;
       const fade = orb.state === "orbit" ? 0.7 : 1;
       const gradient = ctx.createRadialGradient(orb.x, orb.y, baseRadius * 0.3, orb.x, orb.y, glowRadius);

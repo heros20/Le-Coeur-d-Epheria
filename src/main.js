@@ -18,6 +18,7 @@ console.log("### VERSION CURSOR OK ###");
 let heroAnimations = null;
 let heroGoldAnimations = null;
 let goldAnimActive = false;
+let ghostAnimations = null;
 const $boot = document.getElementById("boot");
 const $game = document.getElementById("game");
 const $canvas = document.getElementById("gameCanvas");
@@ -187,53 +188,75 @@ window.addEventListener("DOMContentLoaded", () => {
   setTimeout(() => updateMenuThemePlayback(), 1400);
 });
 
+const ORB_NAMES = {
+  0: "red",
+  1: "gold",
+  2: "green",
+  3: "blue",
+};
+const ORB_REALM_CONFIG = {
+  0: { label: "Orbe rouge", mapSrc: "./assets/map/Red_orb.png", statusMessage: "Exploration rouge" },
+  1: { label: "Orbes d'Éphéria", mapSrc: "./assets/map/Gold_orb.png", statusMessage: "Exploration dorée" },
+  2: { label: "Orbe verte", mapSrc: "./assets/map/Green-orb.png", statusMessage: "Exploration verdoyante" },
+  3: { label: "Orbe bleue", mapSrc: "./assets/map/Blue_orb.png", statusMessage: "Exploration bleue" },
+};
 const DESKTOP_ATTACK_KEYS = ["1", "&", "k"];
 const ORB_MESSAGES = [
   "A toi qui n'a pas su écouter les voix, paye ton crime de ton âme.",
   "Vous n'êtes pas les bienvenues en ces lieux.",
-  "Continuez et payer le prix.. Ou sortez et sacrifier votre coeur. ",
+  "Continuez et payer le prix.. Ou sortez et sacrifier votre coeur.",
   "Chaque pas dans une direction, vous éloigne de l'autre, jusqu'au point de non-retour.",
 ];
 const ORB_REPEAT_MESSAGES = [
   "Kael ? tout va bien ? Tu es tout pâle..",
   "Tu as entendu ? D'ou venait cette voix ?",
-  "Encore une menace, nous sommes forcément sur la bonne voie.",
+  "Encore une menace, nous sommes forcés sur la bonne voie.",
   "On ne peux pas reculer maintenant, restons vigilant.",
 ];
-const ORB_NAMES = {
-  0: "red",
-  1: "gold",
-  3: "green",
-};
+
 const HUD_ROOT_ID = "hud";
-const GOLD_MAP_SRC = "./assets/map/Gold_orb.png";
-const GOLD_ORB_START_Y = 64;
-const GOLD_ORB_RETURN_RADIUS = 28;
-const GOLD_BARRIER_RATIO = 0.3;
-const GOLD_BARRIER_OFFSET = 60;
-const GOLD_BARRIER_VISIBLE = false;
-const GOLD_BARRIER_COLOR = "rgba(57, 255, 20, 0.55)";
-const GOLD_RETURN_ZONE_VISIBLE = true;
-const GOLD_RETURN_ZONE_RADIUS_EXTRA = 14;
-const GOLD_RETURN_ZONE_FILL = "rgba(250, 218, 39, 0.64)";
-const GOLD_RETURN_ZONE_STROKE = "rgba(153, 99, 0, 0.9)";
-const GOLD_RETURN_ZONE_VERTICAL_OFFSET = -90;
-const GOLD_REALM_CENTER = { x: 0, y: 0 };
-const goldMapImage = new Image();
-let goldMapLoaded = false;
-goldMapImage.src = GOLD_MAP_SRC;
-goldMapImage.addEventListener("load", () => {
-  goldMapLoaded = true;
-});
-let goldRealmState = {
-  active: false,
-  returnPoint: null,
-  returnCamera: null,
-  restore: null,
-  onReturn: null,
-  playerScale: null,
-  dashDistance: null,
+const ORB_REALM_START_Y = 64;
+const ORB_REALM_RETURN_RADIUS = 28;
+const ORB_BARRIER_RATIO = 0.3;
+const ORB_BARRIER_OFFSET = 60;
+const ORB_BARRIER_VISIBLE = false;
+const ORB_BARRIER_COLOR = "rgba(57, 255, 20, 0.55)";
+const ORB_RETURN_ZONE_VISIBLE = true;
+const ORB_RETURN_ZONE_RADIUS_EXTRA = 14;
+const ORB_RETURN_ZONE_FILL = "rgba(250, 218, 39, 0.64)";
+const ORB_RETURN_ZONE_STROKE = "rgba(153, 99, 0, 0.9)";
+const ORB_RETURN_ZONE_VERTICAL_OFFSET = -90;
+const ORB_REALM_CENTER = { x: 0, y: 0 };
+const orbRealmEntries = Object.fromEntries(
+  Object.entries(ORB_REALM_CONFIG).map(([id, config]) => {
+    const parsedId = Number(id);
+    const image = new Image();
+    const entry = {
+      id: parsedId,
+      config,
+      image,
+      loaded: false,
+    };
+    image.addEventListener("load", () => {
+      entry.loaded = true;
+    });
+    image.addEventListener("error", () => {
+      entry.loaded = true;
+    });
+    image.src = config.mapSrc;
+    return [parsedId, entry];
+  })
+);
+const orbHazards = [];
+const ORB_SPELL_SCALE = 2;
+const ORB_SPEED_MULT = 1.5;
+const ORB_BOSS_CONFIG = {
+  0: { hp: 320, attackDamage: 18, chaseSpeed: 120, scale: 0.34, color: "#ff6a4d" },
+  1: { hp: 300, attackDamage: 16, chaseSpeed: 110, scale: 0.32, color: "#ffd98b", scaleMultiplier: 2.5, orbCount: 8 },
+  2: { hp: 280, attackDamage: 14, chaseSpeed: 108, scale: 0.32, color: "#7bd68f" },
+  3: { hp: 260, attackDamage: 15, chaseSpeed: 106, scale: 0.32, color: "#7fc0ff" },
 };
+
 
 function applyHeroAnimations(useGold) {
   const player = State.player;
@@ -248,14 +271,14 @@ function applyHeroAnimations(useGold) {
     goldAnimActive = false;
   }
 }
-let goldSpeedBackup = null;
+let orbRealmSpeedBackup = null;
 
 const KAEL_MECHANIC_META = {
   dash: { label: "Dash Spectral", color: "#ffd18b", accent: "#ff6f40", icon: "⚡" },
   orb: { label: "Orbes d'Éphéria", color: "#ffe4c5", accent: "#ff853a", icon: "◎" },
   fissure: { label: "Fissure Brûlante", color: "#ffd1b8", accent: "#e04b1d", icon: "⛰" },
   sigil: { label: "Sigils Protecteurs", color: "#d1efff", accent: "#5fb7ff", icon: "✦" },
-  clone: { label: "Clones Sombres", color: "#c3e6ff", accent: "#4d8cff", icon: "〰" },
+  clone: { label: "Flèches Sombres", color: "#c3e6ff", accent: "#4d8cff", icon: "〰" },
   beam: { label: "Rayon de Feu", color: "#ffe7bc", accent: "#ffb31a", icon: "━" },
   inferno: { label: "Souffle Infernal", color: "#ffd6aa", accent: "#ff3f1b", icon: "☄" },
   meteor: { label: "Pluie de Météores", color: "#ffd1b2", accent: "#ff5c1b", icon: "☄" },
@@ -324,6 +347,19 @@ const orbPromptState = {
   focusIndex: 0,
   buttons: [],
   previousPaused: false,
+};
+const orbRealmState = {
+  active: false,
+  id: null,
+  returnPoint: null,
+  returnCamera: null,
+  restore: null,
+  onReturn: null,
+  playerScale: null,
+  dashDistance: null,
+  savedGhosts: null,
+  orbGhost: null,
+  kaelReplica: null,
 };
 let shakeTimeout = null;
 let flashTimeout = null;
@@ -733,6 +769,17 @@ function startAmbientMusic() {
   } catch {
     // ignore autoplay errors
   }
+}
+
+function pauseAmbientMusic() {
+  State.activeAmbientTrack?.pause();
+  State.activeThemeAmbientTrack?.pause();
+}
+
+function resumeAmbientMusic() {
+  if (!State.audioSettings?.game) return;
+  State.activeAmbientTrack?.play().catch(() => {});
+  State.activeThemeAmbientTrack?.play().catch(() => {});
 }
 const ACTOR_SCALE = 0.35;
 
@@ -1168,7 +1215,7 @@ function syncDialogueOverlay() {
     kaelAnimations,
     dragonKaelAnimations,
     princessAnimations,
-    ghostAnimations,
+    ghostAnimationsLoaded,
     potionImage,
     soundBank,
   ] = await Promise.all([
@@ -1253,6 +1300,53 @@ function syncDialogueOverlay() {
   let kaelStart = world.nearestOpen(world.w * 0.86, world.h * 0.18, PLAYER_RADIUS);
   let princessPos = world.nearestOpen(world.w * 0.5, world.h * 0.5 + 110, PLAYER_RADIUS);
   const entrance = { x: heroStart.x, y: heroStart.y, r: 80 };
+
+  function finalizeWorldLoop(dt) {
+    const player = State.player;
+    if (!player) return false;
+    if (State.flags.kaelDefeated && State.princess.follow && !State.flags.endingPending) {
+      if (Math.hypot(player.x - entrance.x, player.y - entrance.y) < entrance.r) {
+        State.flags.endingPending = true;
+        showOnlyEscapeEnding();
+      }
+    }
+    if (player.hp <= 0) {
+      State.flags = State.flags || {};
+      if (!State.flags.deathPending) {
+        State.flags.deathPending = true;
+        State.deathPendingTimer = 0;
+        player.animator?.play?.("dead");
+        return true;
+      }
+      State.deathPendingTimer = Math.max(0, (State.deathPendingTimer ?? 0) + dt);
+      if (State.deathPendingTimer < 1.1) {
+        return true;
+      }
+      State.paused = true;
+      State.flags.orbRealmPaused = Boolean(orbRealmState.active);
+      if (State.flags.betrayalHappened && !State.flags.kaelDefeated) {
+        renderBossGameOver();
+      } else {
+        renderDeath();
+      }
+      State.flags.deathPending = false;
+      State.deathPendingTimer = 0;
+      return true;
+    }
+    State.flags = State.flags || {};
+    State.flags.orbRealmPaused = false;
+    if (State.statusTimer > 0) {
+      State.statusTimer = Math.max(0, State.statusTimer - dt);
+      if (State.statusTimer === 0) State.statusMessage = "";
+    }
+    State.flags = State.flags || {};
+    State.flags.deathPending = false;
+    State.deathPendingTimer = 0;
+    State.dialogue.update({ dt });
+    maybeStartBossMusic();
+    syncDialogueOverlay();
+    return false;
+  }
 
   // === Actors / systems ===
   const heroAudioHooks = {
@@ -1349,7 +1443,9 @@ function syncDialogueOverlay() {
   State.bossRetryShown = false;
   State.pickups = [];
   spawnPotion(heroStart.x - 258, heroStart.y + 150);
-  State.ghosts = spawnGhosts(world, start, ghostAnimations, 5);
+  State.ghosts = spawnGhosts(world, start, ghostAnimationsLoaded, 5);
+  State.ghostAnimations = ghostAnimationsLoaded;
+  ghostAnimations = ghostAnimationsLoaded;
 
   State.fog = new FogOfWar(world.w, world.h);
   State.fog.reveal(State.player.x, State.player.y, 180);
@@ -1675,8 +1771,10 @@ function syncDialogueOverlay() {
     const rangedPressed = consume("3") || consume("m");
 
     // E pour interagir uniquement si aucun dialogue en cours
-    const goldFlag = State.flags?.goldRealm;
-    if ((State.paused && !goldFlag) || State.orbPromptOpen) {
+    const orbRealmFlag = State.flags?.orbRealm;
+    const orbRealmFlagActive = orbRealmFlag != null;
+    const orbPaused = Boolean(State.flags?.orbRealmPaused);
+    if ((State.paused && (!orbRealmFlagActive || orbPaused)) || State.orbPromptOpen) {
       State.dialogue.update({ dt: 0 });
       syncDialogueOverlay();
       activeHud.update({
@@ -1763,31 +1861,46 @@ function syncDialogueOverlay() {
     State.playerAttackTrail = attackTrail.filter((node) => node.life > 0);
     enforcePreKaelBoundary(player);
     handlePickups();
-    if (goldTeleportPressed && !goldRealmState.active) {
-      enterGoldRealm();
+    if (goldTeleportPressed && !orbRealmState.active) {
+      enterOrbRealm(1);
     }
-if (goldRealmState.active) {
-      processGoldInputs({
+    if (orbRealmState.active) {
+      processOrbRealmInputs({
         player,
         map,
         dashPressed,
         moveVector: moveVectorInput,
         pointerData,
       });
-      checkGoldRealmReturn(player);
-      enforceGoldBarrier(player);
-      updateGoldRealmCamera(player);
-      activeHud.update?.({
-        hp: player.hp,
-        hpMax: player.maxHp ?? 100,
-        stamina: player.stamina,
-        staminaMax: player.staminaMax ?? 100,
-        status: "Exploration dorée",
-        dashCooldown: player.getDashCooldown?.() ?? 0,
-        dashCooldownMax: player.dashCooldown ?? 1,
-      });
+      checkOrbRealmReturn(player);
+      enforceOrbBarrier(player);
+      updateOrbHazards(dt);
+      updateOrbRealmCamera(player);
+        activeHud.update?.({
+          hp: player.hp,
+          hpMax: player.maxHp ?? 100,
+          stamina: player.stamina,
+          staminaMax: player.staminaMax ?? 100,
+          status: "Exploration dorée",
+          dashCooldown: player.getDashCooldown?.() ?? 0,
+          dashCooldownMax: player.dashCooldown ?? 1,
+          inventory: State.inventory?.list?.() ?? [],
+          capacity: State.inventory?.capacity ?? 3,
+          combo: player.getComboWindowProgress?.() ?? 0,
+          charge: player.getChargeProgress?.() ?? 0,
+        });
       clampCameraToPlayer(player?.x ?? 0, player?.y ?? 0);
       State.fog.reveal(player?.x ?? 0, player?.y ?? 0, 170);
+      updateGhosts(dt);
+      if (orbRealmState.id === 1 && orbRealmState.kaelReplica) {
+        orbRealmState.kaelReplica.update(dt, player, State.map);
+      }
+      updateQuestAnnouncement(dt);
+      maybeAutoAcceptKaelQuest();
+      updateBossObjective(dt);
+      updateProjectiles(dt);
+      damageGhostsFromPlayer();
+      if (finalizeWorldLoop(dt)) return;
       return;
     }
     maybeTriggerPrincessHint();
@@ -1944,31 +2057,8 @@ if (goldRealmState.active) {
     }
     damageGhostsFromPlayer();
 
-    if (State.flags.kaelDefeated && State.princess.follow && !State.flags.endingPending) {
-      if (Math.hypot(player.x - entrance.x, player.y - entrance.y) < entrance.r) {
-        State.flags.endingPending = true;
-        showOnlyEscapeEnding();
-      }
-    }
+    if (finalizeWorldLoop(dt)) return;
 
-    if (player.hp <= 0) {
-      if (State.flags.betrayalHappened && !State.flags.kaelDefeated) {
-        renderBossGameOver();
-      } else {
-        renderDeath();
-      }
-      return;
-    }
-
-    if (State.statusTimer > 0) {
-      State.statusTimer = Math.max(0, State.statusTimer - dt);
-      if (State.statusTimer === 0) State.statusMessage = "";
-    }
-
-        // >>> Mise a jour du dialogue (auto-fermeture si rien a dire)
-    State.dialogue.update({ dt });
-    maybeStartBossMusic();
-    syncDialogueOverlay();
     // HUD
     activeHud.update({
       hp: player.hp,
@@ -2191,7 +2281,7 @@ function tryInteractOrb() {
 
   function remindKaelToInspectOrb() {
     if (!State || typeof State.time !== "number") return;
-    if (isGoldRealmActive()) return;
+    if (isOrbRealmActive()) return;
     if (State.time - lastKaelOrbReminderTime < 4) return;
     if (State.dialogue?.isOpen?.()) return;
     lastKaelOrbReminderTime = State.time;
@@ -2228,8 +2318,8 @@ function tryInteractOrb() {
 
     const handleYes = () => {
       hideOrbPrompt();
-      if (orb?.id === 1) {
-        handleGoldOrbActivation(orb);
+      if (ORB_REALM_CONFIG[orb?.id]) {
+        handleOrbRealmActivation(orb);
         return;
       }
       const flashDuration = activateOrb(orb) || 0;
@@ -2270,184 +2360,224 @@ function tryInteractOrb() {
     window.addEventListener("keydown", handleKey);
   }
 
-  function handleGoldOrbActivation(orb) {
+  function handleOrbRealmActivation(orb) {
     if (!orb) return;
-    enterGoldRealm().then(() => {
+    enterOrbRealm(orb.id).then(() => {
       const flashDuration = activateOrb(orb) || 0;
       startOrbDialogueSequence(orb, flashDuration);
     });
   }
 
-function pauseWorldForGold() {
+function pauseWorldForOrb(orbId) {
   const flags = State.flags || (State.flags = {});
-  flags.goldRealm = true;
+  flags.orbRealm = orbId;
   State.dialogue?.close?.();
   stopBossMusic(true);
-  State.activeAmbientTrack?.pause();
-  State.activeThemeAmbientTrack?.pause();
+  pauseAmbientMusic();
 }
 
-function resumeWorldAfterGold() {
+function resumeWorldAfterOrb() {
   const flags = State.flags || (State.flags = {});
-  flags.goldRealm = false;
-  startAmbientMusic();
+  flags.orbRealm = null;
+  resumeAmbientMusic();
 }
 
-function isGoldRealmActive() {
-  return Boolean(State.flags?.goldRealm || goldRealmState.active);
+function isOrbRealmActive() {
+  return Boolean(State.flags?.orbRealm != null || orbRealmState.active);
 }
 
-async function enterGoldRealm() {
-    if (goldRealmState.active) return Promise.resolve();
-    if (!goldMapLoaded) {
-      await new Promise((resolve) => {
-        const done = () => {
-          resolve();
-        };
-        goldMapImage.addEventListener("load", done, { once: true });
-        goldMapImage.addEventListener("error", done, { once: true });
-      });
-    }
-    if (!goldMapLoaded) return Promise.resolve();
-    const player = State.player;
-    const camera = State.camera;
-    if (!player || !camera) return Promise.resolve();
-    goldRealmState.returnPoint = { x: player.x, y: player.y };
-    goldRealmState.returnCamera = { x: camera.x, y: camera.y };
-    goldRealmState.restore = {
-      map: State.map,
-      mapImg,
-      fog: State.fog,
-      cameraW: camera.w,
-      cameraH: camera.h,
-    };
-    pauseWorldForGold();
-    State.map = createGoldWorld();
-    mapImg = goldMapImage;
-    State.fog = new FogOfWar(State.map.w, State.map.h);
-    State.fog.reveal(State.map.w / 2, State.map.h / 2, Math.max(State.map.w, State.map.h));
-    player.x = Math.max(30, State.map.w / 2);
-    player.y = GOLD_ORB_START_Y;
-    if (!goldRealmState.playerScale) {
-      goldRealmState.playerScale = player.scale;
-      player.scale = (player.scale ?? 1) * 2;
-    }
-    if (!goldSpeedBackup) {
-      goldSpeedBackup = player.speed;
-    }
-    player.speed = (player.speed ?? 1) * 2;
-    if (!goldRealmState.dashDistance) {
-      goldRealmState.dashDistance = player.dashDistance;
-      player.dashDistance = (player.dashDistance ?? 120) * 2;
-    }
-    const goldZoom = CAMERA_ZOOM * 0.35;
-    camera.w = Math.min(Math.max(1, $canvas.width / goldZoom), State.map.w);
-    camera.h = Math.min(Math.max(1, $canvas.height / goldZoom), State.map.h);
-    clampCameraToPlayer(player.x, player.y);
-    setHudMode(true);
-    applyHeroAnimations(true);
-    activeHud.update?.({
-      hp: player.hp,
-      hpMax: player.maxHp ?? 100,
-      stamina: player.stamina,
-      staminaMax: player.staminaMax ?? 100,
-      status: "Exploration dorée",
-      dashCooldown: player.getDashCooldown?.() ?? 0,
-      dashCooldownMax: player.dashCooldown ?? 1,
-    });
-    goldRealmState.active = true;
-    return new Promise((resolve) => {
-    goldRealmState.onReturn = resolve;
+async function enterOrbRealm(orbId) {
+  const entry = orbRealmEntries[orbId];
+  if (!entry) return Promise.resolve();
+  if (orbRealmState.active && orbRealmState.id === orbId) return Promise.resolve();
+  if (!entry.loaded) {
+    await new Promise((resolve) => {
+      const done = () => {
+        entry.loaded = true;
+        resolve();
+      };
+      entry.image.addEventListener("load", done, { once: true });
+      entry.image.addEventListener("error", done, { once: true });
     });
   }
-
-  function exitGoldRealm() {
-    if (!goldRealmState.active) return;
-    goldRealmState.active = false;
-    const player = State.player;
-    const camera = State.camera;
-    restoreWorldFromGold();
-    if (player && goldRealmState.returnPoint) {
-      player.x = goldRealmState.returnPoint.x;
-      player.y = goldRealmState.returnPoint.y;
-    }
-    if (camera && goldRealmState.returnCamera) {
-      camera.x = goldRealmState.returnCamera.x;
-      camera.y = goldRealmState.returnCamera.y;
-    }
-    clampCameraToPlayer(player?.x ?? 0, player?.y ?? 0);
-    const callback = goldRealmState.onReturn;
-    goldRealmState.onReturn = null;
-    if (typeof callback === "function") {
-      callback();
-    }
-    if (player && goldRealmState.playerScale) {
-      player.scale = goldRealmState.playerScale;
-      goldRealmState.playerScale = null;
-    }
-    if (player && goldSpeedBackup) {
-      player.speed = goldSpeedBackup;
-      goldSpeedBackup = null;
-    }
-    if (player && goldRealmState.dashDistance) {
-      player.dashDistance = goldRealmState.dashDistance;
-      goldRealmState.dashDistance = null;
-    }
-    if (player && State.fog) {
-      State.fog.reveal(player.x, player.y, 170);
-    }
-    setHudMode(false);
-    resumeWorldAfterGold();
-    applyHeroAnimations(false);
-    hud = createHUD();
-    activeHud = hud;
+  if (!entry.loaded) return Promise.resolve();
+  const player = State.player;
+  const camera = State.camera;
+  if (!player || !camera) return Promise.resolve();
+  orbRealmState.returnPoint = { x: player.x, y: player.y };
+  orbRealmState.returnCamera = { x: camera.x, y: camera.y };
+  orbRealmState.restore = {
+    map: State.map,
+    mapImg,
+    fog: State.fog,
+    cameraW: camera.w,
+    cameraH: camera.h,
+  };
+  pauseWorldForOrb(orbId);
+  orbRealmState.savedGhosts = State.ghosts ?? [];
+  orbHazards.length = 0;
+  if (orbId === 1) {
+    const replica = new BossKael(kaelAnimations, player.x + 60, player.y, {
+      scale: ACTOR_SCALE,
+      hitRadius: (CONFIG?.actorRadius ?? 12) * 2,
+      onPlaySound: (name) => playSound(name, name === "kaelOrbLaunch" ? 0.9 : 1),
+      onMechanic: enqueueKaelMechanic,
+    });
+    replica.resetForFight({ x: player.x + 60, y: player.y });
+    const ghostAnim = State.ghostAnimations ?? ghostAnimations ?? {};
+    replica.animator = new Animator(ghostAnim, "idle");
+    replica.baseAnimations = replica.animator.animations;
+    replica.scale = (replica.scale ?? 1) * (ORB_BOSS_CONFIG[1]?.scaleMultiplier ?? 1);
+    replica.baseScale = replica.scale;
+    replica.orbCount = ORB_BOSS_CONFIG[1]?.orbCount ?? 8;
+    replica.realmLabel = "Kael";
+    replica.realmColor = "#ffd18b";
+    replica.speed = (replica.speed ?? 1) * ORB_SPEED_MULT;
+    replica.dashSpeed = (replica.dashSpeed ?? (replica.speed * 3)) * ORB_SPEED_MULT;
+    orbRealmState.kaelReplica = replica;
+    orbRealmState.orbGhost = null;
+    State.ghosts = [];
+  } else {
+    orbRealmState.kaelReplica = null;
+    const orbGhost = createOrbBossGhost(orbId, player.x + 60, player.y);
+    orbRealmState.orbGhost = orbGhost;
+    State.ghosts = orbGhost ? [orbGhost] : [];
   }
-
-  function restoreWorldFromGold() {
-    if (!goldRealmState.restore) return;
-    State.map = goldRealmState.restore.map;
-    mapImg = goldRealmState.restore.mapImg;
-    State.fog = goldRealmState.restore.fog;
-    const camera = State.camera;
-    if (camera) {
-      camera.w = goldRealmState.restore.cameraW ?? camera.w;
-      camera.h = goldRealmState.restore.cameraH ?? camera.h;
-    }
-    goldRealmState.restore = null;
+  const realmMap = createOrbRealmWorld(entry.image);
+  State.map = realmMap;
+  mapImg = entry.image;
+  State.fog = new FogOfWar(State.map.w, State.map.h);
+  State.fog.reveal(State.map.w / 2, State.map.h / 2, Math.max(State.map.w, State.map.h));
+  player.x = Math.max(30, State.map.w / 2);
+  player.y = ORB_REALM_START_Y;
+  if (!orbRealmState.playerScale) {
+    orbRealmState.playerScale = player.scale;
+    player.scale = (player.scale ?? 1) * 2;
   }
-
-  function createGoldWorld() {
-    const width = Math.max(1, goldMapImage.width || 512);
-    const height = Math.max(1, goldMapImage.height || 384);
-    GOLD_REALM_CENTER.x = width / 2;
-    GOLD_REALM_CENTER.y = height / 2 + GOLD_RETURN_ZONE_VERTICAL_OFFSET;
-    return {
-      w: width,
-      h: height,
-      nearestOpen: (x = width * 0.5, y = height * 0.5) => ({
-        x: Math.max(2, Math.min(width - 2, x)),
-        y: Math.max(2, Math.min(height - 2, y)),
-      }),
-      isBlocked: () => false,
-      circleFree: (px, py, radius) => {
-        if (radius == null) radius = 0;
-        const minX = radius;
-        const maxX = width - radius;
-        const minY = radius;
-        const maxY = height - radius;
-        return px >= minX && px <= maxX && py >= minY && py <= maxY;
-      },
-      getTiles: () => [],
-    };
+  if (!orbRealmSpeedBackup) {
+    orbRealmSpeedBackup = player.speed;
   }
-
-  function checkGoldRealmReturn(player) {
-    if (!goldRealmState.active || !player) return;
-    const dist = Math.hypot(player.x - GOLD_REALM_CENTER.x, player.y - GOLD_REALM_CENTER.y);
-    if (dist <= GOLD_ORB_RETURN_RADIUS) {
-      exitGoldRealm();
-    }
+  player.speed = (player.speed ?? 1) * 2;
+  if (!orbRealmState.dashDistance) {
+    orbRealmState.dashDistance = player.dashDistance;
+    player.dashDistance = (player.dashDistance ?? 120) * 2;
   }
+  const realmZoom = CAMERA_ZOOM * 0.35;
+  camera.w = Math.min(Math.max(1, $canvas.width / realmZoom), State.map.w);
+  camera.h = Math.min(Math.max(1, $canvas.height / realmZoom), State.map.h);
+  clampCameraToPlayer(player.x, player.y);
+  setHudMode(true);
+  applyHeroAnimations(true);
+  activeHud.update?.({
+    hp: player.hp,
+    hpMax: player.maxHp ?? 100,
+    stamina: player.stamina,
+    staminaMax: player.staminaMax ?? 100,
+    status: entry.config.statusMessage ?? "Exploration dorée",
+    dashCooldown: player.getDashCooldown?.() ?? 0,
+    dashCooldownMax: player.dashCooldown ?? 1,
+  });
+  orbRealmState.active = true;
+  orbRealmState.id = orbId;
+  return new Promise((resolve) => {
+    orbRealmState.onReturn = resolve;
+  });
+}
+
+function exitOrbRealm() {
+  if (!orbRealmState.active) return;
+  orbRealmState.active = false;
+  const player = State.player;
+  const camera = State.camera;
+  restoreWorldFromOrb();
+  State.ghosts = orbRealmState.savedGhosts ?? [];
+  orbRealmState.savedGhosts = null;
+  if (player && orbRealmState.returnPoint) {
+    player.x = orbRealmState.returnPoint.x;
+    player.y = orbRealmState.returnPoint.y;
+  }
+  if (camera && orbRealmState.returnCamera) {
+    camera.x = orbRealmState.returnCamera.x;
+    camera.y = orbRealmState.returnCamera.y;
+  }
+  clampCameraToPlayer(player?.x ?? 0, player?.y ?? 0);
+  const callback = orbRealmState.onReturn;
+  orbRealmState.onReturn = null;
+  if (typeof callback === "function") {
+    callback();
+  }
+  if (player && orbRealmState.playerScale) {
+    player.scale = orbRealmState.playerScale;
+    orbRealmState.playerScale = null;
+  }
+  if (player && orbRealmSpeedBackup) {
+    player.speed = orbRealmSpeedBackup;
+    orbRealmSpeedBackup = null;
+  }
+  if (player && orbRealmState.dashDistance) {
+    player.dashDistance = orbRealmState.dashDistance;
+    orbRealmState.dashDistance = null;
+  }
+  if (player && State.fog) {
+    State.fog.reveal(player.x, player.y, 170);
+  }
+  setHudMode(false);
+  resumeWorldAfterOrb();
+  applyHeroAnimations(false);
+  hud = createHUD();
+  activeHud = hud;
+  orbRealmState.id = null;
+  orbHazards.length = 0;
+  orbRealmState.orbGhost = null;
+  const flags = State.flags || (State.flags = {});
+  flags.orbRealmPaused = false;
+}
+
+function restoreWorldFromOrb() {
+  if (!orbRealmState.restore) return;
+  State.map = orbRealmState.restore.map;
+  mapImg = orbRealmState.restore.mapImg;
+  State.fog = orbRealmState.restore.fog;
+  const camera = State.camera;
+  if (camera) {
+    camera.w = orbRealmState.restore.cameraW ?? camera.w;
+    camera.h = orbRealmState.restore.cameraH ?? camera.h;
+  }
+  orbRealmState.restore = null;
+}
+
+function createOrbRealmWorld(image) {
+  const width = Math.max(1, image.width || 512);
+  const height = Math.max(1, image.height || 384);
+  ORB_REALM_CENTER.x = width / 2;
+  ORB_REALM_CENTER.y = height / 2 + ORB_RETURN_ZONE_VERTICAL_OFFSET;
+  return {
+    w: width,
+    h: height,
+    nearestOpen: (x = width * 0.5, y = height * 0.5) => ({
+      x: Math.max(2, Math.min(width - 2, x)),
+      y: Math.max(2, Math.min(height - 2, y)),
+    }),
+    isBlocked: () => false,
+    circleFree: (px, py, radius) => {
+      if (radius == null) radius = 0;
+      const minX = radius;
+      const maxX = width - radius;
+      const minY = radius;
+      const maxY = height - radius;
+      return px >= minX && px <= maxX && py >= minY && py <= maxY;
+    },
+    getTiles: () => [],
+  };
+}
+
+function checkOrbRealmReturn(player) {
+  if (!orbRealmState.active || !player) return;
+  const dist = Math.hypot(player.x - ORB_REALM_CENTER.x, player.y - ORB_REALM_CENTER.y);
+  if (dist <= ORB_REALM_RETURN_RADIUS) {
+    exitOrbRealm();
+  }
+}
 
   function showKaelQuestPrompt() {
     if (!$orbPrompt) return;
@@ -2701,7 +2831,7 @@ function startOrbDialogueSequence(orb, delay = 0) {
   function maybeSpeakKaelOrbHint() {
     const flags = State.flags || (State.flags = {});
     if (!flags.kaelMet || flags.kaelOrbHintSpoken) return;
-    if (isGoldRealmActive()) return;
+    if (isOrbRealmActive()) return;
     const orbs = State.puzzleOrbs;
     const anyActivated = Array.isArray(orbs) && orbs.some((orb) => orb?.activated);
     if (anyActivated) return;
@@ -2983,6 +3113,455 @@ function createGhost(x, y, animations) {
   };
 }
 
+function dealDamageToTarget(target, amount) {
+  if (!target || !Number.isFinite(amount) || amount <= 0) return 0;
+  const multiplier = Math.max(0, Number.isFinite(target.damageTakenMultiplier) ? target.damageTakenMultiplier : 1);
+  const damage = Math.max(0, Math.round(amount * multiplier));
+  if (damage <= 0) return 0;
+  if (typeof target.applyDamage === "function") {
+    target.applyDamage(damage);
+  } else if (typeof target.hit === "function") {
+    target.hit(damage);
+  } else if (Number.isFinite(target.hp)) {
+    target.hp = Math.max(0, target.hp - damage);
+  }
+  return damage;
+}
+
+function spawnOrbProjectile(ghost, angle, speed, damage, opts = {}) {
+  if (!ghost || !Number.isFinite(angle) || !Number.isFinite(speed) || !Number.isFinite(damage)) return;
+  const vx = Math.cos(angle) * speed;
+  const vy = Math.sin(angle) * speed;
+  State.projectiles = State.projectiles ?? [];
+  State.projectiles.push({
+    x: ghost.x,
+    y: ghost.y,
+    vx,
+    vy,
+    lifetime: opts.lifetime ?? 1.5,
+    damage,
+    len: (opts.len ?? 28) * ORB_SPELL_SCALE,
+    hitRadius: (opts.hitRadius ?? 22) * ORB_SPELL_SCALE,
+    trail: [],
+    slow: opts.slow,
+    slowDuration: opts.slowDuration,
+    owner: ghost,
+  });
+}
+
+function spawnOrbProjectileCircle(ghost, count, speed, damage, opts = {}) {
+  if (!Number.isFinite(count) || count <= 0) return;
+  for (let i = 0; i < count; i += 1) {
+    const angle = (i / count) * Math.PI * 2;
+    spawnOrbProjectile(ghost, angle, speed, damage, opts);
+  }
+}
+
+function spawnOrbHazard(x, y, radius, duration, damage, opts = {}) {
+  if (!Number.isFinite(radius) || radius <= 0 || !Number.isFinite(duration) || duration <= 0) return;
+  orbHazards.push({
+    x,
+    y,
+    radius: Math.max(8, radius * ORB_SPELL_SCALE),
+    duration,
+    damage: Math.max(0, damage ?? 0),
+    tick: 0,
+    cooldown: opts.cooldown ?? 0.6,
+    color: opts.color || "rgba(255,255,255,0.25)",
+  });
+}
+
+function spawnOrbBeam(ghost, angle, length, width, damage, opts = {}) {
+  if (!ghost || !Number.isFinite(angle) || !Number.isFinite(length) || !Number.isFinite(width)) return;
+  const steps = Math.max(3, Math.round(length / (width * 1.2)));
+  for (let i = 0; i < steps; i += 1) {
+    const t = i / Math.max(1, steps - 1);
+    const dx = Math.cos(angle) * (t * length);
+    const dy = Math.sin(angle) * (t * length);
+    spawnOrbHazard(
+      ghost.x + dx,
+      ghost.y + dy,
+      Math.max(4, (width / 2) * ORB_SPELL_SCALE),
+      opts.duration ?? 2.6,
+      damage,
+      { color: opts.color, cooldown: opts.cooldown ?? 0.15 }
+    );
+  }
+}
+
+function spawnOrbArcWave(ghost, radius, segments, damage, opts = {}) {
+  if (!ghost || !Number.isFinite(radius) || radius <= 0 || segments <= 0) return;
+  const start = Math.random() * Math.PI * 2;
+  for (let i = 0; i < segments; i += 1) {
+    const angle = start + (i / segments) * Math.PI * 0.8;
+    spawnOrbHazard(
+      ghost.x + Math.cos(angle) * radius,
+      ghost.y + Math.sin(angle) * radius,
+      (opts.segmentRadius ?? 42) * ORB_SPELL_SCALE,
+      opts.duration ?? 3,
+      damage,
+      { color: opts.color ?? "rgba(255,255,255,0.3)", cooldown: opts.cooldown ?? 0.25 }
+    );
+  }
+}
+
+function updateOrbHazards(dt) {
+  if (!orbRealmState.active || orbHazards.length === 0) return;
+  const player = State.player;
+  for (const hazard of orbHazards) {
+    hazard.duration -= dt;
+    if (player && hazard.damage > 0) {
+      hazard.tick += dt;
+      if (hazard.tick >= hazard.cooldown) {
+        hazard.tick = 0;
+        const dist = Math.hypot(player.x - hazard.x, player.y - hazard.y);
+        if (dist <= hazard.radius + (player.r ?? 10)) {
+          dealDamageToTarget(player, hazard.damage);
+        }
+      }
+    }
+  }
+  for (let i = orbHazards.length - 1; i >= 0; i -= 1) {
+    if (orbHazards[i].duration <= 0) {
+      orbHazards.splice(i, 1);
+    }
+  }
+}
+
+function drawOrbHazards(ctx) {
+  if (!ctx || orbHazards.length === 0) return;
+  orbHazards.forEach((hazard) => {
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = 0.45;
+    ctx.fillStyle = hazard.color;
+    ctx.strokeStyle = hazard.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(hazard.x, hazard.y, hazard.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  });
+}
+
+function createOrbBossGhost(orbId, x, y) {
+  const config = ORB_BOSS_CONFIG[orbId];
+  if (!config) return null;
+  const animations = State.ghostAnimations ?? ghostAnimations;
+  const ghost = createGhost(x, y, animations);
+  ghost.hp = config.hp;
+  ghost.maxHp = config.hp;
+  ghost.attackDamage = config.attackDamage;
+  const boostedSpeed = Math.max(1, config.chaseSpeed ?? 1) * 3;
+  ghost.chaseSpeed = boostedSpeed * ORB_SPEED_MULT;
+  ghost.baseChaseSpeed = boostedSpeed * ORB_SPEED_MULT;
+  ghost.attackRange = 42;
+  const baseScale = config.scale ?? 0.32;
+  ghost.scale = baseScale * (config.scaleMultiplier ?? 1);
+  ghost.damageTakenMultiplier = 1;
+  ghost.realmBoss = true;
+  ghost.realmId = orbId;
+  ghost.orbTimers = {};
+  ghost.shieldActive = false;
+  ghost.surgeTimer = 0;
+  ghost.realmLabel = config.label;
+  ghost.realmColor = config.color;
+  ghost.orbCount = config.orbCount ?? 3;
+  return ghost;
+}
+
+function updateRedOrbBoss(ghost, dt) {
+  const player = State.player;
+  if (!player) return;
+  const timers = ghost.orbTimers;
+  timers.redBurst = Math.max(0, (timers.redBurst ?? 2.5) - dt);
+  if (timers.redBurst <= 0) {
+    timers.redBurst = 5 + Math.random();
+    spawnOrbProjectileCircle(ghost, 8, 320, 16, { hitRadius: 24 });
+  }
+  timers.redHazard = Math.max(0, (timers.redHazard ?? 4) - dt);
+  if (timers.redHazard <= 0) {
+    timers.redHazard = 9;
+    spawnOrbHazard(
+      ghost.x + (Math.random() - 0.5) * 90,
+      ghost.y + (Math.random() - 0.5) * 70,
+      42,
+      4.5,
+      9,
+      { color: "rgba(255,110,55,0.35)", cooldown: 0.3 }
+    );
+  }
+  timers.redLeap = Math.max(0, (timers.redLeap ?? 6) - dt);
+  if (timers.redLeap <= 0) {
+    timers.redLeap = 8;
+    const offsetX = (Math.random() - 0.5) * 80;
+    const offsetY = (Math.random() - 0.5) * 80;
+    ghost.x = player.x + offsetX;
+    ghost.y = player.y + offsetY;
+    spawnOrbHazard(ghost.x, ghost.y, 50, 2.5, 12, {
+      color: "rgba(255,180,120,0.55)",
+      cooldown: 0.2,
+    });
+    spawnOrbProjectileCircle(ghost, 6, 240, 14, { hitRadius: 22 });
+  }
+  timers.redFlare = Math.max(0, (timers.redFlare ?? 2.1) - dt);
+  if (timers.redFlare <= 0) {
+    timers.redFlare = 4.2;
+    spawnOrbProjectileCircle(ghost, 12, 300, 18, { hitRadius: 26 });
+    spawnOrbHazard(ghost.x, ghost.y, 68, 2.8, 0, {
+      color: "rgba(255,140,80,0.3)",
+      cooldown: 0.2,
+    });
+  }
+  timers.redStorm = Math.max(0, (timers.redStorm ?? 6.5) - dt);
+  if (timers.redStorm <= 0) {
+    timers.redStorm = 9;
+    const map = State.map;
+    if (map) {
+      const length = Math.max(map.w, map.h) * 1.15;
+      [0, Math.PI / 2, Math.PI, (Math.PI * 3) / 2].forEach((angle) => {
+        spawnOrbBeam(ghost, angle, length, 84, 16, {
+          color: "rgba(255,130,80,0.45)",
+          duration: 3.4,
+        });
+      });
+    }
+  }
+}
+
+function updateGoldOrbBoss(ghost, dt) {
+  const player = State.player;
+  if (!player) return;
+  const timers = ghost.orbTimers;
+  timers.goldRays = Math.max(0, (timers.goldRays ?? 3) - dt);
+  if (timers.goldRays <= 0) {
+    timers.goldRays = 5 + Math.random() * 1.5;
+    const baseAngle = Math.atan2(player.y - ghost.y, player.x - ghost.x);
+    for (let i = -1; i <= 1; i += 1) {
+      spawnOrbProjectile(ghost, baseAngle + i * 0.15, 300, 15, {
+        len: 32,
+        hitRadius: 24,
+      });
+    }
+  }
+  timers.goldAura = Math.max(0, (timers.goldAura ?? 5) - dt);
+  if (timers.goldAura <= 0) {
+    timers.goldAura = 7;
+    spawnOrbHazard(ghost.x, ghost.y, 60, 4, 6, {
+      color: "rgba(255,230,170,0.35)",
+      cooldown: 0.4,
+    });
+  }
+  timers.goldShield = Math.max(0, (timers.goldShield ?? 4) - dt);
+  if (timers.goldShield <= 0) {
+    ghost.shieldActive = !ghost.shieldActive;
+    ghost.damageTakenMultiplier = ghost.shieldActive ? 0.55 : 1;
+    timers.goldShield = ghost.shieldActive ? 6 : 4;
+    spawnOrbHazard(ghost.x, ghost.y, 70, 2.5, ghost.shieldActive ? 3 : 0, {
+      color: "rgba(255,215,140,0.3)",
+      cooldown: 0.2,
+    });
+  }
+  timers.goldBeacon = Math.max(0, (timers.goldBeacon ?? 6) - dt);
+  if (timers.goldBeacon <= 0) {
+    timers.goldBeacon = 9;
+    for (let i = 0; i < 3; i += 1) {
+      const angle = (i / 3) * Math.PI * 2 + Math.random() * 0.25;
+      const px = ghost.x + Math.cos(angle) * 210;
+      const py = ghost.y + Math.sin(angle) * 210;
+      spawnOrbHazard(px, py, 42, 4.5, 10, {
+        color: "rgba(255,245,190,0.35)",
+        cooldown: 0.35,
+      });
+      spawnOrbProjectile(ghost, angle + Math.PI, 280, 16, {
+        len: 32,
+        hitRadius: 26,
+      });
+    }
+  }
+  timers.goldPulse = Math.max(0, (timers.goldPulse ?? 5.5) - dt);
+  if (timers.goldPulse <= 0) {
+    timers.goldPulse = 11;
+    spawnOrbArcWave(ghost, Math.max(State.map?.w ?? 320, State.map?.h ?? 240) * 0.6, 12, 12, {
+      color: "rgba(255,235,190,0.45)",
+      segmentRadius: 48,
+      duration: 3.4,
+      cooldown: 0.3,
+    });
+  }
+  timers.goldOrbs = Math.max(0, (timers.goldOrbs ?? 4.5) - dt);
+  if (timers.goldOrbs <= 0) {
+    timers.goldOrbs = 6;
+    const count = Math.max(ghost.orbCount ?? 3, 6);
+    spawnOrbProjectileCircle(ghost, count, 320, 18, {
+      hitRadius: 26,
+      len: 32,
+    });
+  }
+}
+
+function updateGreenOrbBoss(ghost, dt) {
+  const player = State.player;
+  if (!player) return;
+  const timers = ghost.orbTimers;
+  timers.greenSeeds = Math.max(0, (timers.greenSeeds ?? 3) - dt);
+  if (timers.greenSeeds <= 0) {
+    timers.greenSeeds = 5 + Math.random();
+    const baseAngle = Math.atan2(player.y - ghost.y, player.x - ghost.x);
+    for (let i = 0; i < 5; i += 1) {
+      const angle = baseAngle + (Math.random() - 0.5) * 1.2;
+      spawnOrbProjectile(ghost, angle, 220, 10, {
+        hitRadius: 18,
+        len: 20,
+      });
+    }
+  }
+  timers.greenBloom = Math.max(0, (timers.greenBloom ?? 10) - dt);
+  if (timers.greenBloom <= 0) {
+    timers.greenBloom = 12;
+    ghost.hp = Math.min(ghost.maxHp, ghost.hp + 16);
+    spawnOrbHazard(ghost.x, ghost.y, 55, 3, 0, {
+      color: "rgba(120,230,175,0.4)",
+      cooldown: 0.6,
+    });
+  }
+  timers.greenRoots = Math.max(0, (timers.greenRoots ?? 6) - dt);
+  if (timers.greenRoots <= 0) {
+    timers.greenRoots = 8;
+    spawnOrbHazard(
+      ghost.x + (Math.random() - 0.5) * 80,
+      ghost.y + (Math.random() - 0.5) * 80,
+      48,
+      4,
+      7,
+      { color: "rgba(80,200,120,0.45)", cooldown: 0.35 }
+    );
+  }
+  timers.greenSerpent = Math.max(0, (timers.greenSerpent ?? 5) - dt);
+  if (timers.greenSerpent <= 0) {
+    timers.greenSerpent = 7;
+    const baseAngle = Math.atan2(player.y - ghost.y, player.x - ghost.x);
+    for (let i = 0; i < 6; i += 1) {
+      const angle = baseAngle + (i / 6) * Math.PI * 2 + Math.random() * 0.2;
+      spawnOrbProjectile(ghost, angle, 240, 13, {
+        len: 20,
+        hitRadius: 20,
+      });
+    }
+    spawnOrbHazard(player.x, player.y, 52, 3.2, 9, {
+      color: "rgba(110,235,150,0.4)",
+      cooldown: 0.3,
+    });
+  }
+  timers.greenCanopy = Math.max(0, (timers.greenCanopy ?? 8) - dt);
+  if (timers.greenCanopy <= 0) {
+    timers.greenCanopy = 12;
+    const map = State.map;
+    if (map) {
+      const density = Math.max(3, Math.ceil(Math.max(map.w, map.h) / 90));
+      for (let x = 0; x < density; x += 1) {
+        for (let y = 0; y < density; y += 1) {
+          spawnOrbHazard(
+            (x / Math.max(1, density - 1)) * map.w,
+            (y / Math.max(1, density - 1)) * map.h,
+            48,
+            3.6,
+            8,
+            { color: "rgba(90,210,160,0.35)", cooldown: 0.4 }
+          );
+        }
+      }
+    }
+  }
+}
+
+function updateBlueOrbBoss(ghost, dt) {
+  const player = State.player;
+  if (!player) return;
+  const timers = ghost.orbTimers;
+  timers.blueSpiral = Math.max(0, (timers.blueSpiral ?? 3) - dt);
+  if (timers.blueSpiral <= 0) {
+    timers.blueSpiral = 6 + Math.random();
+    spawnOrbProjectileCircle(ghost, 6, 260, 12, {
+      hitRadius: 20,
+      len: 26,
+    });
+  }
+  timers.blueMist = Math.max(0, (timers.blueMist ?? 4) - dt);
+  if (timers.blueMist <= 0) {
+    timers.blueMist = 7;
+    spawnOrbHazard(
+      player.x + (Math.random() - 0.5) * 40,
+      player.y + (Math.random() - 0.5) * 40,
+      38,
+      4,
+      8,
+      { color: "rgba(110,190,255,0.3)", cooldown: 0.3 }
+    );
+  }
+  timers.blueSurge = Math.max(0, (timers.blueSurge ?? 10) - dt);
+  if (ghost.surgeTimer > 0) {
+    ghost.surgeTimer -= dt;
+    if (ghost.surgeTimer <= 0) {
+      ghost.chaseSpeed = ghost.baseChaseSpeed ?? ghost.chaseSpeed;
+    }
+  } else if (timers.blueSurge <= 0) {
+    timers.blueSurge = 10 + Math.random() * 3;
+    ghost.surgeTimer = 3;
+    ghost.chaseSpeed = (ghost.baseChaseSpeed ?? ghost.chaseSpeed) * 1.6;
+    spawnOrbHazard(ghost.x, ghost.y, 60, 2, 5, {
+      color: "rgba(130,210,255,0.35)",
+      cooldown: 0.2,
+    });
+  }
+  timers.bluePulse = Math.max(0, (timers.bluePulse ?? 3) - dt);
+  if (timers.bluePulse <= 0) {
+    timers.bluePulse = 5;
+    const angle = Math.atan2(player.y - ghost.y, player.x - ghost.x);
+    spawnOrbProjectile(ghost, angle, 360, 18, {
+      len: 32,
+      hitRadius: 26,
+      slow: true,
+      slowDuration: 1.4,
+    });
+    spawnOrbHazard(ghost.x, ghost.y, 50, 2.5, 0, {
+      color: "rgba(150,210,255,0.45)",
+      cooldown: 0.2,
+    });
+  }
+  timers.blueTide = Math.max(0, (timers.blueTide ?? 7) - dt);
+  if (timers.blueTide <= 0) {
+    timers.blueTide = 10;
+    const map = State.map;
+    if (map) {
+      const beams = 5;
+      for (let i = 0; i < beams; i += 1) {
+        const angle = (i / beams) * Math.PI;
+        spawnOrbBeam(ghost, angle, map.w * 1.1, 88, 14, {
+          color: "rgba(120,200,255,0.42)",
+          duration: 3.2,
+        });
+      }
+    }
+  }
+}
+
+const ORB_BOSS_ROUTINES = {
+  0: updateRedOrbBoss,
+  1: updateGoldOrbBoss,
+  2: updateGreenOrbBoss,
+  3: updateBlueOrbBoss,
+};
+
+function updateOrbBossMechanics(ghost, dt) {
+  if (!ghost || !ghost.realmBoss) return;
+  const routine = ORB_BOSS_ROUTINES[ghost.realmId];
+  if (typeof routine === "function") {
+    routine(ghost, dt);
+  }
+}
+
   function isKaelAllyAlive() {
     return (
       !State.flags.betrayalHappened &&
@@ -3033,16 +3612,17 @@ function updateGhosts(dt) {
     const dyK = kaelAlive ? kael.y - ghost.y : 0;
     const distK = kaelAlive ? Math.hypot(dxK, dyK) || 1 : Infinity;
 
-    let target = player;
-    let dx = dxP;
-    let dy = dyP;
-    let dist = distP;
-    if (kaelAlive && distK < distP * 0.9) {
-      target = kael;
-      dx = dxK;
-      dy = dyK;
-      dist = distK;
-    }
+  const inOrbRealm = orbRealmState.active;
+  let target = player;
+  let dx = dxP;
+  let dy = dyP;
+  let dist = distP;
+  if (!inOrbRealm && kaelAlive && distK < distP * 0.9) {
+    target = kael;
+    dx = dxK;
+    dy = dyK;
+    dist = distK;
+  }
 
     let baseAction = "idle";
 
@@ -3075,6 +3655,9 @@ function updateGhosts(dt) {
       // On ne se déplace pas pendant la charge
       ghost.animator?.setBase?.(baseAction);
       ghost.animator?.update?.(dt);
+      if (ghost.realmBoss) {
+        updateOrbBossMechanics(ghost, dt);
+      }
 
       if (ghost.chargeTimer <= 0) {
         // Transition vers le dash spectral
@@ -3213,6 +3796,9 @@ function updateGhosts(dt) {
 
     ghost.animator?.setBase?.(baseAction);
     ghost.animator?.update?.(dt);
+    if (ghost.realmBoss) {
+      updateOrbBossMechanics(ghost, dt);
+    }
   }
 }
 
@@ -3280,12 +3866,12 @@ function updateGhosts(dt) {
       // stop if blocked by wall
       if (map?.isBlocked?.(p.x, p.y)) return;
       let hit = false;
-      const kael = State.kael;
       const canHitKael = !isKaelAllyAlive();
+      const kael = State.kael;
       const targets = [
         ...(Array.isArray(ghosts) ? ghosts : []),
         State.boss,
-        kael,
+        State.kael,
       ]
         .filter(Boolean)
         .filter((target) => {
@@ -3293,28 +3879,27 @@ function updateGhosts(dt) {
           return true;
         });
       for (const target of targets) {
-        if (target.dead || !Number.isFinite(target.hp)) continue;
+      if (target.dead || !Number.isFinite(target.hp)) continue;
+        if (target === p.owner) continue;
         const hitRadius =
           p.hitRadius ??
           Math.max(28, (target.scale ?? 0.128) * 140) * 0.5;
         const d = Math.hypot(p.x - target.x, p.y - target.y);
         if (d < hitRadius) {
-          const hadApply = typeof target.applyDamage === "function";
-          target.applyDamage?.(p.damage);
-          if (!hadApply) {
-            target.hp = Math.max(0, target.hp - p.damage);
-          }
-          target.hurtTimer = Math.max(0, (target.hurtTimer ?? 0));
-          target.hitFlash = 0.35;
-          spawnFloatingText(p.damage, target.x, target.y - 18, {
-            color: "rgba(255,215,110,1)",
-          });
-          if (target.hp === 0 && !target.dead) {
-            target.dead = true;
-            target.animator?.play?.("dead", { sticky: true, force: true });
-            unregisterKaelAggroTarget(target);
-            if (target === State.boss) {
-              handleKaelDeath?.();
+          const damage = dealDamageToTarget(target, p.damage);
+          if (damage > 0) {
+            target.hurtTimer = Math.max(0, target.hurtTimer ?? 0);
+            target.hitFlash = 0.35;
+            spawnFloatingText(damage, target.x, target.y - 18, {
+              color: "rgba(255,215,110,1)",
+            });
+            if (target.hp === 0 && !target.dead) {
+              target.dead = true;
+              target.animator?.play?.("dead", { sticky: true, force: true });
+              unregisterKaelAggroTarget(target);
+              if (target === State.boss) {
+                handleKaelDeath?.();
+              }
             }
           }
           hit = true;
@@ -3461,9 +4046,10 @@ function updateGhosts(dt) {
     }
   }
 
-  function registerKaelAggroTarget(ghost) {
-    if (!ghost) return;
-    const targets = State.kaelAggroTargets;
+function registerKaelAggroTarget(ghost) {
+  if (!ghost) return;
+  if (orbRealmState.active) return;
+  const targets = State.kaelAggroTargets;
     if (!targets) return;
     targets.add(ghost);
     State.flags.kaelAggro = true;
@@ -3493,10 +4079,10 @@ function updateGhosts(dt) {
     ghosts.forEach((ghost) => {
       if (!ghost || ghost.dead) return;
       const dist = Math.hypot(player.x - ghost.x, player.y - ghost.y);
-      if (dist > attackRange) return;
-      if (player.isTargetInAttackArc?.(ghost.x, ghost.y) === false) return;
-      const damage = player.getCurrentAttackDamage?.() ?? 12;
-      ghost.hp = Math.max(0, ghost.hp - damage);
+    if (dist > attackRange) return;
+    if (player.isTargetInAttackArc?.(ghost.x, ghost.y) === false) return;
+    const damage = player.getCurrentAttackDamage?.() ?? 12;
+    const inflicted = dealDamageToTarget(ghost, damage);
       ghost.hurtTimer = 0.25;
       ghost.hitFlash = 0.35;
       ghost.animator?.play?.("hurt", { force: true });
@@ -3509,7 +4095,9 @@ function updateGhosts(dt) {
         ghost.animator?.play?.("dead", { sticky: true, force: true });
         unregisterKaelAggroTarget(ghost);
       }
-      spawnFloatingText(damage, ghost.x, ghost.y - 20, { color: "rgba(255,215,110,1)" });
+      if (inflicted > 0) {
+        spawnFloatingText(inflicted, ghost.x, ghost.y - 20, { color: "rgba(255,215,110,1)" });
+      }
     });
   }
 
@@ -3534,7 +4122,7 @@ function updateGhosts(dt) {
       const dist = Math.hypot(kael.x - ghost.x, kael.y - ghost.y);
       if (dist > range) continue;
       const dmg = kael.attackDamage ?? 14;
-      ghost.hp = Math.max(0, ghost.hp - dmg);
+      const inflicted = dealDamageToTarget(ghost, dmg);
       ghost.hurtTimer = 0.25;
       ghost.hitFlash = 0.35;
       ghost.animator?.play?.("hurt", { force: true });
@@ -3546,7 +4134,9 @@ function updateGhosts(dt) {
         ghost.animator?.play?.("dead", { sticky: true, force: true });
         unregisterKaelAggroTarget(ghost);
       }
-      spawnFloatingText(dmg, ghost.x, ghost.y - 20, { color: "rgba(255,215,110,1)" });
+      if (inflicted > 0) {
+        spawnFloatingText(inflicted, ghost.x, ghost.y - 20, { color: "rgba(255,215,110,1)" });
+      }
       break;
     }
     State.flags.kaelAggro = threats.size > 0;
@@ -4083,12 +4673,21 @@ function render() {
 
     ctx.save();
     ctx.translate(-camX, -camY);
-    if (goldRealmState.active) {
-      drawPlayerWithinGoldRealm(ctx);
-      drawGoldReturnZone(ctx);
-      drawGoldBarrier(ctx, camX, camY, camera);
+    if (orbRealmState.active) {
+      drawGhosts(ctx);
+      drawPlayerDashTrail(ctx);
+      drawKaelDashTrail(ctx);
+      drawPlayerAttackTrail(ctx);
+      drawPlayerWithinOrbRealm(ctx);
+      drawOrbHazards(ctx);
+      drawOrbReturnZone(ctx);
+      drawOrbBarrier(ctx, camX, camY, camera);
+      if (orbRealmState.id === 1 && orbRealmState.kaelReplica) {
+        orbRealmState.kaelReplica.draw(ctx);
+      }
       ctx.restore();
       ctx.restore();
+      drawOrbBossHealth(ctx);
       State.fog.drawTo(ctx, camX, camY, camera.w, camera.h);
       applyLighting(ctx, State.mode, camX + camera.w / 2, camY + camera.h / 2, 0);
       vignette(ctx, $canvas.width, $canvas.height, 0.35);
@@ -4339,12 +4938,12 @@ function resetGameOverSound() {
   }
 }
 
-function drawPlayerWithinGoldRealm(ctx) {
+function drawPlayerWithinOrbRealm(ctx) {
   if (!ctx || !State.player) return;
   State.player.draw(ctx);
 }
 
-function updateGoldRealmCamera(player) {
+function updateOrbRealmCamera(player) {
   const camera = State.camera;
     if (!camera || !player) return;
     const mapW = State.map?.w ?? camera.w;
@@ -4362,7 +4961,7 @@ function updateGoldRealmCamera(player) {
     camera.y += (clampedY - camera.y) * smooth;
 }
 
-function processGoldInputs({ player, map, dashPressed, moveVector, pointerData }) {
+function processOrbRealmInputs({ player, map, dashPressed, moveVector, pointerData }) {
   if (!player || !map || !dashPressed) return;
   const pointerVector = pointerData
     ? { x: pointerData.x - player.x, y: pointerData.y - player.y }
@@ -4408,42 +5007,87 @@ function drawPlayerDashTrail(ctx) {
   ctx.restore();
 }
 
-function enforceGoldBarrier(player) {
-  if (!goldRealmState.active || !player || !State.map) return;
+function enforceOrbBarrier(player) {
+  if (!orbRealmState.active || !player || !State.map) return;
   const mapH = State.map.h ?? 0;
-  const baseY = mapH * (1 - GOLD_BARRIER_RATIO);
-  const barrierY = Math.min(mapH, baseY + GOLD_BARRIER_OFFSET);
+  const baseY = mapH * (1 - ORB_BARRIER_RATIO);
+  const barrierY = Math.min(mapH, baseY + ORB_BARRIER_OFFSET);
   if (player.y > barrierY) {
     player.y = barrierY;
   }
 }
 
-function drawGoldReturnZone(ctx) {
-  if (!ctx || !goldRealmState.active || !GOLD_RETURN_ZONE_VISIBLE) return;
-  if (!Number.isFinite(GOLD_REALM_CENTER.x) || !Number.isFinite(GOLD_REALM_CENTER.y)) return;
-  const radius = Math.max(1, GOLD_ORB_RETURN_RADIUS + GOLD_RETURN_ZONE_RADIUS_EXTRA);
+function drawOrbReturnZone(ctx) {
+  if (!ctx || !orbRealmState.active || !ORB_RETURN_ZONE_VISIBLE) return;
+  if (!Number.isFinite(ORB_REALM_CENTER.x) || !Number.isFinite(ORB_REALM_CENTER.y)) return;
+  const radius = Math.max(1, ORB_REALM_RETURN_RADIUS + ORB_RETURN_ZONE_RADIUS_EXTRA);
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  ctx.fillStyle = GOLD_RETURN_ZONE_FILL;
-  ctx.strokeStyle = GOLD_RETURN_ZONE_STROKE;
+  ctx.fillStyle = ORB_RETURN_ZONE_FILL;
+  ctx.strokeStyle = ORB_RETURN_ZONE_STROKE;
   ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.arc(GOLD_REALM_CENTER.x, GOLD_REALM_CENTER.y, radius, 0, Math.PI * 2);
+  ctx.arc(ORB_REALM_CENTER.x, ORB_REALM_CENTER.y, radius, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
   ctx.restore();
 }
 
-function drawGoldBarrier(ctx, camX, camY, camera) {
-  if (!ctx || !goldRealmState.active || !State.map || !GOLD_BARRIER_VISIBLE) return;
+function drawOrbBarrier(ctx, camX, camY, camera) {
+  if (!ctx || !orbRealmState.active || !State.map || !ORB_BARRIER_VISIBLE) return;
   const mapH = State.map.h ?? 0;
-  const baseY = mapH * (1 - GOLD_BARRIER_RATIO);
-  const barrierY = Math.min(mapH, baseY + GOLD_BARRIER_OFFSET);
+  const baseY = mapH * (1 - ORB_BARRIER_RATIO);
+  const barrierY = Math.min(mapH, baseY + ORB_BARRIER_OFFSET);
   const startY = barrierY - camY;
   ctx.save();
   ctx.globalAlpha = 0.85;
-  ctx.fillStyle = GOLD_BARRIER_COLOR;
+  ctx.fillStyle = ORB_BARRIER_COLOR;
   ctx.fillRect(0, startY, camera.w, State.map.h - barrierY);
+  ctx.restore();
+}
+
+function drawOrbBossHealth(ctx) {
+  const ghost = orbRealmState.id === 1 && orbRealmState.kaelReplica ? orbRealmState.kaelReplica : orbRealmState.orbGhost;
+  if (!ctx || !ghost || typeof ghost.hp !== "number" || typeof ghost.maxHp !== "number") return;
+  const current = Math.max(0, ghost.hp);
+  const maxHp = Math.max(1, ghost.maxHp);
+  const ratio = Math.min(1, current / maxHp);
+  const width = Math.min(Math.max(220, $canvas.width * 0.5), 360);
+  const height = 26;
+  const padding = 8;
+  const x = ($canvas.width - width) / 2;
+  const y = 24;
+  const bgColor = "rgba(0,0,0,0.55)";
+  const fillColor = ghost.realmColor ?? "rgba(255,255,255,0.85)";
+  const drawRoundedRect = (xPos, yPos, w, h, r) => {
+    const radius = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(xPos + radius, yPos);
+    ctx.lineTo(xPos + w - radius, yPos);
+    ctx.arcTo(xPos + w, yPos, xPos + w, yPos + radius, radius);
+    ctx.lineTo(xPos + w, yPos + h - radius);
+    ctx.arcTo(xPos + w, yPos + h, xPos + w - radius, yPos + h, radius);
+    ctx.lineTo(xPos + radius, yPos + h);
+    ctx.arcTo(xPos, yPos + h, xPos, yPos + h - radius, radius);
+    ctx.lineTo(xPos, yPos + radius);
+    ctx.arcTo(xPos, yPos, xPos + radius, yPos, radius);
+    ctx.closePath();
+    ctx.fill();
+  };
+  ctx.save();
+  ctx.fillStyle = bgColor;
+  drawRoundedRect(x, y, width, height, 10);
+  ctx.fillStyle = fillColor;
+  drawRoundedRect(x + padding / 2, y + padding / 2, Math.max(4, (width - padding) * ratio), height - padding, 6);
+  ctx.font = "400 18px system-ui";
+  ctx.fillStyle = "rgba(255,255,255,0.95)";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(
+    `${ghost.realmLabel ?? "Hantise"} — ${Math.round(current)} / ${Math.round(maxHp)}`,
+    $canvas.width / 2,
+    y + height / 2
+  );
   ctx.restore();
 }
 
@@ -4598,7 +5242,16 @@ function createPuzzleOrbs(world) {
       activated: false,
       repeatUsed: false,
     },
-    { id: 2, x: leftX, y: bottomY, radius, color: "#43aa8b", activated: false, repeatUsed: false },
+    {
+      id: 2,
+      x: leftX,
+      y: bottomY,
+      radius,
+      color: "#43aa8b",
+      name: ORB_NAMES[2],
+      activated: false,
+      repeatUsed: false,
+    },
     {
       id: 3,
       x: rightX,
@@ -4769,4 +5422,3 @@ function drawHeroShroud(ctx, x, y) {
   ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
   ctx.restore();
 }
-  
