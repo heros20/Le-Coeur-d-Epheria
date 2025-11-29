@@ -26,6 +26,7 @@ const ctx = $canvas.getContext("2d");
 const $consoleScreen = document.querySelector(".console-screen");
 const $screenFlash = document.getElementById("screenFlash");
 const $orbPrompt = document.getElementById("orbPrompt");
+const $bossRiddle = document.getElementById("bossRiddle");
 const $escapeVideo = document.getElementById("escapeVideo");
 const $escapeVideoPlayer = document.getElementById("escapeVideoPlayer");
 const $escapeVideoSkip = document.querySelector("[data-video-skip]");
@@ -227,6 +228,14 @@ const ORB_RETURN_ZONE_FILL = "rgba(250, 218, 39, 0.64)";
 const ORB_RETURN_ZONE_STROKE = "rgba(153, 99, 0, 0.9)";
 const ORB_RETURN_ZONE_VERTICAL_OFFSET = -90;
 const ORB_REALM_CENTER = { x: 0, y: 0 };
+
+function isGoldBossReturnAllowed() {
+  if (orbRealmState.id !== 1) return true;
+  const goldState = orbRealmState.goldBoss;
+  if (!goldState) return false;
+  return Boolean(goldState.returnUnlocked);
+}
+
 const orbRealmEntries = Object.fromEntries(
   Object.entries(ORB_REALM_CONFIG).map(([id, config]) => {
     const parsedId = Number(id);
@@ -256,6 +265,68 @@ const ORB_BOSS_CONFIG = {
   2: { hp: 280, attackDamage: 14, chaseSpeed: 108, scale: 0.32, color: "#7bd68f" },
   3: { hp: 260, attackDamage: 15, chaseSpeed: 106, scale: 0.32, color: "#7fc0ff" },
 };
+
+const ORB_RIDDLES = {
+  0: {
+    title: "Énigme rouge",
+    question:
+      "Je suis la danse des braises qui dévore la forêt, le souffle qui avale le bois sans s’éteindre. Qui suis-je ?",
+    options: ["La flamme éternelle", "Le murmure du vent", "La pierre immobile"],
+    answerIndex: 0,
+    success: "Le rouge s’incline : tu lis l’ardeur du feu, l’épreuve reste en cendres.",
+    failure: "Le rouge rugit : tu as oublié la braise, tu vas brûler sans répit.",
+  },
+  1: {
+    title: "Énigme dorée",
+    question:
+      "Je suis la lumière que les pierres gardent, le battement que Kael convoite. Je brûle sans se consumer. Qui suis-je ?",
+    options: ["Le vent du labyrinthe", "Le Cœur d'Éphéria", "La colère d'un ancien roi"],
+    answerIndex: 1,
+    success: "Kael sourit : tu connais la vérité, le spectre s'incline et s'efface.",
+    failure: "Kael rugit : tu t'es trompé. La lumière s'assombrit, prépare-toi au combat.",
+  },
+  2: {
+    title: "Énigme verte",
+    question:
+      "Je suis la sève qui ranime, l’étincelle qui fait pousser les racines. Je ressuscite les plaines à chaque printemps. Qui suis-je ?",
+    options: ["La vie qui jaillit", "La pluie de cendre", "Le silence des pierres"],
+    answerIndex: 0,
+    success: "La verdure applaudit : tu entends le souffle des racines, l’énigme est apaisée.",
+    failure: "La forêt gronde : tu as ignoré sa croissance, elle t’enfonce dans l’ombre.",
+  },
+  3: {
+    title: "Énigme bleue",
+    question:
+      "Je suis le miroir du ciel et la houle compacte, la patience qui garde les lacs. Qui suis-je ?",
+    options: ["La mer en mouvement", "Le miroir du ciel", "La flamme glacée"],
+    answerIndex: 1,
+    success: "Le bleu t’accueille : tu domines les reflets, la vague reste calme.",
+    failure: "Le bleu se referme : tu as brisé sa clarté, les eaux t’engloutissent.",
+  },
+};
+
+const GOLD_BOSS_ENTRY_DURATION = 2.6;
+const GOLD_BOSS_ENTRY_HEIGHT = 180;
+const GOLD_BOSS_TRIGGER_DISTANCE = 20;
+const GOLD_BOSS_APPROACH_SPEED = 110;
+const GOLD_BOSS_AURA_RADIUS = 150;
+const GOLD_BOSS_RIDDLE = ORB_RIDDLES[1];
+
+const ORB_STORM_DESCRIPTORS = {
+  0: { colorLabel: "rouge", spirit: "braise" },
+  1: { colorLabel: "dorée", spirit: "lumière" },
+  2: { colorLabel: "verte", spirit: "sève" },
+  3: { colorLabel: "bleue", spirit: "onde" },
+};
+
+const ORB_LIGHT_STORM_DURATION = 30;
+const ORB_LIGHT_STORM_BASE_SPEED = 240;
+const ORB_LIGHT_STORM_MAX_SPEED = 560;
+const ORB_LIGHT_STORM_START_INTERVAL = 0.7;
+const ORB_LIGHT_STORM_END_INTERVAL = 0.18;
+const ORB_LIGHT_STORM_ARROW_RADIUS = 24;
+const ORB_LIGHT_STORM_BURST_COUNT = 6;
+const ORB_LIGHT_STORM_VERTICAL_OFFSET = 30;
 
 
 function applyHeroAnimations(useGold) {
@@ -332,7 +403,8 @@ const touchControlState = {
   dashHeld: false,
 };
 State.touchControls = touchControlState;
-State.orbPromptOpen = false;
+  State.orbPromptOpen = false;
+  State.bossRiddleOpen = false;
 const TOUCH_DEVICE = detectTouchDevice();
 State.isMobile = TOUCH_DEVICE;
 let touchControlsInitialized = false;
@@ -348,6 +420,23 @@ const orbPromptState = {
   buttons: [],
   previousPaused: false,
 };
+const bossRiddleState = {
+  active: false,
+  buttons: [],
+  focusIndex: 0,
+  keyHandler: null,
+  optionHandler: null,
+  onSelect: null,
+  previousPaused: false,
+  hideTimer: null,
+  fullText: "",
+  typingAccumulator: 0,
+  typingSpeed: 64,
+  textNode: null,
+  optionsContainer: null,
+  optionsVisible: false,
+  typedChars: 0,
+};
 const orbRealmState = {
   active: false,
   id: null,
@@ -360,6 +449,9 @@ const orbRealmState = {
   savedGhosts: null,
   orbGhost: null,
   kaelReplica: null,
+  orbRiddleStatus: {},
+  activeStorm: null,
+  teleportEffect: null,
 };
 let shakeTimeout = null;
 let flashTimeout = null;
@@ -1701,6 +1793,9 @@ function syncDialogueOverlay() {
 
   State.questPromptCooldown = Math.max(0, (State.questPromptCooldown ?? 0) - dt);
     updateFloatingTexts(dt);
+    if (State.bossRiddleOpen) {
+      updateBossRiddleText(dt);
+    }
 
     const camera = State.camera;
     const pointerData = null;
@@ -1774,7 +1869,11 @@ function syncDialogueOverlay() {
     const orbRealmFlag = State.flags?.orbRealm;
     const orbRealmFlagActive = orbRealmFlag != null;
     const orbPaused = Boolean(State.flags?.orbRealmPaused);
-    if ((State.paused && (!orbRealmFlagActive || orbPaused)) || State.orbPromptOpen) {
+    if (
+      (State.paused && (!orbRealmFlagActive || orbPaused)) ||
+      State.orbPromptOpen ||
+      State.bossRiddleOpen
+    ) {
       State.dialogue.update({ dt: 0 });
       syncDialogueOverlay();
       activeHud.update({
@@ -1892,11 +1991,17 @@ function syncDialogueOverlay() {
       clampCameraToPlayer(player?.x ?? 0, player?.y ?? 0);
       State.fog.reveal(player?.x ?? 0, player?.y ?? 0, 170);
       updateGhosts(dt);
-      if (orbRealmState.id === 1 && orbRealmState.kaelReplica) {
-        orbRealmState.kaelReplica.update(dt, player, State.map);
+      if (orbRealmState.id === 1) {
+        updateGoldBossLifecycle(dt, player);
+        if (orbRealmState.kaelReplica && orbRealmState.goldBoss?.combatActive) {
+          orbRealmState.kaelReplica.update(dt, player, State.map);
+        }
       }
       updateQuestAnnouncement(dt);
       maybeAutoAcceptKaelQuest();
+      if (orbRealmState.activeStorm) {
+        updateActiveLightStorm(dt, player);
+      }
       updateBossObjective(dt);
       updateProjectiles(dt);
       damageGhostsFromPlayer();
@@ -2137,12 +2242,17 @@ function syncDialogueOverlay() {
   // ===== Interactions =====
   function tryInteract() {
     if (State.dialogue.isOpen()) return;
-    if (State.orbPromptOpen) return;
+    if (State.orbPromptOpen || State.bossRiddleOpen) return;
     if (tryInteractOrb()) return;
     if (tryInteractPickup()) return;
     // Simple example: speak to Kael when close
     const dKael = Math.hypot(State.player.x - State.kael.x, State.player.y - State.kael.y);
-    if (dKael < 70 && !State.flags.princessQuestAccepted && !State.orbPromptOpen) {
+    if (
+      dKael < 70 &&
+      !State.flags.princessQuestAccepted &&
+      !State.orbPromptOpen &&
+      !State.bossRiddleOpen
+    ) {
       startKaelQuestDialogue();
       return;
     }
@@ -2243,7 +2353,7 @@ function syncDialogueOverlay() {
   }
 
 function tryInteractOrb() {
-  if (State.orbPromptOpen) return true;
+  if (State.orbPromptOpen || State.bossRiddleOpen) return true;
 
   const orb = findNearbyOrb();
   if (!orb) return false;
@@ -2413,6 +2523,7 @@ async function enterOrbRealm(orbId) {
     cameraW: camera.w,
     cameraH: camera.h,
   };
+  orbRealmState.goldBoss = null;
   pauseWorldForOrb(orbId);
   orbRealmState.savedGhosts = State.ghosts ?? [];
   orbHazards.length = 0;
@@ -2443,6 +2554,9 @@ async function enterOrbRealm(orbId) {
     orbRealmState.orbGhost = orbGhost;
     State.ghosts = orbGhost ? [orbGhost] : [];
   }
+  if (orbId !== 1) {
+    presentOrbRiddle(orbId);
+  }
   const realmMap = createOrbRealmWorld(entry.image);
   State.map = realmMap;
   mapImg = entry.image;
@@ -2450,6 +2564,22 @@ async function enterOrbRealm(orbId) {
   State.fog.reveal(State.map.w / 2, State.map.h / 2, Math.max(State.map.w, State.map.h));
   player.x = Math.max(30, State.map.w / 2);
   player.y = ORB_REALM_START_Y;
+  if (orbId === 1 && orbRealmState.kaelReplica) {
+    orbRealmState.goldBoss = {
+      stage: "waiting",
+      entranceTimer: 0,
+      riddleShown: false,
+      answered: false,
+      combatActive: false,
+      returnUnlocked: false,
+    };
+    const boss = orbRealmState.kaelReplica;
+    const baseScale = boss.baseScale ?? boss.scale ?? 1;
+    boss.x = ORB_REALM_CENTER.x;
+    boss.y = ORB_REALM_CENTER.y - GOLD_BOSS_ENTRY_HEIGHT;
+    boss.scale = baseScale * 0.6;
+    boss.alive = true;
+  }
   if (!orbRealmState.playerScale) {
     orbRealmState.playerScale = player.scale;
     player.scale = (player.scale ?? 1) * 2;
@@ -2506,6 +2636,9 @@ function exitOrbRealm() {
   if (typeof callback === "function") {
     callback();
   }
+  hideOrbEntitiesForStorm(false);
+  orbRealmState.activeStorm = null;
+  orbRealmState.orbRiddleStatus = {};
   if (player && orbRealmState.playerScale) {
     player.scale = orbRealmState.playerScale;
     orbRealmState.playerScale = null;
@@ -2529,6 +2662,7 @@ function exitOrbRealm() {
   orbRealmState.id = null;
   orbHazards.length = 0;
   orbRealmState.orbGhost = null;
+  orbRealmState.goldBoss = null;
   const flags = State.flags || (State.flags = {});
   flags.orbRealmPaused = false;
 }
@@ -2570,9 +2704,446 @@ function createOrbRealmWorld(image) {
     getTiles: () => [],
   };
 }
+function updateGoldBossLifecycle(dt, player) {
+  const goldState = orbRealmState.goldBoss;
+  if (!goldState) return;
+  if (orbRealmState.kaelReplica && goldState.stage !== "storm") {
+    orbRealmState.kaelReplica.hiddenForStorm = false;
+  }
+  if (goldState.stage === "waiting" && player) {
+    const dist = Math.hypot(player.x - ORB_REALM_CENTER.x, player.y - ORB_REALM_CENTER.y);
+    if (dist <= GOLD_BOSS_TRIGGER_DISTANCE) {
+      startGoldBossEntrance();
+    }
+  } else if (goldState.stage === "enter") {
+    updateGoldBossEntrance(dt);
+  } else if (goldState.stage === "approach") {
+    updateGoldBossApproach(dt, player);
+  }
+  if (
+    goldState.combatActive &&
+    orbRealmState.kaelReplica &&
+    !orbRealmState.kaelReplica.alive
+  ) {
+    goldState.combatActive = false;
+    goldState.returnUnlocked = true;
+    pushStatus("La lumière s'apaise, la sortie se dévoile.");
+  }
+}
+
+function startGoldBossEntrance() {
+  const goldState = orbRealmState.goldBoss;
+  const boss = orbRealmState.kaelReplica;
+  if (!goldState || !boss || goldState.stage !== "waiting") return;
+
+  goldState.stage = "enter";
+  goldState.entranceTimer = GOLD_BOSS_ENTRY_DURATION;
+
+  // Position de départ : bien au-dessus du centre
+  boss.x = ORB_REALM_CENTER.x;
+  boss.y = ORB_REALM_CENTER.y - GOLD_BOSS_ENTRY_HEIGHT;
+
+  const baseScale = boss.baseScale ?? boss.scale ?? 1;
+  boss.baseScale = baseScale; // on s'assure que c'est stocké
+  boss.scale = baseScale * 0.4; // très petit au début
+  boss.alive = true;
+
+  // Petits paramètres d'animation "whaou"
+  goldState.entryFx = {
+    // Secousse + pulsation pendant qu'il « charge »
+    shake: true,
+    pulse: true,
+    playedImpact: false
+  };
+
+  // Hooks FX (si tu as déjà ces systèmes quelque part)
+  // playSfx && playSfx("gold_boss_appear");
+  // cameraFocus && cameraFocus(ORB_REALM_CENTER.x, ORB_REALM_CENTER.y, 1.2);
+  // triggerScreenFlash && triggerScreenFlash(0.3);
+}
+const Fx = {
+  shakeTimer: 0,
+  shakeIntensity: 0,
+  flashTimer: 0,
+  flashColor: "rgba(255, 255, 255, 1)",
+  particles: []
+};
+
+function updateGoldBossEntrance(dt) {
+  const goldState = orbRealmState.goldBoss;
+  const boss = orbRealmState.kaelReplica;
+  if (!goldState || !boss || goldState.stage !== "enter") return;
+
+  goldState.entranceTimer = Math.max(0, goldState.entranceTimer - dt);
+  const t = 1 - goldState.entranceTimer / GOLD_BOSS_ENTRY_DURATION; // 0 → 1
+
+  // Easing doux (smoothstep)
+  const ease = t * t * (3 - 2 * t);
+
+  const height = GOLD_BOSS_ENTRY_HEIGHT;
+  const baseScale = boss.baseScale ?? boss.scale ?? 1;
+
+  // --- 1) POSITION : chute + petit rebond à la fin ---
+  // position de base : il descend
+  let y = ORB_REALM_CENTER.y - height * (1 - ease);
+
+  // rebond léger quand il "touche" le centre
+  const bounceStrength = 14; // px
+  const bounce = Math.sin(Math.min(1, t) * Math.PI) * bounceStrength * (1 - t);
+  y -= bounce;
+
+  boss.x = ORB_REALM_CENTER.x;
+  boss.y = y;
+
+  // --- 2) SCALE : il grossit en arrivant, façon boss qui prend possession de la salle ---
+  const minScale = baseScale * 0.4;
+  const maxScale = baseScale * 1.15; // léger overscale
+  const scale = minScale + (maxScale - minScale) * ease;
+
+  // petit "pulse" en plus
+  let finalScale = scale;
+  if (goldState.entryFx?.pulse) {
+    const pulseAmp = 0.03;     // amplitude
+    const pulseSpeed = 9;      // vitesse
+    finalScale *= 1 + Math.sin(t * Math.PI * pulseSpeed) * pulseAmp * (1 - t);
+  }
+
+  boss.scale = finalScale;
+
+  // --- 3) SHAKES / IMPACT à la fin de l'entrée ---
+  if (t > 0.75 && goldState.entryFx && !goldState.entryFx.playedImpact) {
+    goldState.entryFx.playedImpact = true;
+    // Hook FX d'impact
+    // playSfx && playSfx("gold_boss_impact");
+    // cameraShake && cameraShake(GOLD_BOSS_SHAKE_INTENSITY, 0.6);
+    // triggerScreenFlash && triggerScreenFlash(0.2);
+  }
+
+  // --- 4) Fin de l'entrée → phase "approach" ---
+  if (goldState.entranceTimer <= 0) {
+    boss.x = ORB_REALM_CENTER.x;
+    boss.y = ORB_REALM_CENTER.y;
+    boss.scale = baseScale;
+
+    goldState.stage = "approach";
+    goldState.entryFx = null;
+
+    // Petite phrase dramatique facultative
+    pushStatus && pushStatus("Une présence écrase l'air...");
+  }
+}
+
+
+function updateGoldBossApproach(dt, player) {
+  const goldState = orbRealmState.goldBoss;
+  const boss = orbRealmState.kaelReplica;
+  if (!goldState || !boss || goldState.stage !== "approach" || !player) return;
+  const dx = player.x - boss.x;
+  const dy = player.y - boss.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 0.0001) {
+    goldState.stage = "riddle";
+    presentGoldBossRiddle();
+    return;
+  }
+  const moveDist = Math.min(GOLD_BOSS_APPROACH_SPEED * dt, dist);
+  boss.x += (dx / dist) * moveDist;
+  boss.y += (dy / dist) * moveDist;
+  if (dist <= 48) {
+    goldState.stage = "riddle";
+    presentGoldBossRiddle();
+  }
+}
+
+function presentGoldBossRiddle() {
+  const goldState = orbRealmState.goldBoss;
+  if (!goldState || goldState.riddleShown) return;
+  goldState.riddleShown = true;
+  showBossRiddlePrompt({
+    title: GOLD_BOSS_RIDDLE.title,
+    description: GOLD_BOSS_RIDDLE.question,
+    options: GOLD_BOSS_RIDDLE.options,
+    onSelect: handleGoldBossRiddleChoice,
+  });
+}
+
+function handleGoldBossRiddleChoice(choiceIndex) {
+  const goldState = orbRealmState.goldBoss;
+  if (!goldState) return;
+  goldState.answered = true;
+  if (choiceIndex === GOLD_BOSS_RIDDLE.answerIndex) {
+    goldState.correct = true;
+    goldState.returnUnlocked = true;
+    goldState.combatActive = false;
+    goldState.stage = "resolved";
+    pauseForDialogue([
+      { speaker: "Fantome", text: "Tu es digne." },
+      { speaker: "Fantome", text: "Passe par ce portail, il activera l'une des clés du labyrinthe." },
+    ]);
+    orbRealmState.kaelReplica = null;
+    pushStatus(GOLD_BOSS_RIDDLE.success);
+    orbRealmState.activeStorm = null;
+    startTeleportEffect({
+      orbId: 1,
+      origin: { x: ORB_REALM_CENTER.x, y: ORB_REALM_CENTER.y },
+      teleportEffect: { phase: 0 },
+    });
+    return;
+  }
+  goldState.correct = false;
+  goldState.combatActive = false;
+  pauseForDialogue([
+    { speaker: "Fantome", text: "Tu t'es tromp?, Lioran." },
+    { speaker: "Fantome", text: "Je te ferai payer cette arrogance !" },
+  ]);
+  pushStatus(GOLD_BOSS_RIDDLE.failure);
+  goldState.stage = "storm";
+  goldState.returnUnlocked = false;
+  startOrbLightStorm(1);
+}
+function presentOrbRiddle(orbId) {
+  if (orbId === 1) return;
+  const config = ORB_RIDDLES[orbId];
+  if (!config) return;
+  const status = orbRealmState.orbRiddleStatus[orbId] ?? {};
+  if (status.shown) return;
+  status.shown = true;
+  orbRealmState.orbRiddleStatus[orbId] = status;
+  showBossRiddlePrompt({
+    title: config.title,
+    description: config.question,
+    options: config.options,
+    onSelect: (choiceIndex) => handleOrbRiddleChoice(orbId, choiceIndex),
+  });
+}
+
+function handleOrbRiddleChoice(orbId, choiceIndex) {
+  const config = ORB_RIDDLES[orbId];
+  if (!config) return;
+  const status = orbRealmState.orbRiddleStatus[orbId] ?? {};
+  status.answered = true;
+  status.correct = choiceIndex === config.answerIndex;
+  orbRealmState.orbRiddleStatus[orbId] = status;
+  if (status.correct) {
+    pushStatus(config.success);
+    return;
+  }
+  pushStatus(config.failure);
+  startOrbLightStorm(orbId);
+}
+
+function startOrbLightStorm(orbId) {
+  const map = State.map;
+  if (!map) return;
+  const status = orbRealmState.orbRiddleStatus[orbId] ?? {};
+  if (status.stormTriggered) return;
+  status.stormTriggered = true;
+  orbRealmState.orbRiddleStatus[orbId] = status;
+  const originX = map.w * 0.5;
+  const originY = Math.max(0, map.h * 0.5 - ORB_LIGHT_STORM_VERTICAL_OFFSET);
+  const descriptor = ORB_STORM_DESCRIPTORS[orbId] ?? ORB_STORM_DESCRIPTORS[1];
+  pauseForDialogue(
+    [
+      { speaker: "Fantome", text: "Tu va subir l'épreuve d'Epheria." },
+      { speaker: "Fantome", text: `Si tu survie pendant 30 secondes, tu sera libre de poursuivre ta quête.` },
+    ],
+    () => beginOrbLightStorm(orbId, originX, originY)
+  );
+}
+
+function beginOrbLightStorm(orbId, originX, originY) {
+  const storm = {
+    orbId,
+    timer: ORB_LIGHT_STORM_DURATION,
+    spawnAccumulator: 0,
+    origin: { x: originX, y: originY },
+    arrows: [],
+    teleportEffect: null,
+    congratulated: false,
+    completed: false,
+  };
+  orbRealmState.activeStorm = storm;
+  hideOrbEntitiesForStorm(true);
+  pushStatus("Les flèches de lumière s'abattent sur la carte !");
+  orbRealmState.teleportEffect = null;
+}
+
+function createLightStormArrow(origin) {
+  const angle = Math.random() * Math.PI * 2;
+  return {
+    x: origin.x,
+    y: origin.y,
+    dirX: Math.cos(angle),
+    dirY: Math.sin(angle),
+    radius: ORB_LIGHT_STORM_ARROW_RADIUS,
+    width: ORB_LIGHT_STORM_ARROW_RADIUS * 0.5,
+  };
+}
+
+function updateActiveLightStorm(dt, player) {
+  const storm = orbRealmState.activeStorm;
+  const map = State.map;
+  if (!storm || !map) return;
+  storm.timer = Math.max(0, storm.timer - dt);
+  const progress = Math.min(1, 1 - storm.timer / Math.max(0.0001, ORB_LIGHT_STORM_DURATION));
+  if (storm.timer > 0) {
+    const interval = Math.max(
+      0.05,
+      lerp(ORB_LIGHT_STORM_START_INTERVAL, ORB_LIGHT_STORM_END_INTERVAL, progress)
+    );
+    storm.spawnAccumulator += dt;
+    while (storm.spawnAccumulator >= interval) {
+      storm.spawnAccumulator -= interval;
+      for (let i = 0; i < ORB_LIGHT_STORM_BURST_COUNT; i++) {
+        storm.arrows.push(createLightStormArrow(storm.origin));
+      }
+    }
+  }
+  const hero = player ?? State.player;
+  const arrowSpeed = lerp(ORB_LIGHT_STORM_BASE_SPEED, ORB_LIGHT_STORM_MAX_SPEED, progress);
+  const survivors = [];
+  for (const arrow of storm.arrows) {
+    arrow.x += arrow.dirX * arrowSpeed * dt;
+    arrow.y += arrow.dirY * arrowSpeed * dt;
+    const outOfBounds =
+      arrow.x < -40 || arrow.x > map.w + 40 || arrow.y < -40 || arrow.y > map.h + 40;
+    if (outOfBounds) continue;
+    if (hero && hero.hp > 0) {
+      const hitRadius = (hero.r ?? 0) + (arrow.radius ?? ORB_LIGHT_STORM_ARROW_RADIUS);
+      const dist = Math.hypot(hero.x - arrow.x, hero.y - arrow.y);
+      if (dist <= hitRadius) {
+        const maxHp = Math.max(1, hero.maxHp ?? 100);
+        hero.applyDamage(Math.max(1, Math.round(maxHp * 0.5)));
+        continue;
+      }
+    }
+    survivors.push(arrow);
+  }
+  storm.arrows = survivors;
+  if (!storm.completed && storm.timer <= 0 && survivors.length === 0) {
+    handleStormCompletion(storm);
+  }
+}
+
+function handleStormCompletion(storm) {
+  if (!storm || storm.completed) return;
+  storm.completed = true;
+  hideOrbEntitiesForStorm(false);
+  const descriptor = ORB_STORM_DESCRIPTORS[storm.orbId] ?? ORB_STORM_DESCRIPTORS[1];
+  pushStatus(`Les flèches de ${descriptor.colorLabel} s'estompent, la sortie se dévoile.`);
+  if (storm.orbId === 1) {
+    const goldState = orbRealmState.goldBoss;
+    if (goldState) {
+      goldState.stage = "resolved";
+      goldState.returnUnlocked = true;
+    }
+  }
+  startTeleportEffect(storm);
+  orbRealmState.activeStorm = null;
+  congratulateHeroForOrb(storm.orbId);
+}
+
+function congratulateHeroForOrb(orbId) {
+  const storm = orbRealmState.activeStorm;
+  if (!storm || storm.congratulated || storm.orbId !== orbId) return;
+  storm.congratulated = true;
+  const descriptor = ORB_STORM_DESCRIPTORS[orbId] ?? ORB_STORM_DESCRIPTORS[1];
+  pauseForDialogue(
+    [
+      {
+        speaker: "Kael",
+        text: `Tu as tenu bon. L'épreuve ${descriptor.colorLabel} n'a pas étouffé ta lumière.`,
+      },
+      {
+        speaker: "Kael",
+        text: "La voie dorée s'illumine et la porte se pare d'une aura nouvelle.",
+      },
+    ],
+    () => startTeleportEffect(storm)
+  );
+}
+
+function startTeleportEffect(storm) {
+  if (!storm) return;
+  if (!storm.teleportEffect) {
+    storm.teleportEffect = { phase: 0 };
+  }
+  const descriptor = ORB_STORM_DESCRIPTORS[storm.orbId] ?? ORB_STORM_DESCRIPTORS[1];
+  const origin = storm.origin ?? { x: ORB_REALM_CENTER.x, y: ORB_REALM_CENTER.y };
+  if (!orbRealmState.teleportEffect) {
+    orbRealmState.teleportEffect = { phase: 0 };
+  }
+  orbRealmState.teleportEffect.phase = storm.teleportEffect.phase;
+  orbRealmState.teleportEffect.origin = { x: origin.x, y: origin.y };
+  orbRealmState.teleportEffect.descriptor = descriptor;
+}
+
+function hideOrbEntitiesForStorm(hidden) {
+  const ghost = orbRealmState.orbGhost;
+  if (ghost) ghost.hiddenForStorm = hidden;
+  const kael = orbRealmState.kaelReplica;
+  if (kael) kael.hiddenForStorm = hidden;
+}
+
+function drawActiveLightStorm(ctx) {
+  const storm = orbRealmState.activeStorm;
+  if (!ctx || !storm) return;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  for (const arrow of storm.arrows) {
+    const tailX = arrow.x - arrow.dirX * 32;
+    const tailY = arrow.y - arrow.dirY * 32;
+    const gradient = ctx.createLinearGradient(tailX, tailY, arrow.x, arrow.y);
+    gradient.addColorStop(0, "rgba(255,255,255,0)");
+    gradient.addColorStop(0.6, "rgba(255,255,255,0.35)");
+    gradient.addColorStop(1, "rgba(255,255,255,0.95)");
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = arrow.width ?? 6;
+    ctx.beginPath();
+    ctx.moveTo(tailX, tailY);
+    ctx.lineTo(arrow.x, arrow.y);
+    ctx.stroke();
+    ctx.fillStyle = "rgba(255,255,255,0.95)";
+    ctx.beginPath();
+    ctx.arc(arrow.x, arrow.y, 6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+  ctx.save();
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = "rgba(255, 255, 210, 0.3)";
+  ctx.beginPath();
+  ctx.arc(storm.origin.x, storm.origin.y, 32, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawActiveLightStormTimer(ctx) {
+  const storm = orbRealmState.activeStorm;
+  if (!ctx || !storm) return;
+  const remaining = Math.max(0, storm.timer);
+  const label = `${Math.ceil(remaining)}s`;
+  const x = $canvas.width / 2;
+  const y = 12;
+  ctx.save();
+  ctx.font = "600 22px 'Inter', system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "top";
+  ctx.strokeStyle = "rgba(0, 0, 0, 0.65)";
+  ctx.lineWidth = 5;
+  ctx.strokeText(label, x, y);
+  ctx.fillStyle = "#fff";
+  ctx.fillText(label, x, y);
+  ctx.restore();
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * Math.max(0, Math.min(1, t));
+}
 
 function checkOrbRealmReturn(player) {
   if (!orbRealmState.active || !player) return;
+  if (!isGoldBossReturnAllowed()) return;
   const dist = Math.hypot(player.x - ORB_REALM_CENTER.x, player.y - ORB_REALM_CENTER.y);
   if (dist <= ORB_REALM_RETURN_RADIUS) {
     exitOrbRealm();
@@ -2639,8 +3210,8 @@ function checkOrbRealmReturn(player) {
     window.addEventListener("keydown", handleKey);
   }
 
-  function hideOrbPrompt() {
-    if (!$orbPrompt) return;
+function hideOrbPrompt() {
+  if (!$orbPrompt) return;
     const currentTarget = orbPromptState.orb;
     const yesBtn = $orbPrompt.querySelector("[data-orb-yes]");
     const noBtn = $orbPrompt.querySelector("[data-orb-no]");
@@ -2667,8 +3238,198 @@ function checkOrbRealmReturn(player) {
       currentTarget.interacting = false;
     }
     State.paused = orbPromptState.previousPaused;
-    orbPromptState.previousPaused = false;
+  orbPromptState.previousPaused = false;
+}
+
+function showBossRiddlePrompt(opts = {}) {
+  if (!$bossRiddle || !Array.isArray(opts.options) || opts.options.length === 0) return;
+  hideBossRiddlePrompt();
+  if (bossRiddleState.hideTimer) {
+    clearTimeout(bossRiddleState.hideTimer);
+    bossRiddleState.hideTimer = null;
   }
+  State.bossRiddleOpen = true;
+  bossRiddleState.previousPaused = State.paused;
+  State.paused = true;
+  bossRiddleState.onSelect = typeof opts.onSelect === "function" ? opts.onSelect : null;
+  bossRiddleState.focusIndex = 0;
+  bossRiddleState.active = true;
+  const description = String(opts.description ?? "").trim();
+  const title = String(opts.title ?? "Énigme").trim();
+  const optionsMarkup = opts.options
+    .map(
+      (option, index) => `
+        <button type="button" data-riddle-option data-index="${index}">
+          <span class="boss-riddle-index">${index + 1}</span>
+          ${String(option ?? "").trim()}
+        </button>`
+    )
+    .join("");
+  $bossRiddle.innerHTML = `
+    <div class="boss-riddle-card">
+      <h4>${title}</h4>
+      <div class="boss-riddle-dialogue">
+        <p class="boss-riddle-text"></p>
+      </div>
+      <div class="boss-riddle-options hidden">
+        ${optionsMarkup}
+      </div>
+    </div>`;
+  const buttons = Array.from($bossRiddle.querySelectorAll("[data-riddle-option]"));
+  bossRiddleState.buttons = buttons;
+  const optionHandler = (event) => {
+    const index = Number(event.currentTarget?.dataset?.index ?? -1);
+    commitBossRiddleChoice(index);
+  };
+  bossRiddleState.optionHandler = optionHandler;
+  buttons.forEach((btn) => btn.addEventListener("click", optionHandler));
+  bossRiddleState.textNode = $bossRiddle.querySelector(".boss-riddle-text");
+  bossRiddleState.optionsContainer = $bossRiddle.querySelector(".boss-riddle-options");
+  if (bossRiddleState.optionsContainer) {
+    bossRiddleState.optionsContainer.classList.add("hidden");
+  }
+  bossRiddleState.fullText = description;
+  bossRiddleState.typedChars = 0;
+  bossRiddleState.typingAccumulator = 0;
+  bossRiddleState.typingSpeed = opts.typingSpeed ?? 42;
+  if (bossRiddleState.textNode) {
+    bossRiddleState.textNode.textContent = "";
+  }
+  bossRiddleState.optionsVisible = false;
+  bossRiddleState.keyHandler = (event) => {
+    if (!bossRiddleState.active) return;
+    const key = event.key;
+    if (!bossRiddleState.optionsVisible) {
+      if (key === "Enter" || key === " " || key === "e" || key === "E") {
+        bossRiddleState.typingAccumulator = bossRiddleState.fullText?.length ?? 0;
+        updateBossRiddleText(0);
+      }
+      return;
+    }
+    if (key === "ArrowRight" || key === "ArrowDown") {
+      event.preventDefault();
+      rotateBossRiddleFocus(1);
+      return;
+    }
+    if (key === "ArrowLeft" || key === "ArrowUp") {
+      event.preventDefault();
+      rotateBossRiddleFocus(-1);
+      return;
+    }
+    if (key === "Enter" || key === " ") {
+      event.preventDefault();
+      commitBossRiddleChoice(bossRiddleState.focusIndex);
+      return;
+    }
+    if (key === "e" || key === "E") {
+      event.preventDefault();
+      commitBossRiddleChoice(bossRiddleState.focusIndex);
+      return;
+    }
+    if (/^[1-9]$/.test(key)) {
+      const numericIndex = Math.min(buttons.length - 1, Number(key) - 1);
+      if (numericIndex >= 0) {
+        event.preventDefault();
+        commitBossRiddleChoice(numericIndex);
+      }
+    }
+  };
+  window.addEventListener("keydown", bossRiddleState.keyHandler);
+  $bossRiddle.classList.remove("hidden");
+  requestAnimationFrame(() => $bossRiddle.classList.add("visible"));
+  updateBossRiddleFocus();
+}
+
+function hideBossRiddlePrompt() {
+  if (!$bossRiddle || !bossRiddleState.active) return;
+  bossRiddleState.buttons.forEach((btn) => {
+    if (bossRiddleState.optionHandler) {
+      btn.removeEventListener("click", bossRiddleState.optionHandler);
+    }
+  });
+  if (bossRiddleState.keyHandler) {
+    window.removeEventListener("keydown", bossRiddleState.keyHandler);
+  }
+  bossRiddleState.active = false;
+  bossRiddleState.buttons = [];
+  bossRiddleState.focusIndex = 0;
+  bossRiddleState.onSelect = null;
+  bossRiddleState.keyHandler = null;
+  bossRiddleState.optionHandler = null;
+  bossRiddleState.textNode = null;
+  bossRiddleState.optionsContainer = null;
+  bossRiddleState.optionsVisible = false;
+  State.bossRiddleOpen = false;
+  State.paused = bossRiddleState.previousPaused;
+  bossRiddleState.previousPaused = false;
+  $bossRiddle.classList.remove("visible");
+  if (bossRiddleState.hideTimer) {
+    clearTimeout(bossRiddleState.hideTimer);
+  }
+  bossRiddleState.hideTimer = setTimeout(() => {
+    $bossRiddle.classList.add("hidden");
+    bossRiddleState.hideTimer = null;
+  }, 250);
+}
+
+function updateBossRiddleText(dt) {
+  if (!bossRiddleState.active || bossRiddleState.optionsVisible) return;
+  const textNode = bossRiddleState.textNode;
+  const fullText = bossRiddleState.fullText ?? "";
+  if (!textNode) return;
+  if (!fullText.length) {
+    revealBossRiddleOptions();
+    return;
+  }
+  bossRiddleState.typingAccumulator += (bossRiddleState.typingSpeed ?? 64) * dt;
+  const targetChars = Math.min(fullText.length, Math.floor(bossRiddleState.typingAccumulator));
+  if (targetChars !== bossRiddleState.typedChars) {
+    bossRiddleState.typedChars = targetChars;
+    textNode.textContent = fullText.slice(0, targetChars);
+  }
+  if (targetChars >= fullText.length) {
+    revealBossRiddleOptions();
+  }
+}
+
+function revealBossRiddleOptions() {
+  if (bossRiddleState.optionsVisible) return;
+  const container = bossRiddleState.optionsContainer;
+  if (!container) return;
+  container.classList.remove("hidden");
+  bossRiddleState.optionsVisible = true;
+  updateBossRiddleFocus();
+}
+
+function rotateBossRiddleFocus(direction) {
+  if (!bossRiddleState.buttons.length) return;
+  const len = bossRiddleState.buttons.length;
+  bossRiddleState.focusIndex = (bossRiddleState.focusIndex + direction + len) % len;
+  updateBossRiddleFocus();
+}
+
+function updateBossRiddleFocus() {
+  if (!bossRiddleState.optionsVisible) return;
+  bossRiddleState.buttons.forEach((btn, index) => {
+    if (index === bossRiddleState.focusIndex) {
+      btn.classList.add("btn-active");
+      btn.focus?.();
+    } else {
+      btn.classList.remove("btn-active");
+    }
+  });
+}
+
+function commitBossRiddleChoice(index) {
+  if (bossRiddleState.buttons.length === 0) return;
+  if (!bossRiddleState.optionsVisible) return;
+  const choice = Math.max(0, Math.min(bossRiddleState.buttons.length - 1, index));
+  const callback = bossRiddleState.onSelect;
+  hideBossRiddlePrompt();
+  if (typeof callback === "function") {
+    callback(choice);
+  }
+}
 
 function activateOrb(orb) {
   if (!orb || orb.activated) return 0;
@@ -4079,10 +4840,10 @@ function registerKaelAggroTarget(ghost) {
     ghosts.forEach((ghost) => {
       if (!ghost || ghost.dead) return;
       const dist = Math.hypot(player.x - ghost.x, player.y - ghost.y);
-    if (dist > attackRange) return;
-    if (player.isTargetInAttackArc?.(ghost.x, ghost.y) === false) return;
-    const damage = player.getCurrentAttackDamage?.() ?? 12;
-    const inflicted = dealDamageToTarget(ghost, damage);
+      if (dist > attackRange) return;
+      if (player.isTargetInAttackArc?.(ghost.x, ghost.y) === false) return;
+      const damage = player.getCurrentAttackDamage?.() ?? 12;
+      const inflicted = dealDamageToTarget(ghost, damage);
       ghost.hurtTimer = 0.25;
       ghost.hitFlash = 0.35;
       ghost.animator?.play?.("hurt", { force: true });
@@ -4099,6 +4860,24 @@ function registerKaelAggroTarget(ghost) {
         spawnFloatingText(inflicted, ghost.x, ghost.y - 20, { color: "rgba(255,215,110,1)" });
       }
     });
+
+    const boss = orbRealmState.id === 1 ? orbRealmState.kaelReplica : null;
+    const goldState = orbRealmState.id === 1 ? orbRealmState.goldBoss : null;
+    if (boss && goldState?.combatActive && boss.alive) {
+      const dist = Math.hypot(player.x - boss.x, player.y - boss.y);
+      const effectiveRange = attackRange + (boss.hitRadius ?? 0);
+      if (dist <= effectiveRange) {
+        const damage = player.getCurrentAttackDamage?.() ?? 12;
+        const inflicted = dealDamageToTarget(boss, damage);
+        if (inflicted > 0) {
+          if (!registeredHit) {
+            player.confirmAttackHit?.();
+            registeredHit = true;
+          }
+          spawnFloatingText(inflicted, boss.x, boss.y - 20, { color: "rgba(255,215,110,1)" });
+        }
+      }
+    }
   }
 
   function handleKaelVsGhosts(dt) {
@@ -4240,7 +5019,7 @@ function drawGhosts(ctx) {
   if (!Array.isArray(ghosts)) return;
 
   ghosts.forEach((ghost) => {
-    if (!ghost) return;
+    if (!ghost || ghost.hiddenForStorm) return;
 
     const frame = ghost.animator?.getFrame?.();
     const scale = ghost.scale ?? 0.32;
@@ -4601,7 +5380,7 @@ function drawGhosts(ctx) {
   }
 
   function startKaelQuestDialogue() {
-    if (State.dialogue.isOpen() || State.orbPromptOpen) return;
+    if (State.dialogue.isOpen() || State.orbPromptOpen || State.bossRiddleOpen) return;
     if ((State.questPromptCooldown ?? 0) > 0) return;
     if (State.flags.princessQuestAccepted) return;
     pauseForDialogue(
@@ -4682,8 +5461,16 @@ function render() {
       drawOrbHazards(ctx);
       drawOrbReturnZone(ctx);
       drawOrbBarrier(ctx, camX, camY, camera);
-      if (orbRealmState.id === 1 && orbRealmState.kaelReplica) {
-        orbRealmState.kaelReplica.draw(ctx);
+      if (orbRealmState.id === 1) {
+        const goldStage = orbRealmState.goldBoss?.stage;
+        if (goldStage !== "waiting" && orbRealmState.kaelReplica && !orbRealmState.kaelReplica.hiddenForStorm) {
+          orbRealmState.kaelReplica.draw(ctx);
+          drawGoldBossAura(ctx);
+        }
+      }
+      if (orbRealmState.activeStorm) {
+        drawActiveLightStorm(ctx);
+        drawActiveLightStormTimer(ctx);
       }
       ctx.restore();
       ctx.restore();
@@ -4851,6 +5638,7 @@ function resetGameOverSound() {
         <p>Kael t'a vaincu. Relance le duel et reprends le dessus.</p>
         <div class="choices">
           <button data-retry-boss>Retenter le combat</button>
+          <button data-retry-ghost>Retenter l'épreuve</button>
           <button data-abandon>Abandonner</button>
         </div>
       </div>`;
@@ -4861,6 +5649,16 @@ function resetGameOverSound() {
     el.querySelector("[data-abandon]")?.addEventListener("click", () => {
       State.awaitingEndingButton = false;
       goToTitle();
+    });
+    el.querySelector("[data-retry-ghost]")?.addEventListener("click", () => {
+      State.awaitingEndingButton = false;
+      State.paused = false;
+      const container = document.getElementById("ending");
+      if (container) {
+        container.classList.add("hidden");
+        container.innerHTML = "";
+      }
+      retryOrbStorm({ showDialogue: true });
     });
   }
 
@@ -4935,8 +5733,26 @@ function resetGameOverSound() {
         <div class="choices"><button data-abandon>Retour à l'accueil</button></div>
       </div>`;
     el.querySelector("[data-abandon]")?.addEventListener("click", () => goToTitle());
+    }
   }
-}
+
+  function retryOrbStorm(opts = {}) {
+    const orbId = orbRealmState.id ?? 1;
+    const status = orbRealmState.orbRiddleStatus[orbId] ?? {};
+    status.stormTriggered = false;
+    orbRealmState.orbRiddleStatus[orbId] = status;
+    orbRealmState.activeStorm = null;
+    hideOrbEntitiesForStorm(false);
+    if (State.player) {
+      State.player.hp = State.player.maxHp ?? 100;
+      State.player.resetCombatState?.();
+    }
+    if (opts.showDialogue && orbRealmState.goldBoss) {
+      orbRealmState.goldBoss.stage = "storm";
+      orbRealmState.goldBoss.returnUnlocked = false;
+    }
+    startOrbLightStorm(orbId);
+  }
 
 function drawPlayerWithinOrbRealm(ctx) {
   if (!ctx || !State.player) return;
@@ -5019,17 +5835,63 @@ function enforceOrbBarrier(player) {
 
 function drawOrbReturnZone(ctx) {
   if (!ctx || !orbRealmState.active || !ORB_RETURN_ZONE_VISIBLE) return;
-  if (!Number.isFinite(ORB_REALM_CENTER.x) || !Number.isFinite(ORB_REALM_CENTER.y)) return;
-  const radius = Math.max(1, ORB_REALM_RETURN_RADIUS + ORB_RETURN_ZONE_RADIUS_EXTRA);
+  const storm = orbRealmState.activeStorm;
+  const effect = (storm?.teleportEffect) ?? orbRealmState.teleportEffect;
+  if (!effect) return;
+  effect.phase = (effect.phase + 0.035) % (Math.PI * 2);
+  const origin = (storm && storm.origin) ?? effect.origin ?? ORB_REALM_CENTER;
+  const centerX = origin.x;
+  const centerY = origin.y;
+  const baseRadius = Math.max(1, ORB_REALM_RETURN_RADIUS + ORB_RETURN_ZONE_RADIUS_EXTRA);
+  const pulse = 1 + Math.sin(effect.phase * 2.4) * 0.22;
+  const radius = Math.max(1, baseRadius * pulse);
+  const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius * 1.4);
+  gradient.addColorStop(0, "rgba(255,255,255,0.95)");
+  gradient.addColorStop(0.6, "rgba(255,214,148,0.45)");
+  gradient.addColorStop(1, "rgba(97, 146, 255, 0.06)");
+
   ctx.save();
   ctx.globalCompositeOperation = "lighter";
-  ctx.fillStyle = ORB_RETURN_ZONE_FILL;
-  ctx.strokeStyle = ORB_RETURN_ZONE_STROKE;
-  ctx.lineWidth = 2;
+  ctx.fillStyle = gradient;
   ctx.beginPath();
-  ctx.arc(ORB_REALM_CENTER.x, ORB_REALM_CENTER.y, radius, 0, Math.PI * 2);
+  ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
   ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "rgba(255,255,255,0.42)";
   ctx.stroke();
+  ctx.restore();
+
+  ctx.save();
+  const ringCount = 3;
+  for (let i = 0; i < ringCount; i++) {
+    const ringRadius = radius + 12 + i * 18;
+    ctx.strokeStyle = `rgba(255, 255, 255, ${0.28 - i * 0.06})`;
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([8, 10]);
+    ctx.lineDashOffset = -effect.phase * 12 * (i + 1);
+    ctx.beginPath();
+    const startAngle = effect.phase * (i + 1) * 0.45;
+    ctx.arc(centerX, centerY, ringRadius, startAngle, startAngle + Math.PI * 1.4);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = "rgba(255,255,255,0.7)";
+  ctx.beginPath();
+  ctx.arc(centerX, centerY, radius * 0.45, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  ctx.save();
+  ctx.font = "600 14px 'Inter', system-ui";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const descriptor = effect.descriptor ?? ORB_STORM_DESCRIPTORS[storm?.orbId ?? 1];
+  ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+  ctx.fillText(`${descriptor.colorLabel} : retour disponible`, centerX, centerY + radius + 20);
   ctx.restore();
 }
 
@@ -5046,8 +5908,42 @@ function drawOrbBarrier(ctx, camX, camY, camera) {
   ctx.restore();
 }
 
+function drawGoldBossAura(ctx) {
+  if (!ctx || orbRealmState.id !== 1) return;
+  const goldState = orbRealmState.goldBoss;
+  const boss = orbRealmState.kaelReplica;
+  if (!goldState || !boss || goldState.stage === "resolved" || goldState.stage === "storm") return;
+  const now = (typeof performance !== "undefined" ? performance.now() : Date.now()) * 0.001;
+  const radius = GOLD_BOSS_AURA_RADIUS + Math.sin(now * 2.1) * 12;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  ctx.globalAlpha = 0.35;
+  const gradient = ctx.createRadialGradient(boss.x, boss.y, 0, boss.x, boss.y, radius);
+  gradient.addColorStop(0, "rgba(255, 255, 255, 0.55)");
+  gradient.addColorStop(0.5, "rgba(200, 170, 255, 0.25)");
+  gradient.addColorStop(1, "rgba(100, 80, 180, 0)");
+  ctx.fillStyle = gradient;
+  ctx.beginPath();
+  ctx.arc(boss.x, boss.y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 0.2;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(180, 200, 255, 0.45)";
+  ctx.beginPath();
+  ctx.arc(boss.x, boss.y, radius * 0.6, 0, Math.PI * 2);
+  ctx.stroke();
+  for (let i = 0; i < 3; i++) {
+    const angle = now * 0.9 + (Math.PI * 2 * i) / 3;
+    ctx.beginPath();
+    ctx.arc(boss.x, boss.y, radius * (0.7 + i * 0.08), angle, angle + 0.8);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawOrbBossHealth(ctx) {
   const ghost = orbRealmState.id === 1 && orbRealmState.kaelReplica ? orbRealmState.kaelReplica : orbRealmState.orbGhost;
+  if (orbRealmState.id === 1 && !(orbRealmState.goldBoss?.combatActive)) return;
   if (!ctx || !ghost || typeof ghost.hp !== "number" || typeof ghost.maxHp !== "number") return;
   const current = Math.max(0, ghost.hp);
   const maxHp = Math.max(1, ghost.maxHp);

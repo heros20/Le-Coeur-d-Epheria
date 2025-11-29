@@ -19,6 +19,7 @@ export class BossKael {
     this.dragonScale = opts.dragonScale ?? this.scale * 1.4;
     const baseRadius = (CONFIG.actorRadius ?? 12) * (this.scale / 0.35);
     this.hitRadius = opts.hitRadius ?? opts.radius ?? Math.max(12, baseRadius * 1.5);
+    this.hitRadius *= 2;
     this.baseHitRadius = this.hitRadius;
     this.facing = "right";
 

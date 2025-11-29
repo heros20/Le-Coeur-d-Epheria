@@ -373,6 +373,187 @@ h3 {
   box-shadow: 0 12px 30px rgba(120, 200, 255, 0.25);
 }
 
+.boss-riddle {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  padding: 1rem;
+  z-index: 35;
+}
+
+.boss-riddle.visible .boss-riddle-card {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.boss-riddle .boss-riddle-card {
+  pointer-events: auto;
+  max-width: 420px;
+  width: 100%;
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(27, 9, 31, 0.92), rgba(16, 4, 24, 0.95));
+  border: 1px solid rgba(255, 203, 110, 0.45);
+  padding: 1.5rem 1.4rem;
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.55);
+  transform: translateY(15px);
+  opacity: 0;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.boss-riddle .boss-riddle-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 0.5rem;
+  background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.boss-riddle-dialogue {
+  border-radius: 14px;
+  padding: 0.65rem 0.75rem;
+  background: radial-gradient(circle at 30% 10%, rgba(255, 255, 255, 0.12), rgba(20, 10, 30, 0.7));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  min-height: 70px;
+  margin-bottom: 0.8rem;
+  box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05);
+}
+
+.boss-riddle-text {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: #f7f1ff;
+  min-height: 3rem;
+  white-space: pre-wrap;
+}
+
+.boss-riddle-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.boss-riddle-options.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+}
+
+.boss-riddle .boss-riddle-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 0.5rem;
+  background: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0));
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.boss-riddle-dialogue {
+  border-radius: 14px;
+  padding: 0.65rem 0.75rem;
+  background: radial-gradient(circle at 30% 10%, rgba(255, 255, 255, 0.12), rgba(20, 10, 30, 0.7));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  min-height: 70px;
+  margin-bottom: 0.8rem;
+  box-shadow: inset 0 0 20px rgba(255, 255, 255, 0.05);
+  position: relative;
+  overflow: hidden;
+}
+
+.boss-riddle-text {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: #f7f1ff;
+  min-height: 3rem;
+  white-space: pre-wrap;
+}
+
+.boss-riddle-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.boss-riddle-options.hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(8px);
+}
+
+.boss-riddle .boss-riddle-card h4 {
+  margin: 0 0 0.35rem;
+  font-size: 1.15rem;
+  color: #ffe2c5;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.boss-riddle .boss-riddle-card p {
+  margin: 0 0 1rem;
+  font-size: 0.95rem;
+  color: #ede5db;
+  line-height: 1.4;
+}
+
+.boss-riddle .boss-riddle-options {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.boss-riddle button {
+  border: none;
+  border-radius: 999px;
+  padding: 0.6rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  pointer-events: auto;
+}
+
+.boss-riddle button .boss-riddle-index {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(255, 214, 126, 0.15);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  color: #ffd386;
+  border: 1px solid rgba(255, 214, 126, 0.5);
+}
+
+.boss-riddle button:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.boss-riddle button.btn-active {
+  background: rgba(255, 205, 120, 0.15);
+  box-shadow: 0 12px 20px rgba(255, 183, 81, 0.35);
+  color: #ffe4b8;
+}
 .boss-objective-banner {
   position: absolute;
   top:10px;
