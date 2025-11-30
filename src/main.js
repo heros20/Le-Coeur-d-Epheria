@@ -319,14 +319,17 @@ const ORB_STORM_DESCRIPTORS = {
   3: { colorLabel: "bleue", spirit: "onde" },
 };
 
-const ORB_LIGHT_STORM_DURATION = 30;
+const ORB_LIGHT_STORM_DURATION = 20;
 const ORB_LIGHT_STORM_BASE_SPEED = 240;
 const ORB_LIGHT_STORM_MAX_SPEED = 560;
 const ORB_LIGHT_STORM_START_INTERVAL = 0.7;
 const ORB_LIGHT_STORM_END_INTERVAL = 0.18;
 const ORB_LIGHT_STORM_ARROW_RADIUS = 24;
-const ORB_LIGHT_STORM_BURST_COUNT = 6;
-const ORB_LIGHT_STORM_VERTICAL_OFFSET = 30;
+const ORB_LIGHT_STORM_BURST_COUNT = 12;
+const ORB_LIGHT_STORM_VERTICAL_OFFSET = 100;
+const ORB_LIGHT_STORM_ZONE_SHIFT_X = 0;
+const ORB_LIGHT_STORM_TARGET_SHIFT_X = 0;
+const ORB_LIGHT_STORM_GHOST_APPROACH_SPEED = 360;
 
 
 function applyHeroAnimations(useGold) {
@@ -2522,7 +2525,9 @@ async function enterOrbRealm(orbId) {
     fog: State.fog,
     cameraW: camera.w,
     cameraH: camera.h,
+    puzzleOrbs: State.puzzleOrbs,
   };
+  State.puzzleOrbs = [];
   orbRealmState.goldBoss = null;
   pauseWorldForOrb(orbId);
   orbRealmState.savedGhosts = State.ghosts ?? [];
@@ -2677,6 +2682,7 @@ function restoreWorldFromOrb() {
     camera.w = orbRealmState.restore.cameraW ?? camera.w;
     camera.h = orbRealmState.restore.cameraH ?? camera.h;
   }
+  State.puzzleOrbs = orbRealmState.restore.puzzleOrbs ?? State.puzzleOrbs ?? [];
   orbRealmState.restore = null;
 }
 
@@ -2939,17 +2945,19 @@ function startOrbLightStorm(orbId) {
   if (status.stormTriggered) return;
   status.stormTriggered = true;
   orbRealmState.orbRiddleStatus[orbId] = status;
-  const originX = map.w * 0.5;
+  const originX = map.w * 0.5 + ORB_LIGHT_STORM_ZONE_SHIFT_X;
   const originY = Math.max(0, map.h * 0.5 - ORB_LIGHT_STORM_VERTICAL_OFFSET);
   const descriptor = ORB_STORM_DESCRIPTORS[orbId] ?? ORB_STORM_DESCRIPTORS[1];
+  const targetX = originX + ORB_LIGHT_STORM_TARGET_SHIFT_X;
   pauseForDialogue(
     [
       { speaker: "Fantome", text: "Tu va subir l'épreuve d'Epheria." },
       { speaker: "Fantome", text: `Si tu survie pendant 30 secondes, tu sera libre de poursuivre ta quête.` },
     ],
-    () => beginOrbLightStorm(orbId, originX, originY)
+    () => beginOrbLightStorm(orbId, targetX, originY)
   );
 }
+State.startOrbLightStorm = startOrbLightStorm;
 
 function beginOrbLightStorm(orbId, originX, originY) {
   const storm = {
@@ -2961,20 +2969,35 @@ function beginOrbLightStorm(orbId, originX, originY) {
     teleportEffect: null,
     congratulated: false,
     completed: false,
+    waitingForGhost: true,
   };
   orbRealmState.activeStorm = storm;
-  hideOrbEntitiesForStorm(true);
+  const bossEntity = orbRealmState.kaelReplica ?? orbRealmState.orbGhost;
+  if (bossEntity?.animator) {
+    bossEntity.hiddenForStorm = false;
+    bossEntity.animator.setBase?.("idle");
+    bossEntity.animator.play?.("idle", { loop: true, force: true });
+  }
   pushStatus("Les flèches de lumière s'abattent sur la carte !");
   orbRealmState.teleportEffect = null;
 }
 
-function createLightStormArrow(origin) {
-  const angle = Math.random() * Math.PI * 2;
+function createLightStormArrow(origin, opts = {}) {
+  if (!origin) return null;
+  let { dirX, dirY } = opts;
+  if (!Number.isFinite(dirX) || !Number.isFinite(dirY) || (dirX === 0 && dirY === 0)) {
+    const angle = Math.random() * Math.PI * 2;
+    dirX = Math.cos(angle);
+    dirY = Math.sin(angle);
+  }
+  const len = Math.hypot(dirX, dirY);
+  const normX = dirX / (len || 1);
+  const normY = dirY / (len || 1);
   return {
     x: origin.x,
     y: origin.y,
-    dirX: Math.cos(angle),
-    dirY: Math.sin(angle),
+    dirX: normX,
+    dirY: normY,
     radius: ORB_LIGHT_STORM_ARROW_RADIUS,
     width: ORB_LIGHT_STORM_ARROW_RADIUS * 0.5,
   };
@@ -2984,8 +3007,34 @@ function updateActiveLightStorm(dt, player) {
   const storm = orbRealmState.activeStorm;
   const map = State.map;
   if (!storm || !map) return;
+  if (storm.waitingForGhost) {
+    const ghost = orbRealmState.orbGhost ?? orbRealmState.kaelReplica;
+    if (ghost) {
+      const dx = storm.origin.x - ghost.x;
+      const dy = storm.origin.y - ghost.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist <= 1) {
+        ghost.x = storm.origin.x;
+        ghost.y = storm.origin.y;
+        storm.waitingForGhost = false;
+      } else {
+        const move = Math.min(ORB_LIGHT_STORM_GHOST_APPROACH_SPEED * dt, dist);
+        if (move > 0) {
+          ghost.x += (dx / dist) * move;
+          ghost.y += (dy / dist) * move;
+        }
+        storm.waitingForGhost = true;
+      }
+    } else {
+      storm.waitingForGhost = false;
+    }
+    if (storm.waitingForGhost) {
+      return;
+    }
+  }
   storm.timer = Math.max(0, storm.timer - dt);
   const progress = Math.min(1, 1 - storm.timer / Math.max(0.0001, ORB_LIGHT_STORM_DURATION));
+  const hero = player ?? State.player;
   if (storm.timer > 0) {
     const interval = Math.max(
       0.05,
@@ -2997,9 +3046,14 @@ function updateActiveLightStorm(dt, player) {
       for (let i = 0; i < ORB_LIGHT_STORM_BURST_COUNT; i++) {
         storm.arrows.push(createLightStormArrow(storm.origin));
       }
+      if (hero && hero.hp > 0) {
+        const dx = hero.x - storm.origin.x;
+        const dy = hero.y - storm.origin.y;
+        const targetedArrow = createLightStormArrow(storm.origin, { dirX: dx, dirY: dy });
+        if (targetedArrow) storm.arrows.push(targetedArrow);
+      }
     }
   }
-  const hero = player ?? State.player;
   const arrowSpeed = lerp(ORB_LIGHT_STORM_BASE_SPEED, ORB_LIGHT_STORM_MAX_SPEED, progress);
   const survivors = [];
   for (const arrow of storm.arrows) {
@@ -3020,8 +3074,10 @@ function updateActiveLightStorm(dt, player) {
     survivors.push(arrow);
   }
   storm.arrows = survivors;
-  if (!storm.completed && storm.timer <= 0 && survivors.length === 0) {
-    handleStormCompletion(storm);
+  if (!storm.completed && storm.timer <= 0) {
+    if (!hero || hero.hp > 0) {
+      handleStormCompletion(storm);
+    }
   }
 }
 
@@ -3039,24 +3095,23 @@ function handleStormCompletion(storm) {
     }
   }
   startTeleportEffect(storm);
+  congratulateHeroForOrb(storm.orbId, storm);
   orbRealmState.activeStorm = null;
-  congratulateHeroForOrb(storm.orbId);
 }
 
-function congratulateHeroForOrb(orbId) {
-  const storm = orbRealmState.activeStorm;
+function congratulateHeroForOrb(orbId, storm = orbRealmState.activeStorm) {
   if (!storm || storm.congratulated || storm.orbId !== orbId) return;
   storm.congratulated = true;
   const descriptor = ORB_STORM_DESCRIPTORS[orbId] ?? ORB_STORM_DESCRIPTORS[1];
   pauseForDialogue(
     [
       {
-        speaker: "Kael",
-        text: `Tu as tenu bon. L'épreuve ${descriptor.colorLabel} n'a pas étouffé ta lumière.`,
+        speaker: "Fantome",
+        text: "Tu es digne.",
       },
       {
-        speaker: "Kael",
-        text: "La voie dorée s'illumine et la porte se pare d'une aura nouvelle.",
+        speaker: "Fantome",
+        text: "Passe par ce portail, il activera l'une des clés du labyrinthe.",
       },
     ],
     () => startTeleportEffect(storm)
@@ -5730,19 +5785,89 @@ function resetGameOverSound() {
       <div class="card">
         <h2>Les âmes défuntes t'emporte.</h2>
         <p>Ton dernier souvenir disparais dans la poussière d'Ephéria.</p>
-        <div class="choices"><button data-abandon>Retour à l'accueil</button></div>
+        <div class="choices">
+          <button data-retry>Retenter l'épreuve</button>
+          <button data-abandon>Retour à l'accueil</button>
+        </div>
       </div>`;
-    el.querySelector("[data-abandon]")?.addEventListener("click", () => goToTitle());
+    const retryBtn = el.querySelector("[data-retry]");
+    const abandonBtn = el.querySelector("[data-abandon]");
+    const buttons = [retryBtn, abandonBtn].filter(Boolean);
+    let focusIndex = 0;
+    const updateFocus = () => {
+      buttons.forEach((btn, idx) => {
+        btn.classList.toggle("active", idx === focusIndex);
+      });
+      buttons[focusIndex]?.focus();
+    };
+    const handleDeathKey = (event) => {
+      if (!buttons.length) return;
+      let changed = false;
+      if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+        focusIndex = (focusIndex + 1) % buttons.length;
+        changed = true;
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+        focusIndex = (focusIndex - 1 + buttons.length) % buttons.length;
+        changed = true;
+      } else if (event.key === "Enter" || event.key?.toLowerCase?.() === "e") {
+        event.preventDefault();
+        buttons[focusIndex]?.click();
+        return;
+      }
+      if (changed) {
+        updateFocus();
+        event.preventDefault();
+      }
+    };
+    const cleanupDeathNav = () => {
+      window.removeEventListener("keydown", handleDeathKey);
+    };
+    if (buttons.length) {
+      window.addEventListener("keydown", handleDeathKey);
+      updateFocus();
     }
+    const handleRetry = () => {
+      cleanupDeathNav();
+      retryOrbStorm({ showDialogue: true });
+    };
+    const handleAbandon = () => {
+      cleanupDeathNav();
+      goToTitle();
+    };
+    retryBtn?.addEventListener("click", handleRetry);
+    abandonBtn?.addEventListener("click", handleAbandon);
   }
+}
 
   function retryOrbStorm(opts = {}) {
     const orbId = orbRealmState.id ?? 1;
-    const status = orbRealmState.orbRiddleStatus[orbId] ?? {};
+    if (typeof resetGameOverSound === "function") {
+      resetGameOverSound();
+    } else {
+      if (State.gameOverSoundTimeout) {
+        clearTimeout(State.gameOverSoundTimeout);
+        State.gameOverSoundTimeout = null;
+      }
+      State.gameOverSoundScheduled = false;
+      stopGameOverAudioPlayback();
+    }
+  const status = orbRealmState.orbRiddleStatus[orbId] ?? {};
     status.stormTriggered = false;
     orbRealmState.orbRiddleStatus[orbId] = status;
     orbRealmState.activeStorm = null;
-    hideOrbEntitiesForStorm(false);
+    if (orbRealmState.orbGhost) {
+      orbRealmState.orbGhost.hiddenForStorm = false;
+    }
+    if (orbRealmState.kaelReplica) {
+      orbRealmState.kaelReplica.hiddenForStorm = false;
+    }
+    const endingEl = document.getElementById("ending");
+    if (endingEl) {
+      endingEl.classList.add("hidden");
+      endingEl.innerHTML = "";
+    }
+    State.awaitingEndingButton = false;
+    State.paused = false;
     if (State.player) {
       State.player.hp = State.player.maxHp ?? 100;
       State.player.resetCombatState?.();
@@ -5751,7 +5876,10 @@ function resetGameOverSound() {
       orbRealmState.goldBoss.stage = "storm";
       orbRealmState.goldBoss.returnUnlocked = false;
     }
-    startOrbLightStorm(orbId);
+    const startStorm = State.startOrbLightStorm;
+    if (typeof startStorm === "function") {
+      startStorm(orbId);
+    }
   }
 
 function drawPlayerWithinOrbRealm(ctx) {
