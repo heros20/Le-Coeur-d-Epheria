@@ -319,6 +319,7 @@ const SPEAKER_PORTRAITS = {
   princesse: "hero3",
   princess: "hero3",
   aelya: "hero3",
+  fantome: "ghost",
 };
 
 function normalizeSpeakerName(name) {
