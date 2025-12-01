@@ -7354,13 +7354,16 @@ function resetGameOverSound() {
     State.awaitingEndingButton = true;
     playGameOverSound();
     el.classList.remove("hidden");
+    const ghostButton = bossMapActive
+      ? ""
+      : `<button data-retry-ghost>Retenter l'épreuve</button>`;
     el.innerHTML = `
       <div class="card">
         <h2>Game Over</h2>
         <p>Kael t'a vaincu. Relance le duel et reprends le dessus.</p>
         <div class="choices">
           <button data-retry-boss>Retenter le combat</button>
-          <button data-retry-ghost>Retenter l'épreuve</button>
+          ${ghostButton}
           <button data-abandon>Abandonner</button>
         </div>
       </div>`;
@@ -7416,10 +7419,12 @@ function resetGameOverSound() {
       checkpoint.phase = 1;
       checkpoint.hpMultiplier = 1;
     }
-    if (State.princess) {
+    if (State.princess && !bossMapActive) {
       State.princess.x = (checkpoint?.player?.x ?? State.player.x) - 40;
       State.princess.y = (checkpoint?.player?.y ?? State.player.y) + 30;
       State.princess.follow = true;
+    } else if (State.princess) {
+      State.princess.follow = false;
     }
     State.flags.kaelDefeated = false;
     State.dialogue.close();
