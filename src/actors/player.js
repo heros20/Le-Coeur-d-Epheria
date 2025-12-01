@@ -219,9 +219,12 @@ export class Player {
           this.facing = vx > 0 ? "right" : "left";
         }
       }
+      const staminaDrainMult = Number.isFinite(inputs.staminaDrainMult)
+        ? inputs.staminaDrainMult
+        : 1;
       if (wantsSprint && moved) {
         const before = this.stamina;
-        this.stamina = Math.max(0, this.stamina - this.staminaDrain * dt);
+        this.stamina = Math.max(0, this.stamina - this.staminaDrain * dt * staminaDrainMult);
         if (before > 0 && this.stamina === 0) this.recoveryCooldown = this.recoveryDelay;
       } else if (this.recoveryCooldown <= 0 && this._dashActive <= 0) {
         this.stamina = Math.min(this.staminaMax, this.stamina + this.staminaRegen * dt);

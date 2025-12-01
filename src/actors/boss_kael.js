@@ -1,5 +1,7 @@
 
 import { CONFIG } from "../config.js";
+const BOSS_KAEL_HP_MULT = 2;
+const MECHANIC_DELAY_FACTOR = 0.5;
 import { Animator } from "../utils/animator.js";
 
 export class BossKael {
@@ -7,7 +9,7 @@ export class BossKael {
   constructor(animations = {}, x, y, opts = {}) {
     this.x = x;
     this.y = y;
-    this.hp = CONFIG.kael.hp;
+    this.hp = CONFIG.kael.hp * BOSS_KAEL_HP_MULT;
     this.maxHp = this.hp;
     this.alive = true;
     const baseAnimations = filterBossAnimations(animations);
@@ -110,7 +112,7 @@ export class BossKael {
     const multiplier = Number.isFinite(opts.hpMultiplier)
       ? opts.hpMultiplier
       : this.phaseThreeCfg.hpMultiplier;
-    this.maxHp = Math.round(CONFIG.kael.hp * Math.max(1, multiplier));
+    this.maxHp = Math.round(CONFIG.kael.hp * BOSS_KAEL_HP_MULT * Math.max(1, multiplier));
     this.hp = this.maxHp;
     this.alive = true;
     if (opts.position && Number.isFinite(opts.position.x) && Number.isFinite(opts.position.y)) {
@@ -283,7 +285,7 @@ export class BossKael {
       if (Number.isFinite(spawn.x)) this.x = spawn.x;
       if (Number.isFinite(spawn.y)) this.y = spawn.y;
     }
-    this.maxHp = CONFIG.kael.hp;
+    this.maxHp = CONFIG.kael.hp * BOSS_KAEL_HP_MULT;
     this.hp = this.maxHp;
     this.alive = true;
     this.phase = 1;
@@ -319,7 +321,7 @@ export class BossKael {
     const multiplier = Number.isFinite(opts.hpMultiplier)
       ? opts.hpMultiplier
       : this.phaseTwo.hpMultiplier;
-    this.maxHp = Math.round(CONFIG.kael.hp * Math.max(1, multiplier));
+    this.maxHp = Math.round(CONFIG.kael.hp * BOSS_KAEL_HP_MULT * Math.max(1, multiplier));
     this.hp = this.maxHp;
     this.alive = true;
     this.preferredDistance = this._defaultPreferredDistance;
@@ -1596,30 +1598,43 @@ export class BossKael {
 
   _getMechanicDelay(action) {
     if (!action) return 0;
+    let base = 0;
     switch (action) {
       case "dash":
-        return this.windupDuration ?? 0.85;
+        base = this.windupDuration ?? 0.85;
+        break;
       case "orb":
-        return this.orbLifetime ?? 3.5;
+        base = this.orbLifetime ?? 3.5;
+        break;
       case "fissure":
-        return this.fissureWindup ?? 1;
+        base = this.fissureWindup ?? 1;
+        break;
       case "sigil":
-        return 0.9;
+        base = 0.9;
+        break;
       case "clone":
-        return 2.0;
+        base = 2.0;
+        break;
       case "beam":
-        return 0.6;
+        base = 0.6;
+        break;
       case "inferno":
-        return 0.5;
+        base = 0.5;
+        break;
       case "meteor":
-        return 1;
+        base = 1;
+        break;
       case "shockwave":
-        return 0.4;
+        base = 0.4;
+        break;
       case "storm":
-        return 1.1;
+        base = 1.1;
+        break;
       default:
-        return 0;
+        base = 0;
+        break;
     }
+    return base * MECHANIC_DELAY_FACTOR;
   }
 
   _hasActiveFissures() {

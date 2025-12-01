@@ -36,6 +36,7 @@ const HANDLED = new Set([
   "p",
   "e",
   "i",
+  "*",
   " ",
   "f3",
 ]);

@@ -15,14 +15,22 @@ class DialogueUI {
     this._lastTime = null;
 
     this._onKeyDown = (e) => {
-      if (e.repeat) return;
-      if ((e.key === "e" || e.key === "E") && this.active) {
-        this.next();
+    if (e.repeat) return;
+    if ((e.key === "e" || e.key === "E") && this.active) {
+      if (State.animationPauseActive) {
         e.preventDefault();
-      } else if (e.key === "Escape" && this.active) {
-        this.skip();
-        e.preventDefault();
+        return;
       }
+      this.next();
+      e.preventDefault();
+    } else if (e.key === "Escape" && this.active) {
+      if (State.animationPauseActive) {
+        e.preventDefault();
+        return;
+      }
+      this.skip();
+      e.preventDefault();
+    }
     };
     window.addEventListener("keydown", this._onKeyDown);
   }

@@ -2,7 +2,7 @@
 import { CONFIG } from "./config.js";
 import { State } from "./state.js";
 import { setupKeyboard, setupPointer, endFrame, consume, Keys } from "./input.js";
-import { loadWorldMap } from "./world/map.js";
+import { loadWorldMap, WorldMap } from "./world/map.js";
 import { applyLighting } from "./world/lighting.js";
 import { FogOfWar } from "./world/fog.js";
 import { Player } from "./actors/player.js";
@@ -23,7 +23,11 @@ let preQuestShrubTexture = null;
 let preQuestShrubSprite = null;
 let bagTexture = null;
 let orbKeyTextures = {};
+let bossMapActive = false;
+let bossMapScaleBackup = null;
+let bossMapSpeedBackup = null;
 let skipNextOrbInteract = false;
+let kaelEpicActive = false;
 const $boot = document.getElementById("boot");
 const $game = document.getElementById("game");
 const $canvas = document.getElementById("gameCanvas");
@@ -148,6 +152,7 @@ const SOUND_SOURCES = {
   kaelFireCone: "./assets/sounds/Kael_Spell/Fire_Cone.mp3",
   kaelOrbCast: "./assets/sounds/Kael_Spell/Invok_Orb.mp3",
   kaelOrbLaunch: "./assets/sounds/Kael_Spell/Orb.mp3",
+  kaelEpic: "./assets/sounds/Kael_Spell/epic.mp3",
   gameOver: "./assets/sounds/game-over/Theme_game_over.mp3",
   gameOverPost: "./assets/sounds/game-over/game-over.mp3",
   ambient: "./assets/sounds/Ambiance/Ambiance.mp3",
@@ -232,7 +237,12 @@ const PRE_QUEST_SHRUB_WIDTH = 240;
 const PRE_QUEST_SHRUB_SPREAD = { minRadius: 12, maxRadius: 18, yOffset: 6 };
 const PRE_QUEST_SHRUB_SCALE = 0.45;
 const PRE_QUEST_SHRUB_SCALE_FACTOR = 1.95;
-const PRE_QUEST_SHRUB_LENGTH_FACTOR = 0.7;
+const PRE_QUEST_SHRUB_LENGTH_FACTOR = 0.9;
+const BOSS_MAP_PATH = "./assets/map/boss-map.png";
+const BOSS_MAP_SPAWN_RATIO = 0.5;
+const BOSS_MAP_DEZOOM = 0.5;
+const BOSS_MAP_BOTTOM_WALL_HEIGHT = 330;
+let bossMapResource = null;
 const ORB_KEY_MISSING_TEXT = "Cette orbe semble attendre quelque chose...";
 const ORB_REALM_CONFIG = {
   0: { label: "Orbe rouge", mapSrc: "./assets/map/Red_orb.png", statusMessage: "Exploration rouge" },
@@ -243,8 +253,8 @@ const ORB_REALM_CONFIG = {
 const DESKTOP_ATTACK_KEYS = ["1", "&", "k"];
 const ORB_MESSAGES = [
   "A toi qui n'a pas su écouter les voix, paye ton crime de ton âme.",
-  "Vous n'êtes pas les bienvenues en ces lieux.",
-  "Continuez et payer le prix.. Ou sortez et sacrifier votre coeur.",
+  "Vous n'êtes pas les bienvenus en ces lieux.",
+  "Continuez et payer le prix.. Ou sortez et sacrifiez votre coeur.",
   "Chaque pas dans une direction, vous éloigne de l'autre, jusqu'au point de non-retour.",
 ];
 const ORB_REPEAT_MESSAGES = [
@@ -525,9 +535,9 @@ const orbRealmState = {
   greenWall: null,
   redWall: null,
   redBoss: null,
-  returnAnimationTimer: 0,
-  returnAnimationPrevPaused: false,
-  returnAnimationActive: false,
+  animationPauseTimer: 0,
+  animationPausePrevPaused: false,
+  animationPauseActive: false,
 };
 let shakeTimeout = null;
 let flashTimeout = null;
@@ -1326,6 +1336,26 @@ async function loadAudios(sourceMap) {
   return Object.fromEntries(entries);
 }
 
+function startKaelEpicTheme() {
+  const audio = State.sounds?.kaelEpic;
+  if (!audio) return;
+  if (!audio.paused) {
+    audio.currentTime = 0;
+  }
+  audio.loop = true;
+  audio.volume = 0.65;
+  audio.play().catch(() => {});
+  kaelEpicActive = true;
+}
+
+function stopKaelEpicTheme() {
+  const audio = State.sounds?.kaelEpic;
+  if (!audio) return;
+  audio.pause();
+  audio.currentTime = 0;
+  kaelEpicActive = false;
+}
+
 async function loadAnimations(sourceMap) {
   const entries = Object.entries(sourceMap);
   const anims = {};
@@ -1822,7 +1852,106 @@ function syncDialogueOverlay() {
       const h = sprite.height * scale;
       ctx.drawImage(sprite, shrub.x - w / 2, shrub.y - h / 2, w, h);
     });
-      ctx.restore();
+    ctx.restore();
+  }
+
+  function addBossMapBottomWall(world) {
+    if (!world) return;
+    const height = Math.max(1, Math.min(world.h, BOSS_MAP_BOTTOM_WALL_HEIGHT));
+    world._rasterizeRectToCollision(0, Math.max(0, world.h - height), world.w, height);
+  }
+
+  async function ensureBossMapResource() {
+    if (bossMapResource) return bossMapResource;
+    try {
+      const image = await loadImage(BOSS_MAP_PATH);
+      const world = new WorldMap(image);
+      world.collision.fill(0);
+      world._forceBorders();
+      addBossMapBottomWall(world);
+      const spawn = {
+        x: Math.max(60, world.w * 0.5),
+        y: Math.max(60, world.h * BOSS_MAP_SPAWN_RATIO),
+      };
+      bossMapResource = { image, world, spawn };
+    } catch (err) {
+      console.error("Failed to load boss map:", err);
+      bossMapResource = null;
+    }
+    return bossMapResource;
+  }
+
+  function applyBossMapScaling() {
+    if (!bossMapScaleBackup) return;
+    const heroScale = (bossMapScaleBackup.hero ?? 1) * 2;
+    State.player.scale = heroScale;
+    if (State.kael) State.kael.scale = heroScale;
+    if (State.princess) State.princess.scale = (bossMapScaleBackup.princess ?? 1) * 2;
+    if (State.boss) {
+      State.boss.scale = heroScale;
+      State.boss.hitRadius = (bossMapScaleBackup.bossHitRadius ?? State.boss.hitRadius ?? 0) * 2;
+    }
+  }
+
+  function applyBossMapSpeedBoost() {
+    if (!bossMapSpeedBackup) return;
+    const boost = 1.5;
+    State.player.speed = (bossMapSpeedBackup.hero ?? 0) * boost || (State.player?.speed ?? 0);
+    if (State.kael) {
+      State.kael.speed = (bossMapSpeedBackup.kael ?? 0) * boost || (State.kael?.speed ?? 0);
+    }
+  }
+
+  async function transitionToBossMap() {
+    const resource = await ensureBossMapResource();
+    if (!resource) return;
+    State.map = resource.world;
+    mapImg = resource.image;
+    State.puzzleOrbs = [];
+    State.spawnPoint = { x: resource.spawn.x, y: resource.spawn.y };
+    const heroX = resource.spawn.x;
+    const heroY = resource.spawn.y;
+    bossMapScaleBackup = bossMapScaleBackup ?? {
+      hero: State.player?.scale ?? 1,
+      kael: State.kael?.scale ?? 1,
+      princess: State.princess?.scale ?? 1,
+      boss: State.boss?.scale ?? 1,
+      bossHitRadius: State.boss?.hitRadius ?? 0,
+    };
+    bossMapSpeedBackup = bossMapSpeedBackup ?? {
+      hero: State.player?.speed ?? 0,
+      kael: State.kael?.speed ?? 0,
+    };
+    applyBossMapScaling();
+    applyBossMapSpeedBoost();
+    State.player.x = heroX;
+    State.player.y = heroY;
+    State.kael.x = heroX + 60;
+    State.kael.y = heroY;
+    camera = makeCameraFor(resource.world);
+    camera.w = Math.min(resource.world.w, camera.w / BOSS_MAP_DEZOOM);
+    camera.h = Math.min(resource.world.h, camera.h / BOSS_MAP_DEZOOM);
+    State.camera = camera;
+    clampCameraToPlayer(heroX, heroY);
+    State.princess.x = heroX - 50;
+    State.princess.y = heroY + 30;
+    State.pickups = [];
+    State.ghosts = [];
+    State.fog = new FogOfWar(resource.world.w, resource.world.h);
+    State.fog.reveal(heroX, heroY, 180);
+    if (State.princess) {
+      const centerX = resource.world.w * 0.5;
+      const centerY = resource.world.h * 0.5;
+      State.princess.x = centerX + 30;
+      State.princess.y = centerY - 140;
+      State.princess.follow = false;
+      State.princess.freed = true;
+      State.flags.princessUnlocked = true;
+      State.flags.princessQuestAccepted = true;
+      State.flags.princessEscapeOffered = false;
+    }
+    triggerBetrayal();
+    bossMapActive = true;
   }
 
   function createShrubSprite(src) {
@@ -2116,7 +2245,7 @@ function syncDialogueOverlay() {
   }
   // ===== Update =====
   function update(dt) {
-    updateOrbReturnPause(dt);
+    updateAnimationPause(dt);
     const { player, map } = State;
 
   State.questPromptCooldown = Math.max(0, (State.questPromptCooldown ?? 0) - dt);
@@ -2195,6 +2324,7 @@ function syncDialogueOverlay() {
     const jumpPressed = consume("j");
     const interactPressed = consume("e");
     const rangedPressed = consume("3") || consume("m");
+    const bossMapShortcutPressed = consume("*");
 
     // E pour interagir uniquement si aucun dialogue en cours
     const orbRealmFlag = State.flags?.orbRealm;
@@ -2234,6 +2364,15 @@ function syncDialogueOverlay() {
     if (bossShortcutPressed) {
       triggerBossFightShortcut();
     }
+    if (bossMapShortcutPressed) {
+      if (orbRealmState.active) {
+        pushStatus("Impassable depuis une map d'orbe.");
+      } else if (bossMapActive) {
+        pushStatus("Kael est déjà affronté ici.");
+      } else {
+        void transitionToBossMap();
+      }
+    }
 
     const dashHold = Keys.has(" ") || (touchControlState.dashHeld ?? false);
 
@@ -2256,6 +2395,7 @@ function syncDialogueOverlay() {
         ...(State.pickups?.filter((p) => p.blocking) ?? []),
         ...(State.preQuestShrubs?.map((shrub) => buildShrubCollider(shrub)).filter(Boolean) ?? []),
       ],
+      staminaDrainMult: bossMapActive ? 0.5 : 1,
       dashHold,
     });
     const dashTrailLife = 0.36;
@@ -2472,6 +2612,7 @@ function syncDialogueOverlay() {
       }
       if (!State.boss.alive && !State.flags.kaelDefeated) {
         State.flags.kaelDefeated = true;
+        stopKaelEpicTheme();
         State.bossObjectiveReminderActive = false;
         updateBossObjectiveBanner();
         State.bossObjective = null;
@@ -2480,6 +2621,7 @@ function syncDialogueOverlay() {
         if (State.flags.kaelPhaseThreeStarted && !State.flags.kaelPhaseThreeDefeated) {
           State.flags.kaelPhaseThreeDefeated = true;
           State.flags.princessEscapeOffered = false;
+          State.flags.betrayalHappened = false;
           pauseForDialogue(
             [
               {
@@ -2502,15 +2644,10 @@ function syncDialogueOverlay() {
         } else if (State.flags.kaelPhaseTwoStarted && !State.flags.kaelPhaseTwoDefeated) {
           State.flags.kaelPhaseTwoDefeated = true;
           preparePrincessForPhaseTwo();
-          pauseForDialogue(
-            [
-              { speaker: "Kael", text: "ARGH... Tu es devenu fort mon ami.." },
-              { speaker: "Moi", text: "Je dois rejoindre la princesse au plus vite." },
-            ],
-            () => {
-              pushStatus("Parle à Aelya pour quitter le labyrinthe.");
-            }
-          );
+        }
+        if (!State.flags.kaelPhaseTwoStarted) {
+          State.flags.phaseTwoDialoguePending = true;
+          pushStatus("Parle à Aelya pour poursuivre vers la phase deux.");
         } else {
           State.dialogue.show([{ speaker: "Moi", text: "Les ombres ce rapproche, nous devons fuir, et vite." }]);
         }
@@ -2628,7 +2765,8 @@ function syncDialogueOverlay() {
   }
 
   // ===== Interactions =====
-  function tryInteract() {
+function tryInteract() {
+    if (State.animationPauseActive) return true;
     if (State.dialogue.isOpen()) return;
     if (State.orbPromptOpen || State.bossRiddleOpen) return;
     if (tryInteractOrb()) return;
@@ -2642,6 +2780,10 @@ function syncDialogueOverlay() {
       !State.bossRiddleOpen
     ) {
       startKaelQuestDialogue();
+      return;
+    }
+    if (State.flags.phaseTwoDialoguePending) {
+      startPrincessEncounter();
       return;
     }
 
@@ -2681,25 +2823,20 @@ function syncDialogueOverlay() {
     }
   }
 
-  function teleportToBossArena() {
-    const spawn = State.spawnPoint ?? { x: State.player.x, y: State.player.y - 120 };
-    const heroX = spawn.x;
-    const heroY = spawn.y + 150;
-    const kaelX = heroX + 60;
-    const kaelY = heroY;
-    playSound("orbActivate", 0.9);
-    startOrbFlash();
-    State.player.x = heroX;
-    State.player.y = heroY;
-    State.kael.x = kaelX;
-    State.kael.y = kaelY;
-    clampCameraToPlayer(State.player.x, State.player.y);
-    State.princess.x = heroX - 50;
-    State.princess.y = heroY + 30;
-    triggerBetrayal();
-  }
-
   function startPrincessEncounter() {
+    if (State.flags.phaseTwoDialoguePending) {
+      pauseForDialogue(
+        [
+          { speaker: "Moi", text: "J'ai tué mon ami..." },
+          { speaker: "Aelya", text: "C'est termin? Lioran, partons d'ici" },
+        ],
+        () => {
+          State.flags.phaseTwoDialoguePending = false;
+          startKaelPhaseTwoRequiem();
+        }
+      );
+      return;
+    }
     if (State.flags.betrayalHappened) return;
     pauseForDialogue(
       [
@@ -2715,20 +2852,15 @@ function syncDialogueOverlay() {
             speaker: "Kael",
             text: "Lorian.. les voix.. Je.. AHHHHH",
           },
-        {
-          speaker: "Princesse",
-          text: "Lioran… j'entends le cœur d'Éphéria. L'ombre de Kael vacille.",
-        },
-      ],
+        ],
       () => {
         State.princess.follow = true;
         State.princess.freed = true;
-        teleportToBossArena();
+        transitionToBossMap();
       }
     );
   }
-
-  function findNearbyOrb(threshold = 6) {
+function findNearbyOrb(threshold = 6) {
     const { player, puzzleOrbs } = State;
     if (!player || !Array.isArray(puzzleOrbs)) return null;
     const pr = player.r ?? 10;
@@ -2754,6 +2886,9 @@ function tryInteractOrb() {
   if (skipNextOrbInteract) {
     skipNextOrbInteract = false;
     return false;
+  }
+  if (State.animationPauseActive) {
+    return true;
   }
   if (State.orbPromptOpen || State.bossRiddleOpen) return true;
 
@@ -2835,6 +2970,7 @@ function showOrbPrompt(orb) {
     const handleYes = (event) => {
       event?.preventDefault?.();
       event?.stopPropagation?.();
+      if (State.animationPauseActive) return;
       if (!hasRequiredOrbKey(orb)) {
         hideOrbPrompt();
         State.dialogue?.show?.([{ speaker: "Moi", text: ORB_KEY_MISSING_TEXT }]);
@@ -2862,6 +2998,7 @@ function showOrbPrompt(orb) {
           return;
         }
         const flashDuration = activateOrb(orb) || 0;
+        triggerAnimationPause(flashDuration / 1000);
         startOrbDialogueSequence(orb, flashDuration);
       };
       pauseForDialogue(
@@ -2922,6 +3059,7 @@ function handleOrbRealmActivation(orb) {
       hideOrbPrompt();
       enterOrbRealm(orb.id).then(() => {
         const flashDuration = activateOrb(orb) || 0;
+        triggerAnimationPause(flashDuration / 1000);
         startOrbDialogueSequence(orb, flashDuration);
       });
     }, delay);
@@ -4578,33 +4716,35 @@ function startTeleportEffect(storm) {
   orbRealmState.teleportEffect.phase = storm.teleportEffect.phase;
   orbRealmState.teleportEffect.origin = { x: origin.x, y: origin.y };
   orbRealmState.teleportEffect.descriptor = descriptor;
-  triggerOrbReturnPause(1.45);
+  triggerAnimationPause(1.45);
 }
 
-function triggerOrbReturnPause(duration = 1.4) {
+function triggerAnimationPause(duration = 1.4) {
   if (!Number.isFinite(duration) || duration <= 0) return;
-  if (!orbRealmState.returnAnimationActive) {
-    orbRealmState.returnAnimationPrevPaused = Boolean(State.paused);
+  if (!orbRealmState.animationPauseActive) {
+    orbRealmState.animationPausePrevPaused = Boolean(State.paused);
   }
-  orbRealmState.returnAnimationTimer = Math.max(
-    orbRealmState.returnAnimationTimer ?? 0,
+  orbRealmState.animationPauseTimer = Math.max(
+    orbRealmState.animationPauseTimer ?? 0,
     duration
   );
-  orbRealmState.returnAnimationActive = true;
+  orbRealmState.animationPauseActive = true;
   State.paused = true;
+  State.animationPauseActive = true;
 }
 
-function updateOrbReturnPause(dt) {
-  if (!orbRealmState.returnAnimationActive) return;
-  orbRealmState.returnAnimationTimer = Math.max(
+function updateAnimationPause(dt) {
+  if (!orbRealmState.animationPauseActive) return;
+  orbRealmState.animationPauseTimer = Math.max(
     0,
-    (orbRealmState.returnAnimationTimer ?? 0) - dt
+    (orbRealmState.animationPauseTimer ?? 0) - dt
   );
-  if (orbRealmState.returnAnimationTimer <= 0) {
-    orbRealmState.returnAnimationActive = false;
-    State.paused = Boolean(orbRealmState.returnAnimationPrevPaused);
-    orbRealmState.returnAnimationTimer = 0;
-    orbRealmState.returnAnimationPrevPaused = false;
+  if (orbRealmState.animationPauseTimer <= 0) {
+    orbRealmState.animationPauseActive = false;
+    State.paused = Boolean(orbRealmState.animationPausePrevPaused);
+    orbRealmState.animationPauseTimer = 0;
+    orbRealmState.animationPausePrevPaused = false;
+    State.animationPauseActive = false;
   }
 }
 
@@ -5260,6 +5400,7 @@ function startOrbDialogueSequence(orb, delay = 0) {
     State.flags.princessEscapeOffered = false;
     State.bossMusicPending = false;
     startBossMusic();
+    startKaelEpicTheme();
   }
 
   function triggerBossFightShortcut() {
@@ -5341,6 +5482,7 @@ function startOrbDialogueSequence(orb, delay = 0) {
     State.flags.princessEscapeOffered = false;
     State.bossMusicPending = false;
     startBossMusic();
+    startKaelEpicTheme();
   }
 
   function offerFinalEscapeAfterDragon() {
@@ -6969,6 +7111,9 @@ function drawGhosts(ctx) {
     State.flags.betrayalHappened = true;
     State.kael.follow = false;
     State.boss.resetForFight({ x: State.kael.x, y: State.kael.y });
+    if (bossMapActive) {
+      applyBossMapScaling();
+    }
     State.bossCheckpoint = {
       player: { x: State.player.x, y: State.player.y },
       boss: { x: State.boss.x, y: State.boss.y },
@@ -6988,6 +7133,10 @@ function drawGhosts(ctx) {
 
       ],
       () => {
+        if (bossMapActive) {
+          applyBossMapScaling();
+        }
+        startKaelEpicTheme();
         showBossObjective("Vaincre Kael");
       }
     );
