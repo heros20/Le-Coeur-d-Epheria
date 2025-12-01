@@ -2828,7 +2828,7 @@ function tryInteract() {
       pauseForDialogue(
         [
           { speaker: "Moi", text: "J'ai tué mon ami..." },
-          { speaker: "Aelya", text: "C'est termin? Lioran, partons d'ici" },
+          { speaker: "Aelya", text: "C'est terminé Lioran, partons d'ici" },
         ],
         () => {
           State.flags.phaseTwoDialoguePending = false;
