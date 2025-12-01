@@ -19,6 +19,7 @@ let heroAnimations = null;
 let heroGoldAnimations = null;
 let goldAnimActive = false;
 let ghostAnimations = null;
+let skipNextOrbInteract = false;
 const $boot = document.getElementById("boot");
 const $game = document.getElementById("game");
 const $canvas = document.getElementById("gameCanvas");
@@ -148,6 +149,12 @@ const SOUND_SOURCES = {
   ambient: "./assets/sounds/Ambiance/Ambiance.mp3",
   themeAmbient: "./assets/sounds/Ambiance/Theme_ambiance.mp3",
   orbActivate: "./assets/sounds/orbes/orbes.mp3",
+  miniBoss: "./assets/sounds/mini-boss/mini-boss.mp3",
+  miniBossExplosion: "./assets/sounds/mini-boss/explosion.mp3",
+  miniBossAppear: "./assets/sounds/mini-boss/apparition.mp3",
+  enigmeFailed: "./assets/sounds/enigmes/failed.mp3",
+  success: "./assets/sounds/enigmes/success.mp3",
+  failed: "./assets/sounds/enigmes/failed.mp3",
   princessCry: "./assets/sounds/princesse/crying_princesse.mp3",
   bossFight: "./assets/sounds/Kael_Spell/boss_fight.mp3",
   ghostWall: "./assets/sounds/Ghost/Laby_ghost.mp3",
@@ -285,38 +292,30 @@ const ORB_RIDDLES = {
   0: {
     title: "Énigme rouge",
     question:
-      "Je suis la danse des braises qui dévore la forêt, le souffle qui avale le bois sans s’éteindre. Qui suis-je ?",
-    options: ["La flamme éternelle", "Le murmure du vent", "La pierre immobile"],
-    answerIndex: 0,
-    success: "Le rouge s’incline : tu lis l’ardeur du feu, l’épreuve reste en cendres.",
-    failure: "Le rouge rugit : tu as oublié la braise, tu vas brûler sans répit.",
+      "Invisible et pourtant connue de tous. Plus légère que le vent, plus affûtée qu’une lame. Née de rien, mais capable de vaincre les plus grandes armées. Qui suis-je ?",
+    options: ["Le silence", "Le temps", "La maladie", "La faim", "La fatigue"],
+    answerIndex: 3,
   },
   1: {
     title: "Énigme dorée",
     question:
-      "Je suis la lumière que les pierres gardent, le battement que Kael convoite. Je brûle sans se consumer. Qui suis-je ?",
-    options: ["Le vent du labyrinthe", "Le Cœur d'Éphéria", "La colère d'un ancien roi"],
-    answerIndex: 1,
-    success: "Kael sourit : tu connais la vérité, le spectre s'incline et s'efface.",
-    failure: "Kael rugit : tu t'es trompé. La lumière s'assombrit, prépare-toi au combat.",
+      "Echo d’un royaume ténébreux, murmures d’un avenir encore flou. Etrange sœur de la pensée. Je séjourne dans la nuit et craint la lueur de l’aube. Qui suis-je ?",
+    options: ["Les ombres", "Les souvenirs", "Les rêves", "Les mirages", "Les illusions" ],
+    answerIndex: 2,
   },
   2: {
     title: "Énigme verte",
     question:
-      "Je suis la sève qui ranime, l’étincelle qui fait pousser les racines. Je ressuscite les plaines à chaque printemps. Qui suis-je ?",
-    options: ["La vie qui jaillit", "La pluie de cendre", "Le silence des pierres"],
-    answerIndex: 0,
-    success: "La verdure applaudit : tu entends le souffle des racines, l’énigme est apaisée.",
-    failure: "La forêt gronde : tu as ignoré sa croissance, elle t’enfonce dans l’ombre.",
+      "Ossature du monde, je cherche la caresse des cieux. Ma parure est blanche comme celle d’une vierge. Qui suis-je ?",
+    options: ["Un glacier", "Une montagne", "Un nuage", "Un arbre", "Une falaise"],
+    answerIndex: 1,
   },
   3: {
     title: "Énigme bleue",
     question:
-      "Je suis le miroir du ciel et la houle compacte, la patience qui garde les lacs. Qui suis-je ?",
-    options: ["La mer en mouvement", "Le miroir du ciel", "La flamme glacée"],
-    answerIndex: 1,
-    success: "Le bleu t’accueille : tu domines les reflets, la vague reste calme.",
-    failure: "Le bleu se referme : tu as brisé sa clarté, les eaux t’engloutissent.",
+      "Poison de l'âme, sombre masque de la passion. Fruit de l'amour, je cause inévitablement sa perte. Qui suis-je ?",
+    options: ["La trahison", "L'obsession", "Le désir", "La peur", "La jalousie"],
+    answerIndex: 4,
   },
 };
 
@@ -453,6 +452,7 @@ const orbPromptState = {
   focusIndex: 0,
   buttons: [],
   previousPaused: false,
+  choice: null,
 };
 const bossRiddleState = {
   active: false,
@@ -495,6 +495,7 @@ const orbRealmState = {
 let shakeTimeout = null;
 let flashTimeout = null;
 let flashHideTimeout = null;
+let orbDisturbanceTimeout = null;
 let kaelOrbHintTimeout = null;
 let lastKaelOrbReminderTime = -Infinity;
 
@@ -891,7 +892,7 @@ function startAmbientMusic() {
     }
     if (themeTrack) {
       themeTrack.loop = true;
-      themeTrack.volume = 0.02;
+      themeTrack.volume = 0.1;
       themeTrack.currentTime = 0;
       themeTrack.play().catch(() => {});
       State.activeThemeAmbientTrack = themeTrack;
@@ -948,6 +949,40 @@ function startBossMusic() {
     State.activeBossTrack = track;
   } catch {
     // ignore
+  }
+}
+
+let orbChallengeAudioNode = null;
+function startOrbChallengeSound(volume = 0.3, fadeDuration = 600) {
+  const clip = State.sounds?.miniBoss;
+  if (!clip) return;
+  stopOrbChallengeSound(false);
+  try {
+    const node = clip.cloneNode();
+    node.loop = true;
+    node.volume = 0;
+    node.play().catch(() => {});
+    orbChallengeAudioNode = node;
+    fadeAudio(node, volume, fadeDuration);
+  } catch {
+    orbChallengeAudioNode = null;
+  }
+}
+
+function stopOrbChallengeSound(withFade = true, duration = 600) {
+  const node = orbChallengeAudioNode;
+  if (!node) return;
+  orbChallengeAudioNode = null;
+  const finalize = () => {
+    try {
+      node.pause();
+      node.currentTime = 0;
+    } catch {}
+  };
+  if (withFade) {
+    fadeAudio(node, 0, duration, finalize);
+  } else {
+    finalize();
   }
 }
 
@@ -1906,6 +1941,7 @@ function syncDialogueOverlay() {
     const goldTeleportPressed = consume("8");
     const greenTeleportPressed = consume("4");
     const blueTeleportPressed = consume("7");
+    const redTeleportPressed = consume("6");
     const jumpPressed = consume("j");
     const interactPressed = consume("e");
     const rangedPressed = consume("3") || consume("m");
@@ -2014,6 +2050,9 @@ function syncDialogueOverlay() {
     if (blueTeleportPressed && !orbRealmState.active) {
       enterOrbRealm(3);
     }
+    if (redTeleportPressed && !orbRealmState.active) {
+      enterOrbRealm(0);
+    }
     if (orbRealmState.active) {
       processOrbRealmInputs({
         player,
@@ -2049,6 +2088,7 @@ function syncDialogueOverlay() {
           }
         } else if (orbRealmState.id === 0) {
           updateRedBossLifecycle(dt, player);
+          updateGreenWall(dt, player);
         } else if (orbRealmState.id === 2) {
           updateGreenBossLifecycle(dt, player);
           updateGreenWall(dt, player);
@@ -2411,6 +2451,10 @@ function syncDialogueOverlay() {
   }
 
 function tryInteractOrb() {
+  if (skipNextOrbInteract) {
+    skipNextOrbInteract = false;
+    return false;
+  }
   if (State.orbPromptOpen || State.bossRiddleOpen) return true;
 
   const orb = findNearbyOrb();
@@ -2461,40 +2505,50 @@ function tryInteractOrb() {
       ]);
   }
 
-  function showOrbPrompt(orb) {
+function showOrbPrompt(orb) {
     if (!$orbPrompt || !orb) return;
     hideOrbPrompt();
     State.orbPromptOpen = true;
     orbPromptState.orb = orb;
     orbPromptState.previousPaused = State.paused;
+    orbPromptState.choice = null;
     State.paused = true;
+    skipNextOrbInteract = true;
     const text = "Cette etrange orbe reagit a ma presence...";
     $orbPrompt.innerHTML = `
       <div class="prompt-card">
         <h4>Activer l'orbe ?</h4>
         <p>${text}</p>
         <div class="prompt-actions">
-          <button data-orb-no>Non</button>
-          <button data-orb-yes>Oui</button>
+          <button type="button" data-orb-no>Non</button>
+          <button type="button" data-orb-yes>Oui</button>
         </div>
       </div>`;
+    $orbPrompt.style.display = "flex";
+    $orbPrompt.style.display = "flex";
     $orbPrompt.classList.remove("hidden");
     requestAnimationFrame(() => $orbPrompt.classList.add("visible"));
 
     const yesBtn = $orbPrompt.querySelector("[data-orb-yes]");
     const noBtn = $orbPrompt.querySelector("[data-orb-no]");
 
-    const handleYes = () => {
+    const handleYes = (event) => {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      orbPromptState.choice = "yes";
       hideOrbPrompt();
       if (ORB_REALM_CONFIG[orb?.id]) {
-        handleOrbRealmActivation(orb);
+        requestAnimationFrame(() => handleOrbRealmActivation(orb));
         return;
       }
       const flashDuration = activateOrb(orb) || 0;
       startOrbDialogueSequence(orb, flashDuration);
     };
 
-    const handleNo = () => {
+    const handleNo = (event) => {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      orbPromptState.choice = "no";
       hideOrbPrompt();
     };
     const buttons = [noBtn, yesBtn].filter(Boolean);
@@ -2512,8 +2566,8 @@ function tryInteractOrb() {
       } else if (event.key === "e" || event.key === "E") {
         event.preventDefault();
         event.stopPropagation();
-        const yesBtn = $orbPrompt.querySelector("[data-orb-yes]");
-        yesBtn?.click();
+        const btn = orbPromptState.buttons[orbPromptState.focusIndex];
+        btn?.click();
       } else if (event.key === "Enter") {
         event.preventDefault();
         const btn = orbPromptState.buttons[orbPromptState.focusIndex];
@@ -2528,12 +2582,19 @@ function tryInteractOrb() {
     window.addEventListener("keydown", handleKey);
   }
 
-  function handleOrbRealmActivation(orb) {
-    if (!orb) return;
-    enterOrbRealm(orb.id).then(() => {
-      const flashDuration = activateOrb(orb) || 0;
-      startOrbDialogueSequence(orb, flashDuration);
-    });
+function handleOrbRealmActivation(orb) {
+  if (!orb) return;
+  if (orbPromptState.choice !== "yes") return;
+  orbPromptState.choice = null;
+    hideOrbPrompt();
+    const delay = Math.max(400, triggerOrbDisturbance() || 600);
+    setTimeout(() => {
+      hideOrbPrompt();
+      enterOrbRealm(orb.id).then(() => {
+        const flashDuration = activateOrb(orb) || 0;
+        startOrbDialogueSequence(orb, flashDuration);
+      });
+    }, delay);
   }
 
 function pauseWorldForOrb(orbId) {
@@ -2557,6 +2618,7 @@ function isOrbRealmActive() {
 async function enterOrbRealm(orbId) {
   const entry = orbRealmEntries[orbId];
   if (!entry) return Promise.resolve();
+  hideOrbPrompt();
   if (orbRealmState.active && orbRealmState.id === orbId) return Promise.resolve();
   if (!entry.loaded) {
     await new Promise((resolve) => {
@@ -2654,6 +2716,25 @@ async function enterOrbRealm(orbId) {
     boss.hiddenForStorm = true;
     boss.invulnerable = true;
   }
+  if (orbId === 0 && orbRealmState.orbGhost) {
+    orbRealmState.redBoss = {
+      stage: "waiting",
+      entranceTimer: 0,
+      riddleShown: false,
+      answered: false,
+      combatActive: false,
+      returnUnlocked: false,
+    };
+    const boss = orbRealmState.orbGhost;
+    const baseScale = boss.baseScale ?? boss.scale ?? 1;
+    boss.baseScale = baseScale;
+    boss.scale = baseScale * 0.4;
+    boss.x = ORB_REALM_CENTER.x;
+    boss.y = ORB_REALM_CENTER.y - RED_BOSS_ENTRY_HEIGHT;
+    boss.alive = true;
+    boss.hiddenForStorm = true;
+    boss.invulnerable = true;
+  }
   if (!SPECIAL_ORB_RIDDLE_IDS.has(orbId)) {
     presentOrbRiddle(orbId);
   }
@@ -2664,6 +2745,9 @@ async function enterOrbRealm(orbId) {
   State.fog.reveal(State.map.w / 2, State.map.h / 2, Math.max(State.map.w, State.map.h));
   player.x = Math.max(30, State.map.w / 2);
   player.y = ORB_REALM_START_Y;
+  pauseForDialogue([
+    { speaker: "???", text: "L'orbe ne doit pas être activé.. part d'ici !" },
+  ]);
   if (orbId === 1 && orbRealmState.kaelReplica) {
     orbRealmState.goldBoss = {
       stage: "waiting",
@@ -2842,6 +2926,7 @@ function startGoldBossEntrance() {
   const goldState = orbRealmState.goldBoss;
   const boss = orbRealmState.kaelReplica;
   if (!goldState || !boss || goldState.stage !== "waiting") return;
+  playSound("miniBossAppear", 0.3);
 
   goldState.stage = "enter";
   goldState.entranceTimer = GOLD_BOSS_ENTRY_DURATION;
@@ -2966,12 +3051,23 @@ function presentGoldBossRiddle() {
   const goldState = orbRealmState.goldBoss;
   if (!goldState || goldState.riddleShown) return;
   goldState.riddleShown = true;
-  showBossRiddlePrompt({
-    title: GOLD_BOSS_RIDDLE.title,
-    description: GOLD_BOSS_RIDDLE.question,
-    options: GOLD_BOSS_RIDDLE.options,
-    onSelect: handleGoldBossRiddleChoice,
-  });
+  const showRiddle = () =>
+    showBossRiddlePrompt({
+      title: GOLD_BOSS_RIDDLE.title,
+      description: GOLD_BOSS_RIDDLE.question,
+      options: GOLD_BOSS_RIDDLE.options,
+      onSelect: handleGoldBossRiddleChoice,
+    });
+  pauseForDialogue(
+    [
+      { speaker: "Fantome", text: "Tu ne devrait pas être ici." },
+      {
+        speaker: "Fantome",
+        text: "Tu ne sortira pas à moins de résoudre cette énigme, si tu te trompe...",
+      },
+    ],
+    showRiddle
+  );
 }
 
 function handleGoldBossRiddleChoice(choiceIndex) {
@@ -2983,8 +3079,10 @@ function handleGoldBossRiddleChoice(choiceIndex) {
     goldState.returnUnlocked = true;
     goldState.combatActive = false;
     goldState.stage = "resolved";
+    playSound("success");
+    stopOrbChallengeSound();
     pauseForDialogue([
-      { speaker: "Fantome", text: "Tu es digne." },
+      { speaker: "Fantome", text: "les rêves naissent dans l’obscurité, sont faits de fragments flous entre passé et futur, ressemblent à nos pensées… et disparaissent au réveil, lorsque la lumière revient." },
       { speaker: "Fantome", text: "Passe par ce portail, il activera l'une des clés du labyrinthe." },
     ]);
     orbRealmState.kaelReplica = null;
@@ -2999,6 +3097,8 @@ function handleGoldBossRiddleChoice(choiceIndex) {
   }
   goldState.correct = false;
   goldState.combatActive = false;
+  playSound("enigmeFailed");
+  stopOrbChallengeSound();
   pauseForDialogue([
     { speaker: "Fantome", text: "Tu t'es tromp?, Lioran." },
     { speaker: "Fantome", text: "Je te ferai payer cette arrogance !" },
@@ -3033,6 +3133,7 @@ function startBlueBossEntrance() {
   const blueState = orbRealmState.blueBoss;
   const boss = orbRealmState.orbGhost;
   if (!blueState || !boss || blueState.stage !== "waiting") return;
+  playSound("miniBossAppear", 0.3);
 
   blueState.stage = "enter";
   blueState.entranceTimer = BLUE_BOSS_ENTRY_DURATION;
@@ -3123,50 +3224,68 @@ function presentBlueBossRiddle() {
   const blueState = orbRealmState.blueBoss;
   if (!blueState || blueState.riddleShown) return;
   blueState.riddleShown = true;
-  showBossRiddlePrompt({
-    title: BLUE_BOSS_RIDDLE.title,
-    description: BLUE_BOSS_RIDDLE.question,
-    options: BLUE_BOSS_RIDDLE.options,
-    onSelect: handleBlueBossRiddleChoice,
-  });
+  const showRiddle = () =>
+    showBossRiddlePrompt({
+      title: BLUE_BOSS_RIDDLE.title,
+      description: BLUE_BOSS_RIDDLE.question,
+      options: BLUE_BOSS_RIDDLE.options,
+      onSelect: handleBlueBossRiddleChoice,
+    });
+  pauseForDialogue(
+    [
+      { speaker: "Fantome", text: "Comment as-tu atteints ce lieu ?" },
+      {
+        speaker: "Fantome",
+        text: "Nous sommes les gardiens de ce labyrinthe, emprisonnée à jamais.",
+      },
+      {
+        speaker: "Fantome",
+        text: "Résous cette énigme ou subit en les conséquences.",
+      },
+    ],
+    showRiddle
+  );
 }
 
 function handleBlueBossRiddleChoice(choiceIndex) {
   const blueState = orbRealmState.blueBoss;
   if (!blueState) return;
   blueState.answered = true;
+  const orbId = orbRealmState.id;
   if (choiceIndex === BLUE_BOSS_RIDDLE.answerIndex) {
     blueState.correct = true;
     blueState.returnUnlocked = true;
     blueState.combatActive = false;
     blueState.stage = "resolved";
+    playSound("success");
+    stopOrbChallengeSound();
     pauseForDialogue([
-      { speaker: "Fantome", text: "Le bleu t'apaise, voyageur. Le reflet te reconnaît." },
+      { speaker: "Fantome", text: "La jalousie naît de l’amour, mais finit par le détruire. Elle agit comme un poison intérieur, transformant la passion en obsession et en souffrance." },
       { speaker: "Fantome", text: "Traverse ce portail, il réveille une autre clé du labyrinthe." },
     ]);
     const boss = orbRealmState.orbGhost;
     if (boss) {
-    boss.hiddenForStorm = true;
-  }
-  if (orbId === 0 && orbRealmState.orbGhost) {
-    orbRealmState.redBoss = {
-      stage: "waiting",
-      entranceTimer: 0,
-      riddleShown: false,
-      answered: false,
-      combatActive: false,
-      returnUnlocked: false,
-    };
-    const boss = orbRealmState.orbGhost;
-    const baseScale = boss.baseScale ?? boss.scale ?? 1;
-    boss.baseScale = baseScale;
-    boss.x = ORB_REALM_CENTER.x;
-    boss.y = ORB_REALM_CENTER.y - RED_BOSS_ENTRY_HEIGHT;
-    boss.scale = baseScale * 0.6;
-    boss.alive = true;
-    boss.hiddenForStorm = true;
-    boss.invulnerable = true;
-  }
+      boss.hiddenForStorm = true;
+    }
+    if (orbId === 0 && orbRealmState.orbGhost) {
+      orbRealmState.redBoss = {
+        stage: "waiting",
+        entranceTimer: 0,
+        riddleShown: false,
+        answered: false,
+        combatActive: false,
+        returnUnlocked: false,
+      };
+      const boss = orbRealmState.orbGhost;
+      const baseScale = boss.baseScale ?? boss.scale ?? 1;
+      boss.baseScale = baseScale;
+      boss.x = ORB_REALM_CENTER.x;
+      boss.y = ORB_REALM_CENTER.y - RED_BOSS_ENTRY_HEIGHT;
+      boss.scale = baseScale * 0.6;
+      boss.alive = true;
+      boss.hiddenForStorm = true;
+      boss.invulnerable = true;
+    }
     State.ghosts = [];
     orbRealmState.orbGhost = null;
     pushStatus(BLUE_BOSS_RIDDLE.success);
@@ -3180,6 +3299,8 @@ function handleBlueBossRiddleChoice(choiceIndex) {
   }
   blueState.correct = false;
   blueState.combatActive = false;
+  playSound("enigmeFailed");
+  stopOrbChallengeSound();
   pauseForDialogue([
     { speaker: "Fantome", text: "Tu as eu tort." },
     { speaker: "Fantome", text: "Survis à la tempête et peu être que le chemin s'ouvrira." },
@@ -3214,6 +3335,7 @@ function startGreenBossEntrance() {
   const greenState = orbRealmState.greenBoss;
   const boss = orbRealmState.orbGhost;
   if (!greenState || !boss || greenState.stage !== "waiting") return;
+  playSound("miniBossAppear", 0.3);
   greenState.stage = "enter";
   greenState.entranceTimer = GREEN_BOSS_ENTRY_DURATION;
   boss.x = ORB_REALM_CENTER.x;
@@ -3301,12 +3423,27 @@ function presentGreenBossRiddle() {
   const greenState = orbRealmState.greenBoss;
   if (!greenState || greenState.riddleShown) return;
   greenState.riddleShown = true;
-  showBossRiddlePrompt({
-    title: GREEN_BOSS_RIDDLE.title,
-    description: GREEN_BOSS_RIDDLE.question,
-    options: GREEN_BOSS_RIDDLE.options,
-    onSelect: handleGreenBossRiddleChoice,
-  });
+  const showRiddle = () =>
+    showBossRiddlePrompt({
+      title: GREEN_BOSS_RIDDLE.title,
+      description: GREEN_BOSS_RIDDLE.question,
+      options: GREEN_BOSS_RIDDLE.options,
+      onSelect: handleGreenBossRiddleChoice,
+    });
+  pauseForDialogue(
+    [
+      { speaker: "Fantome", text: "Encore un aventurier.." },
+      {
+        speaker: "Fantome",
+        text: "Comme d'autre avant toi, tu tombera, et tu rejoindra les rands des damnés.",
+      },
+      {
+        speaker: "Fantome",
+        text: "Répond à mon énigme, ou meurt en essayant.",
+      },
+    ],
+    showRiddle
+  );
 }
 
 function handleGreenBossRiddleChoice(choiceIndex) {
@@ -3318,9 +3455,11 @@ function handleGreenBossRiddleChoice(choiceIndex) {
     greenState.returnUnlocked = true;
     greenState.combatActive = false;
     greenState.stage = "resolved";
+    playSound("success");
+    stopOrbChallengeSound();
     pauseForDialogue(
       [
-        { speaker: "Fantome", text: "Tu respectes l'équilibre, voyageur. La forêt te reconnaît." },
+        { speaker: "Fantome", text: "La montagne est l’ossature de la terre, s’élève vers le ciel, et son sommet est recouvert de neige blanche pure." },
         { speaker: "Fantome", text: "Passe par ce portail, il libèrera une autre clé du labyrinthe." },
       ],
       () => {
@@ -3343,6 +3482,8 @@ function handleGreenBossRiddleChoice(choiceIndex) {
   }
   greenState.correct = false;
   greenState.combatActive = false;
+  playSound("enigmeFailed");
+  stopOrbChallengeSound();
   pauseForDialogue(
     [
       { speaker: "Fantome", text: "La verdure gronde, tu n'as pas su l'apaiser." },
@@ -3380,6 +3521,7 @@ function startRedBossEntrance() {
   const redState = orbRealmState.redBoss;
   const boss = orbRealmState.orbGhost;
   if (!redState || !boss || redState.stage !== "waiting") return;
+  playSound("miniBossAppear", 0.3);
   redState.stage = "enter";
   redState.entranceTimer = RED_BOSS_ENTRY_DURATION;
   boss.x = ORB_REALM_CENTER.x;
@@ -3468,12 +3610,26 @@ function presentRedBossRiddle() {
   const redState = orbRealmState.redBoss;
   if (!redState || redState.riddleShown) return;
   redState.riddleShown = true;
-  showBossRiddlePrompt({
-    title: RED_BOSS_RIDDLE.title,
-    description: RED_BOSS_RIDDLE.question,
-    options: RED_BOSS_RIDDLE.options,
-    onSelect: handleRedBossRiddleChoice,
-  });
+  const showRiddle = () =>
+    showBossRiddlePrompt({
+      title: RED_BOSS_RIDDLE.title,
+      description: RED_BOSS_RIDDLE.question,
+      options: RED_BOSS_RIDDLE.options,
+      onSelect: handleRedBossRiddleChoice,
+    });
+  pauseForDialogue(
+    [
+      {
+        speaker: "Fantome",
+        text: "Gardien maudit, ni vivant, ni mort, souhaite-tu me rejoindre pour l'éternité ?",
+      },
+      {
+        speaker: "Fantome",
+        text: "Donne la réponse à cette énigme, si tu te trompe, je ne serais plus jamais seul...",
+      },
+    ],
+    showRiddle
+  );
 }
 
 function handleRedBossRiddleChoice(choiceIndex) {
@@ -3485,9 +3641,11 @@ function handleRedBossRiddleChoice(choiceIndex) {
     redState.returnUnlocked = true;
     redState.combatActive = false;
     redState.stage = "resolved";
+    playSound("success");
+    stopOrbChallengeSound();
     pauseForDialogue(
       [
-        { speaker: "Fantome", text: "Le rouge t'accueille : tu as dompté l'incandescence." },
+        { speaker: "Fantome", text: "La faim est invisible, immatérielle, mais tout le monde la ressent. Elle n’a pas de forme, mais elle affaiblit, terrasse, et peut faire tomber même les plus puissantes nations." },
         { speaker: "Fantome", text: "Traverse ce portail, il activera une nouvelle clé du labyrinthe." },
       ],
       () => {
@@ -3508,6 +3666,8 @@ function handleRedBossRiddleChoice(choiceIndex) {
   }
   redState.correct = false;
   redState.combatActive = false;
+  playSound("enigmeFailed");
+  stopOrbChallengeSound();
   pauseForDialogue(
     [
       { speaker: "Fantome", text: "Le feu gronde, tu n'as pas su l'apaiser." },
@@ -3545,15 +3705,20 @@ function handleOrbRiddleChoice(orbId, choiceIndex) {
   orbRealmState.orbRiddleStatus[orbId] = status;
   if (status.correct) {
     pushStatus(config.success);
+    playSound("success");
+    stopOrbChallengeSound();
     return;
   }
   pushStatus(config.failure);
+  playSound("enigmeFailed");
   startOrbLightStorm(orbId);
 }
 
 function startOrbLightStorm(orbId) {
   const map = State.map;
   if (!map) return;
+  playSound("miniBossAppear", 0.3);
+  startOrbChallengeSound(0.3);
   const status = orbRealmState.orbRiddleStatus[orbId] ?? {};
   if (status.stormTriggered) return;
   status.stormTriggered = true;
@@ -3564,8 +3729,8 @@ function startOrbLightStorm(orbId) {
   const targetX = originX + ORB_LIGHT_STORM_TARGET_SHIFT_X;
   pauseForDialogue(
     [
-      { speaker: "Fantome", text: "Tu va subir l'épreuve d'Epheria." },
-      { speaker: "Fantome", text: `Si tu survie pendant 25 secondes, tu sera libre de poursuivre ta quête.` },
+      { speaker: "Fantome", text: "FAUX ! Tu va subir l'épreuve d'Epheria." },
+      { speaker: "Fantome", text: `Si tu parvient à survivre, tu sera libre de poursuivre ta quête.` },
     ],
     () => beginOrbLightStorm(orbId, targetX, originY)
   );
@@ -3756,6 +3921,7 @@ function updateOrbExplosionEffects(dt) {
         color: "rgba(210, 245, 255, 0.95)",
         cooldown: 0.2,
       });
+      playSound("miniBossExplosion", 0.7);
     }
   }
   // remove finished
@@ -3968,6 +4134,7 @@ function congratulateHeroForOrb(orbId, storm = orbRealmState.activeStorm) {
 
 function startTeleportEffect(storm) {
   if (!storm) return;
+  triggerOrbDisturbance();
   if (!storm.teleportEffect) {
     storm.teleportEffect = { phase: 0 };
   }
@@ -4058,6 +4225,8 @@ function checkOrbRealmReturn(player) {
     hideOrbPrompt();
     State.orbPromptOpen = true;
     State.questPromptCooldown = 0.8;
+    orbPromptState.previousPaused = State.paused;
+    State.paused = true;
     $orbPrompt.innerHTML = `
       <div class="prompt-card">
         <h4>Quête : Chercher le Cœur</h4>
@@ -4066,7 +4235,8 @@ function checkOrbRealmReturn(player) {
           <button data-orb-no>Refuser</button>
           <button data-orb-yes>Accepter</button>
         </div>
-      </div>`;
+        </div>`;
+    $orbPrompt.style.display = "flex";
     $orbPrompt.classList.remove("hidden");
     requestAnimationFrame(() => $orbPrompt.classList.add("visible"));
 
@@ -4080,21 +4250,26 @@ function checkOrbRealmReturn(player) {
     const handleNo = () => {
       hideOrbPrompt();
       State.questPromptCooldown = 1.2;
+      State.kael.follow = false;
       State.dialogue?.show?.([{ speaker: "Kael", text: "Nous n'avons pas de temps à perdre, décide toi vite." }]);
     };
     const buttons = [noBtn, yesBtn].filter(Boolean);
     orbPromptState.buttons = buttons;
-    orbPromptState.focusIndex = buttons.length === 2 ? 1 : 0;
+    orbPromptState.focusIndex = 0;
     updatePromptFocus();
     const handleKey = (event) => {
       if (!State.orbPromptOpen) return;
       if (event.key === "Escape") {
         event.preventDefault();
         hideOrbPrompt();
-      } else if (event.key === "e" || event.key === "E") {
+      } else if (
+        event.key === "e" ||
+        event.key === "E" ||
+        event.key === "Enter"
+      ) {
         event.preventDefault();
         event.stopPropagation();
-        const btn = $orbPrompt.querySelector("[data-orb-yes]");
+        const btn = orbPromptState.buttons[orbPromptState.focusIndex];
         btn?.click();
       } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
         event.preventDefault();
@@ -4136,6 +4311,7 @@ function hideOrbPrompt() {
     $orbPrompt.classList.remove("visible");
     $orbPrompt.classList.add("hidden");
     $orbPrompt.innerHTML = "";
+    $orbPrompt.style.display = "none";
     State.orbPromptOpen = false;
     if (currentTarget && currentTarget.interacting) {
       currentTarget.interacting = false;
@@ -4453,6 +4629,20 @@ function startOrbDialogueSequence(orb, delay = 0) {
       flashTimeout = null;
     }, duration);
     startScreenShake(duration);
+    return duration;
+  }
+
+  function triggerOrbDisturbance() {
+    hideOrbPrompt();
+    const duration = startOrbFlash() || 1200;
+    const body = document.body;
+    if (!body) return duration;
+    body.classList.add("orb-disturbance");
+    if (orbDisturbanceTimeout) clearTimeout(orbDisturbanceTimeout);
+    orbDisturbanceTimeout = setTimeout(() => {
+      body.classList.remove("orb-disturbance");
+      orbDisturbanceTimeout = null;
+    }, duration);
     return duration;
   }
 
@@ -6300,7 +6490,13 @@ function drawGhosts(ctx) {
   }
 
   function startKaelQuestDialogue() {
-    if (State.dialogue.isOpen() || State.orbPromptOpen || State.bossRiddleOpen) return;
+    if (
+      State.dialogue.isOpen() ||
+      State.orbPromptOpen ||
+      State.bossRiddleOpen ||
+      State.flags.kaelQuestRefused
+    )
+      return;
     if ((State.questPromptCooldown ?? 0) > 0) return;
     if (State.flags.princessQuestAccepted) return;
     pauseForDialogue(
@@ -6322,6 +6518,7 @@ function drawGhosts(ctx) {
         showKaelQuestPrompt();
       }
     );
+    return true;
   }
   function triggerBetrayal() {
     if (State.flags.betrayalHappened) return;
@@ -6645,10 +6842,11 @@ function resetGameOverSound() {
     location.reload();
   }
 
-  function renderDeath() {
-    const el = document.getElementById("ending");
-    if (!el) return;
-    playGameOverSound();
+function renderDeath() {
+  const el = document.getElementById("ending");
+  if (!el) return;
+  stopOrbChallengeSound();
+  playGameOverSound();
     stopBossMusic(true);
     State.bossMusicPending = false;
     State.paused = true;
