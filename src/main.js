@@ -238,7 +238,8 @@ const ORB_REALM_CENTER = { x: 0, y: 0 };
 const GREEN_WALL_THICKNESS = 20;
 const GREEN_WALL_LENGTH_RATIO = 0.39;
 const GREEN_WALL_SPEED_RATIO = 0.5;
-const GREEN_WALL_COOLDOWN = 7;
+const GREEN_WALL_COOLDOWN = 4;
+const RED_WALL_COOLDOWN = GREEN_WALL_COOLDOWN;
 const GREEN_WALL_DAMAGE = 100;
 const SPECIAL_ORB_RIDDLE_IDS = new Set([0, 1, 2, 3]);
 
@@ -490,6 +491,7 @@ const orbRealmState = {
   blueBoss: null,
   greenBoss: null,
   greenWall: null,
+  redWall: null,
   redBoss: null,
 };
 let shakeTimeout = null;
@@ -2089,6 +2091,7 @@ function syncDialogueOverlay() {
         } else if (orbRealmState.id === 0) {
           updateRedBossLifecycle(dt, player);
           updateGreenWall(dt, player);
+          updateRedWall(dt, player);
         } else if (orbRealmState.id === 2) {
           updateGreenBossLifecycle(dt, player);
           updateGreenWall(dt, player);
@@ -3760,12 +3763,19 @@ function beginOrbLightStorm(orbId, originX, originY) {
   }
   pushStatus("Les flèches de lumière s'abattent sur la carte !");
   orbRealmState.teleportEffect = null;
-  if (orbId === 2) {
+  if (orbId === 2 || orbId === 0) {
     const wallState = orbRealmState.greenWall ?? { active: false, cooldown: 0, enabled: true };
     wallState.enabled = true;
     wallState.active = false;
     wallState.cooldown = 0;
     orbRealmState.greenWall = wallState;
+  }
+  if (orbId === 0) {
+    const redWallState = orbRealmState.redWall ?? { active: false, cooldown: 0, enabled: true };
+    redWallState.enabled = true;
+    redWallState.active = false;
+    redWallState.cooldown = 0;
+    orbRealmState.redWall = redWallState;
   }
 }
 
@@ -4024,6 +4034,50 @@ function spawnGreenWall() {
   wallState.cooldown = 0;
 }
 
+function spawnRedWall() {
+  const player = State.player;
+  const camera = State.camera;
+  if (!player || !camera) return;
+  const canvasW = Math.max(1, $canvas.width);
+  const canvasH = Math.max(1, $canvas.height);
+  const scaleX = canvasW / Math.max(1, camera.w);
+  const scaleY = canvasH / Math.max(1, camera.h);
+  const thicknessX = GREEN_WALL_THICKNESS / scaleX;
+  const thicknessY = GREEN_WALL_THICKNESS / scaleY;
+  const lengthH = Math.max(32, (canvasH * GREEN_WALL_LENGTH_RATIO) / scaleY);
+  const lengthV = Math.max(32, (canvasW * GREEN_WALL_LENGTH_RATIO) / scaleX);
+  const wallState = orbRealmState.redWall ?? { active: false, cooldown: 0 };
+  orbRealmState.redWall = wallState;
+  const dir = Math.floor(Math.random() * 4);
+  wallState.direction = dir;
+  const rect = { x: 0, y: 0, width: 0, height: 0 };
+  if (dir === 0) {
+    rect.width = thicknessX;
+    rect.height = Math.min(lengthH, camera.h);
+    rect.y = clampValue(player.y - rect.height / 2, camera.y, camera.y + camera.h - rect.height);
+    rect.x = camera.x - rect.width;
+  } else if (dir === 1) {
+    rect.width = thicknessX;
+    rect.height = Math.min(lengthH, camera.h);
+    rect.y = clampValue(player.y - rect.height / 2, camera.y, camera.y + camera.h - rect.height);
+    rect.x = camera.x + camera.w;
+  } else if (dir === 2) {
+    rect.height = thicknessY;
+    rect.width = Math.min(lengthV, camera.w);
+    rect.x = clampValue(player.x - rect.width / 2, camera.x, camera.x + camera.w - rect.width);
+    rect.y = camera.y - rect.height;
+  } else {
+    rect.height = thicknessY;
+    rect.width = Math.min(lengthV, camera.w);
+    rect.x = clampValue(player.x - rect.width / 2, camera.x, camera.x + camera.w - rect.width);
+    rect.y = camera.y + camera.h;
+  }
+  wallState.rect = rect;
+  wallState.active = true;
+  wallState.damageApplied = false;
+  wallState.cooldown = 0;
+}
+
 function updateGreenWall(dt, player) {
   if (!player) return;
   const camera = State.camera;
@@ -4060,16 +4114,65 @@ function updateGreenWall(dt, player) {
 }
 
 function drawGreenWall(ctx) {
-  if (!ctx || orbRealmState.id !== 2) return;
+  if (!ctx) return;
   const wallState = orbRealmState.greenWall;
   if (!wallState || !wallState.active || !wallState.rect) return;
+  const isRed = orbRealmState.id === 0;
   ctx.save();
-  ctx.fillStyle = "rgba(46, 192, 101, 0.65)";
+  ctx.fillStyle = isRed ? "rgba(255, 110, 40, 0.85)" : "rgba(46, 192, 101, 0.65)";
   ctx.fillRect(wallState.rect.x, wallState.rect.y, wallState.rect.width, wallState.rect.height);
-  ctx.strokeStyle = "rgba(255,255,255,0.35)";
+  ctx.strokeStyle = isRed ? "rgba(255, 180, 90, 0.9)" : "rgba(255,255,255,0.35)";
   ctx.lineWidth = 1.5;
   ctx.strokeRect(wallState.rect.x, wallState.rect.y, wallState.rect.width, wallState.rect.height);
   ctx.restore();
+}
+
+function drawRedWall(ctx) {
+  if (!ctx) return;
+  const wallState = orbRealmState.redWall;
+  if (!wallState || !wallState.active || !wallState.rect) return;
+  ctx.save();
+  ctx.fillStyle = "rgba(255, 60, 20, 0.9)";
+  ctx.fillRect(wallState.rect.x, wallState.rect.y, wallState.rect.width, wallState.rect.height);
+  ctx.strokeStyle = "rgba(255, 200, 120, 0.95)";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(wallState.rect.x, wallState.rect.y, wallState.rect.width, wallState.rect.height);
+  ctx.restore();
+}
+
+function updateRedWall(dt, player) {
+  if (!player) return;
+  const camera = State.camera;
+  if (!camera) return;
+  const wallState = orbRealmState.redWall ?? { active: false, cooldown: 0 };
+  orbRealmState.redWall = wallState;
+  if (!wallState.enabled) return;
+  if (!wallState.active) {
+    wallState.cooldown = Math.max(0, (wallState.cooldown ?? 0) - dt);
+    if (wallState.cooldown <= 0) {
+      spawnRedWall();
+    }
+    return;
+  }
+  const heroSpeed = Math.max(0.01, player.speed ?? 120);
+  const speed = heroSpeed * GREEN_WALL_SPEED_RATIO;
+  const velocityX =
+    wallState.direction === 0 ? speed : wallState.direction === 1 ? -speed : 0;
+  const velocityY =
+    wallState.direction === 2 ? speed : wallState.direction === 3 ? -speed : 0;
+  const rect = wallState.rect;
+  if (!rect) return;
+  rect.x += velocityX * dt;
+  rect.y += velocityY * dt;
+  const heroRadius = Math.max(8, player.hitRadius ?? player.r ?? 16);
+  if (!wallState.damageApplied && rectIntersectsCircle(rect, player.x, player.y, heroRadius)) {
+    player.applyDamage(GREEN_WALL_DAMAGE);
+    wallState.damageApplied = true;
+  }
+  if (isGreenWallOffScreen(rect, camera, wallState.direction)) {
+    wallState.active = false;
+    wallState.cooldown = RED_WALL_COOLDOWN;
+  }
 }
 
 function handleStormCompletion(storm) {
@@ -6592,9 +6695,12 @@ function render() {
         drawActiveLightStorm(ctx);
         drawActiveLightStormTimer(ctx);
       }
-      if (orbRealmState.id === 2) {
-        drawGreenWall(ctx);
-      }
+  if (orbRealmState.id === 2 || orbRealmState.id === 0) {
+    drawGreenWall(ctx);
+  }
+  if (orbRealmState.id === 0) {
+    drawRedWall(ctx);
+  }
       ctx.restore();
       ctx.restore();
       if (orbRealmState.id !== 3) {
