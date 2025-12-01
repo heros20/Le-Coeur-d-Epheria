@@ -352,26 +352,18 @@ h3 {
 }
 
 .orb-prompt button {
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.3);
   border-radius: 999px;
   padding: 0.45rem 1.3rem;
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transition: transform 0.15s ease, box-shadow 0.15s ease,
+    background 0.15s ease, color 0.15s ease;
   outline: none;
-}
-
-.orb-prompt button[data-orb-yes] {
-  background: linear-gradient(120deg, #58f3ff, #9effc5);
-  color: #04131c;
-  box-shadow: 0 8px 20px rgba(94, 226, 206, 0.4);
-}
-
-.orb-prompt button[data-orb-no] {
   background: rgba(255, 255, 255, 0.12);
   color: #f4f5f9;
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
 }
 
 .orb-prompt button:hover {
@@ -380,7 +372,9 @@ h3 {
 
 .orb-prompt button.btn-active {
   transform: translateY(-1px) scale(1.02);
-  box-shadow: 0 12px 30px rgba(120, 200, 255, 0.25);
+  background: linear-gradient(120deg, #58f3ff, #9effc5);
+  color: #04131c;
+  box-shadow: 0 12px 30px rgba(94, 226, 206, 0.4);
 }
 
 .boss-riddle {

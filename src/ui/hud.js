@@ -28,6 +28,7 @@ export function createHUD() {
 
   const vitals = makeCard("hud-vitals");
   const inventory = makeCard("hud-inventory");
+  const orbInventoryCard = makeCard("hud-orb-inventory");
   const helper = makeCard("hud-helper");
   const handleInventoryClick = (event) => {
     if (event.button !== undefined && event.button !== 0) return;
@@ -72,6 +73,8 @@ export function createHUD() {
     stamina = 0,
     staminaMax = 100,
     inventory: items = [],
+    orbInventory: orbItems = [],
+    orbCapacity = 0,
     capacity = 3,
     status = "",
     dashCooldown = 0,
@@ -132,6 +135,34 @@ export function createHUD() {
       <div class="inventory-title">Inventaire</div>
       <div class="inventory-grid">${slots.join("")}</div>
       <div class="status-line">${escapeHtml(statusText)}</div>
+    `;
+
+    const orbSlotsArr = [];
+    const totalOrbSlots = Math.max(orbCapacity, orbItems.length);
+    for (let i = 0; i < totalOrbSlots; i += 1) {
+      const item = orbItems[i];
+      if (item) {
+        const icon = item.iconSrc
+          ? `<img src="${escapeHtml(item.iconSrc)}" alt="" />`
+          : escapeHtml(item.icon ?? "?");
+        orbSlotsArr.push(
+          `<div class="inventory-slot filled" data-orb-index="${i}" data-item-id="${escapeHtml(
+            item.id ?? ""
+          )}">
+            <div class="icon">${icon}</div>
+            <div class="item-name">${escapeHtml(item.name ?? item.id ?? "Objet")}</div>
+          </div>`
+        );
+      } else {
+        orbSlotsArr.push(`<div class="inventory-slot"><span>Vide</span></div>`);
+      }
+    }
+    const orbStatus =
+      orbItems.length > 0 ? `Objets d'orbe : ${orbItems.length}/${orbCapacity}` : "Aucun objet d'orbe";
+    orbInventoryCard.innerHTML = `
+      <div class="inventory-title">Clés</div>
+      <div class="inventory-grid">${orbSlotsArr.join("")}</div>
+      <div class="status-line">${escapeHtml(orbStatus)}</div>
     `;
 
     helper.innerHTML = `

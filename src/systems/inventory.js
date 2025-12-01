@@ -18,7 +18,12 @@ export class Inventory {
   use(name, ctx = {}) {
     const idx = this.items.findIndex((i) => i.id === name);
     if (idx < 0) return false;
-    const it = this.items[idx];
+    const item = this.items[idx];
+    if (item?.orbOnly && !ctx?.allowOrbUse) {
+      ctx.notify?.("Cet objet ne sert qu'à activer une orbe.");
+      return false;
+    }
+    const it = item;
     if (it.onUse) it.onUse(ctx);
     if (!it.keep) this.items.splice(idx, 1);
     return true;

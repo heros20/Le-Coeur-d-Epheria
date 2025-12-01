@@ -19,6 +19,10 @@ let heroAnimations = null;
 let heroGoldAnimations = null;
 let goldAnimActive = false;
 let ghostAnimations = null;
+let preQuestShrubTexture = null;
+let preQuestShrubSprite = null;
+let bagTexture = null;
+let orbKeyTextures = {};
 let skipNextOrbInteract = false;
 const $boot = document.getElementById("boot");
 const $game = document.getElementById("game");
@@ -202,6 +206,34 @@ const ORB_NAMES = {
   2: "green",
   3: "blue",
 };
+const ORB_KEY_ASSET_PATHS = {
+  red: "./assets/key/red.png",
+  gold: "./assets/key/gold.png",
+  green: "./assets/key/green.png",
+  blue: "./assets/key/blue.png",
+};
+const ORB_KEY_LABELS = {
+  red: "Clé rouge",
+  gold: "Clé dorée",
+  green: "Clé verte",
+  blue: "Clé bleue",
+};
+const ORB_KEY_COLORS = Object.keys(ORB_KEY_ASSET_PATHS);
+const ORB_KEY_ITEM_PREFIX = "orb-key-";
+function getOrbKeyItemId(color) {
+  if (!color) return null;
+  return `${ORB_KEY_ITEM_PREFIX}${color}`;
+}
+function getOrbKeyColorFromItemId(id) {
+  if (!id || !id.startsWith(ORB_KEY_ITEM_PREFIX)) return null;
+  return id.slice(ORB_KEY_ITEM_PREFIX.length);
+}
+const PRE_QUEST_SHRUB_WIDTH = 240;
+const PRE_QUEST_SHRUB_SPREAD = { minRadius: 12, maxRadius: 18, yOffset: 6 };
+const PRE_QUEST_SHRUB_SCALE = 0.45;
+const PRE_QUEST_SHRUB_SCALE_FACTOR = 1.95;
+const PRE_QUEST_SHRUB_LENGTH_FACTOR = 0.7;
+const ORB_KEY_MISSING_TEXT = "Cette orbe semble attendre quelque chose...";
 const ORB_REALM_CONFIG = {
   0: { label: "Orbe rouge", mapSrc: "./assets/map/Red_orb.png", statusMessage: "Exploration rouge" },
   1: { label: "Orbes d'Éphéria", mapSrc: "./assets/map/Gold_orb.png", statusMessage: "Exploration dorée" },
@@ -493,6 +525,9 @@ const orbRealmState = {
   greenWall: null,
   redWall: null,
   redBoss: null,
+  returnAnimationTimer: 0,
+  returnAnimationPrevPaused: false,
+  returnAnimationActive: false,
 };
 let shakeTimeout = null;
 let flashTimeout = null;
@@ -1386,6 +1421,12 @@ function syncDialogueOverlay() {
     princessAnimations,
     ghostAnimationsLoaded,
     potionImage,
+    redKeyImage,
+    goldKeyImage,
+    greenKeyImage,
+    blueKeyImage,
+    bagImage,
+    shrubImage,
     soundBank,
   ] = await Promise.all([
     loadImage("./assets/hero1.png"),
@@ -1399,6 +1440,12 @@ function syncDialogueOverlay() {
     loadAnimations(PRINCESS_ANIMATION_SOURCES),
     loadAnimations(GHOST_ANIMATION_SOURCES),
     loadImage(POTION_SPRITE),
+    loadImage(ORB_KEY_ASSET_PATHS.red),
+    loadImage(ORB_KEY_ASSET_PATHS.gold),
+    loadImage(ORB_KEY_ASSET_PATHS.green),
+    loadImage(ORB_KEY_ASSET_PATHS.blue),
+    loadImage("./assets/key/bag.png"),
+    loadImage("./assets/map/arbuste.png"),
     loadAudios(SOUND_SOURCES),
   ]);
   const byPath = {
@@ -1409,6 +1456,15 @@ function syncDialogueOverlay() {
   };
   heroImg = byPath[heroSelection];
   potionTexture = potionImage;
+  orbKeyTextures = {
+    red: redKeyImage,
+    gold: goldKeyImage,
+    green: greenKeyImage,
+    blue: blueKeyImage,
+  };
+    bagTexture = bagImage;
+  preQuestShrubTexture = shrubImage;
+  preQuestShrubSprite = createShrubSprite(shrubImage);
   State.sounds = soundBank ?? {};
   heroAnimations = heroAnimationsLoaded;
   heroGoldAnimations = heroGoldAnimationsLoaded;
@@ -1545,7 +1601,8 @@ function syncDialogueOverlay() {
       return result;
     };
   }
-  State.inventory = new Inventory({ capacity: 3 });
+  State.inventory = new Inventory({ capacity: 6 });
+  State.orbInventory = new Inventory({ capacity: ORB_KEY_COLORS.length });
 
   // Dialogue layer (auto-closed at boot)
   State.dialogue = createDialogueLayer();
@@ -1616,6 +1673,8 @@ function syncDialogueOverlay() {
   State.pickups = [];
   spawnPotion(heroStart.x - 258, heroStart.y + 150);
   State.ghosts = spawnGhosts(world, start, ghostAnimationsLoaded, 5);
+  assignGhostBagDrop();
+  initPreQuestShrubs(heroStart.x, spawn.y + 200);
   State.ghostAnimations = ghostAnimationsLoaded;
   ghostAnimations = ghostAnimationsLoaded;
 
@@ -1646,6 +1705,19 @@ function syncDialogueOverlay() {
 
   // ===== Helpers gameplay =====
   const clamp = (v, min, max) => (v < min ? min : v > max ? max : v);
+  const orbKeyEntries = ORB_KEY_COLORS.map((color) => {
+    const itemId = getOrbKeyItemId(color);
+    return [
+      itemId,
+      () => ({
+        id: itemId,
+        name: ORB_KEY_LABELS[color] ?? `Clé ${color}`,
+        iconSrc: ORB_KEY_ASSET_PATHS[color],
+        orbOnly: true,
+        inventory: "orb",
+      }),
+    ];
+  });
   const pickupFactory = {
     potion: () => ({
       id: "potion",
@@ -1661,6 +1733,7 @@ function syncDialogueOverlay() {
         notify?.(`+${Math.round(player.hp - before)} HP`);
       },
     }),
+    ...Object.fromEntries(orbKeyEntries),
   };
 
   function pushStatus(text, duration = 2.5) {
@@ -1707,12 +1780,72 @@ function syncDialogueOverlay() {
     }
   }
 
+  function getPickupRadiusForTexture(texture, min = 2, scale = 0.02) {
+    const size = Math.max(texture?.width ?? 0, texture?.height ?? 0);
+    const scaled = size * scale;
+    return Math.max(min, scaled || min);
+  }
+
+  function initPreQuestShrubs(centerX, boundaryY) {
+    if (!Number.isFinite(centerX) || !Number.isFinite(boundaryY)) return;
+    State.preQuestShrubs = [
+      {
+        x: centerX,
+      y: boundaryY - PRE_QUEST_SHRUB_SPREAD.yOffset - 35,
+        radius: Math.max((PRE_QUEST_SHRUB_WIDTH ?? 0) / 2, PRE_QUEST_SHRUB_SPREAD.minRadius),
+        spriteScale: PRE_QUEST_SHRUB_SCALE,
+      },
+    ];
+  }
+
+  function buildShrubCollider(shrub) {
+    const sprite = preQuestShrubSprite ?? preQuestShrubTexture;
+    if (!sprite) return null;
+    const scale = shrub?.spriteScale ?? PRE_QUEST_SHRUB_SCALE;
+    const w = (sprite.width * scale * PRE_QUEST_SHRUB_LENGTH_FACTOR) || 0;
+    const h = (sprite.height * scale) || 0;
+    const rad = Math.max(w, h) * 0.5;
+    if (rad <= 0) return null;
+    return { x: shrub.x, y: shrub.y, radius: rad };
+  }
+
+  function drawPreQuestShrubSprites(ctx) {
+    const shrubs = State.preQuestShrubs;
+    if (!Array.isArray(shrubs) || shrubs.length === 0) return;
+    const sprite = preQuestShrubSprite ?? preQuestShrubTexture;
+    if (!sprite) return;
+    ctx.save();
+    shrubs.forEach((shrub) => {
+      if (!shrub) return;
+      const scale = shrub.spriteScale ?? PRE_QUEST_SHRUB_SCALE;
+      const w = sprite.width * scale * PRE_QUEST_SHRUB_LENGTH_FACTOR;
+      const h = sprite.height * scale;
+      ctx.drawImage(sprite, shrub.x - w / 2, shrub.y - h / 2, w, h);
+    });
+      ctx.restore();
+  }
+
+  function createShrubSprite(src) {
+    if (!src) return null;
+    const scaleFactor = PRE_QUEST_SHRUB_SCALE_FACTOR;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(src.width * scaleFactor));
+    canvas.height = Math.max(1, Math.round(src.height * scaleFactor));
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(src, 0, 0, canvas.width, canvas.height);
+    }
+    return canvas;
+  }
+
   function spawnPotion(x, y) {
+    const radius = getPickupRadiusForTexture(potionTexture, 2, 0.008);
     State.pickups.push({
       type: "potion",
       x,
       y: y + 2,
-      radius: 8,
+      radius,
       blocking: true,
       collisionShape: "potion",
       texture: potionTexture,
@@ -1720,9 +1853,122 @@ function syncDialogueOverlay() {
     });
   }
 
+  function spawnOrbKeyAt(color, x, y) {
+    const texture = orbKeyTextures[color];
+    if (!texture) return;
+    const radius = getPickupRadiusForTexture(texture, 2);
+    State.pickups.push({
+      type: "orb-key",
+      itemId: getOrbKeyItemId(color),
+      color,
+      name: ORB_KEY_LABELS[color],
+      x,
+      y,
+      radius,
+      blocking: true,
+      collisionShape: "orb-key",
+      texture,
+      iconSrc: ORB_KEY_ASSET_PATHS[color],
+    });
+  }
+
+  function spawnOrbBag(color, x, y, opts = {}) {
+    if (!bagTexture) return;
+    const radius = getPickupRadiusForTexture(
+      bagTexture,
+      typeof opts.minRadius === "number" ? opts.minRadius : 10,
+      typeof opts.scale === "number" ? opts.scale : 0.012
+    );
+    const spriteScale = typeof opts.spriteScale === "number" ? opts.spriteScale : 0.45;
+    State.pickups.push({
+      type: "orb-bag",
+      color,
+      x,
+      y,
+      radius,
+      spriteScale,
+      blocking: true,
+      collisionShape: "orb-bag",
+      texture: bagTexture,
+      iconSrc: ORB_KEY_ASSET_PATHS[color],
+      source: opts.source ?? null,
+    });
+  }
+
+  function getRedBagPosition() {
+    const orbs = State.puzzleOrbs;
+    if (!Array.isArray(orbs)) return null;
+    const goldOrb = orbs.find((orb) => orb?.id === 1);
+    if (!goldOrb) return null;
+    return {
+      x: goldOrb.x - 100,
+      y: goldOrb.y + 80,
+    };
+  }
+
+  function spawnOrbBags(baseX, baseY) {
+    const spacing = 64;
+    const redPosition = getRedBagPosition();
+    ORB_KEY_COLORS.forEach((color, index) => {
+      let targetX = baseX + index * spacing;
+      let targetY = baseY;
+      if (color === "red" && redPosition) {
+        targetX = redPosition.x;
+        targetY = redPosition.y;
+      }
+      spawnOrbBag(color, targetX, targetY);
+    });
+  }
+
+  function assignGhostBagDrop(color = "gold") {
+    const ghosts = State.ghosts;
+    if (!Array.isArray(ghosts) || ghosts.length === 0) return;
+    const candidates = ghosts.filter((g) => g && !g.lootBagColor);
+    if (!candidates.length) return;
+    const selected = candidates[Math.floor(Math.random() * candidates.length)];
+    selected.lootBagColor = color;
+  }
+
+  function maybeDropGhostBag(ghost) {
+    if (!ghost || ghost.lootBagDropped) return;
+    const color = ghost.lootBagColor;
+    if (!color) return;
+    spawnOrbBag(color, ghost.x, ghost.y, {
+      spriteScale: 0.95,
+      scale: 0.02,
+      minRadius: 8,
+      source: "ghost",
+    });
+    ghost.lootBagDropped = true;
+  }
+
+  function maybeDropGhostPotion(ghost) {
+    if (!ghost || ghost.potionDropped) return;
+    if (ghost.lootBagColor) return;
+    if (Math.random() >= 0.05) return;
+    spawnPotion(ghost.x, ghost.y);
+    ghost.potionDropped = true;
+  }
+
+  function resetGhostsForOrbDrop(bagColor, count = 5) {
+    const map = State.map;
+    const spawnPoint = State.spawnPoint;
+    if (!map || !spawnPoint || !ghostAnimations) return;
+    State.ghosts = spawnGhosts(map, spawnPoint, ghostAnimations, count);
+    clearKaelAggroTargets();
+    assignGhostBagDrop(bagColor);
+  }
+
   function handlePickups() {
     if (!State.pickups.length) return;
     State.pickups = State.pickups.filter((pickup) => !pickup.collected);
+  }
+
+  function getOrbInventorySnapshot() {
+    return {
+      orbInventory: State.orbInventory?.list?.() ?? [],
+      orbCapacity: State.orbInventory?.capacity ?? ORB_KEY_COLORS.length,
+    };
   }
 
   function drawPickups(ctx) {
@@ -1734,7 +1980,8 @@ function syncDialogueOverlay() {
       ctx.shadowBlur = 18;
       ctx.globalAlpha = 0.95;
       if (tex && tex.width && tex.height) {
-        const target = pickup.radius * 2.4;
+        const spriteScale = pickup.spriteScale ?? 1;
+        const target = pickup.radius * 2.4 * spriteScale;
         const scale = target / tex.width;
         const w = tex.width * scale;
         const h = tex.height * scale;
@@ -1869,7 +2116,8 @@ function syncDialogueOverlay() {
   }
   // ===== Update =====
   function update(dt) {
-  const { player, map } = State;
+    updateOrbReturnPause(dt);
+    const { player, map } = State;
 
   State.questPromptCooldown = Math.max(0, (State.questPromptCooldown ?? 0) - dt);
     updateFloatingTexts(dt);
@@ -1959,7 +2207,9 @@ function syncDialogueOverlay() {
     ) {
       State.dialogue.update({ dt: 0 });
       syncDialogueOverlay();
+      const orbSnapshot = getOrbInventorySnapshot();
       activeHud.update({
+        ...orbSnapshot,
         hp: player.hp,
         hpMax: player.maxHp ?? 100,
         stamina: player.stamina,
@@ -2001,7 +2251,11 @@ function syncDialogueOverlay() {
       aimValid: Boolean(pointerData),
       moveVector: moveVectorInput,
       pointerDeadzone: CONFIG.playerMouseDeadzone,
-      colliders: [...(State.puzzleOrbs ?? []), ...(State.pickups?.filter((p) => p.blocking) ?? [])],
+      colliders: [
+        ...(State.puzzleOrbs ?? []),
+        ...(State.pickups?.filter((p) => p.blocking) ?? []),
+        ...(State.preQuestShrubs?.map((shrub) => buildShrubCollider(shrub)).filter(Boolean) ?? []),
+      ],
       dashHold,
     });
     const dashTrailLife = 0.36;
@@ -2041,7 +2295,6 @@ function syncDialogueOverlay() {
       node.life = Math.max(0, node.life - dt);
     });
     State.playerAttackTrail = attackTrail.filter((node) => node.life > 0);
-    enforcePreKaelBoundary(player);
     handlePickups();
     if (goldTeleportPressed && !orbRealmState.active) {
       enterOrbRealm(1);
@@ -2067,7 +2320,9 @@ function syncDialogueOverlay() {
       enforceOrbBarrier(player);
       updateOrbHazards(dt);
       updateOrbRealmCamera(player);
+        const orbSnapshot = getOrbInventorySnapshot();
         activeHud.update?.({
+          ...orbSnapshot,
           hp: player.hp,
           hpMax: player.maxHp ?? 100,
           stamina: player.stamina,
@@ -2266,7 +2521,9 @@ function syncDialogueOverlay() {
     if (finalizeWorldLoop(dt)) return;
 
     // HUD
+    const orbSnapshot = getOrbInventorySnapshot();
     activeHud.update({
+      ...orbSnapshot,
       hp: player.hp,
       hpMax: player.maxHp ?? 100,
       stamina: player.stamina,
@@ -2297,7 +2554,7 @@ function syncDialogueOverlay() {
       pushStatus("No item available");
       return false;
     }
-    const item = items[0];
+    const item = items.find((entry) => !entry?.orbOnly);
     if (!item?.id) {
       pushStatus("No usable item");
       return false;
@@ -2313,29 +2570,59 @@ function syncDialogueOverlay() {
     return true;
   }
 
-  function findNearbyPickup({ type = "potion", threshold = 14 } = {}) {
+  function findNearbyPickup({ type, threshold = 14 } = {}) {
     const player = State.player;
     const pickups = State.pickups;
     if (!player || !Array.isArray(pickups) || pickups.length === 0) return null;
-    const r = (player.r ?? 10) + (threshold ?? 0);
-    return pickups.find((pickup) => {
-      if (pickup.collected) return false;
-      if (type && pickup.type !== type) return false;
-      const reach = (pickup.radius ?? 10) + r;
-      return Math.hypot(player.x - pickup.x, player.y - pickup.y) <= reach;
+    const baseReach = (player.r ?? 10) + (threshold ?? 0);
+    let closest = null;
+    let closestDist = Infinity;
+    pickups.forEach((pickup) => {
+      if (pickup.collected) return;
+      if (type && pickup.type !== type) return;
+      const reach = (pickup.radius ?? 10) + baseReach;
+      const dist = Math.hypot(player.x - pickup.x, player.y - pickup.y);
+      if (dist <= reach && dist < closestDist) {
+        closestDist = dist;
+        closest = pickup;
+      }
     });
+    return closest;
   }
 
   function tryInteractPickup() {
-    const pickup = findNearbyPickup({ type: "potion", threshold: 12 });
+    const pickup = findNearbyPickup({ threshold: 16 });
     if (!pickup) return false;
-    const added = State.inventory.add(pickupFactory.potion());
-    if (!added) {
-      pushStatus("Inventaire plein");
+    if (pickup.type === "orb-bag") {
+      const color = pickup.color;
+      if (!color) return false;
+      spawnOrbKeyAt(color, pickup.x, pickup.y);
+      pickup.collected = true;
+      const label = ORB_KEY_LABELS[color] ?? "Clé";
+      pushStatus(`${label} révélée`);
+      handlePickups();
+      return true;
+    }
+    const factoryKey = pickup.itemId ?? pickup.type;
+    const itemFactory =
+      typeof pickup.itemFactory === "function"
+        ? pickup.itemFactory
+        : factoryKey && typeof pickupFactory[factoryKey] === "function"
+        ? pickupFactory[factoryKey]
+        : null;
+    if (!itemFactory) return false;
+    const item = itemFactory(pickup);
+    if (!item) return false;
+    const destination = item.inventory ?? (item.orbOnly ? "orb" : "main");
+    const targetInventory =
+      destination === "orb" ? State.orbInventory : State.inventory;
+    if (!targetInventory?.add?.(item)) {
+      pushStatus(destination === "orb" ? "Inventaire d'orbes plein" : "Inventaire plein");
       return true;
     }
     pickup.collected = true;
-    pushStatus("Potion récupérée");
+    const name = item.name ?? pickup.name ?? item.id ?? "Objet";
+    pushStatus(`${name} récupéré`);
     handlePickups();
     return true;
   }
@@ -2453,6 +2740,16 @@ function syncDialogueOverlay() {
     });
   }
 
+  function hasRequiredOrbKey(orb) {
+    if (!orb) return true;
+    const color = ORB_NAMES[orb.id];
+    if (!color) return true;
+    const keyId = getOrbKeyItemId(color);
+    if (!keyId || !State.orbInventory) return true;
+    if (typeof State.orbInventory.has !== "function") return true;
+    return State.orbInventory.has(keyId);
+  }
+
 function tryInteractOrb() {
   if (skipNextOrbInteract) {
     skipNextOrbInteract = false;
@@ -2538,14 +2835,44 @@ function showOrbPrompt(orb) {
     const handleYes = (event) => {
       event?.preventDefault?.();
       event?.stopPropagation?.();
-      orbPromptState.choice = "yes";
-      hideOrbPrompt();
-      if (ORB_REALM_CONFIG[orb?.id]) {
-        requestAnimationFrame(() => handleOrbRealmActivation(orb));
+      if (!hasRequiredOrbKey(orb)) {
+        hideOrbPrompt();
+        State.dialogue?.show?.([{ speaker: "Moi", text: ORB_KEY_MISSING_TEXT }]);
+        pushStatus("L'orbe reste muette.");
         return;
       }
-      const flashDuration = activateOrb(orb) || 0;
-      startOrbDialogueSequence(orb, flashDuration);
+      const color = ORB_NAMES[orb?.id];
+      const keyId = getOrbKeyItemId(color);
+      const consumed =
+        keyId &&
+        State.orbInventory?.use?.(keyId, {
+          player: State.player,
+          notify: pushStatus,
+          allowOrbUse: true,
+        });
+      if (!consumed) {
+        pushStatus("La clé manque à l'appel.");
+        return;
+      }
+      orbPromptState.choice = "yes";
+      hideOrbPrompt();
+      const runActivation = () => {
+        if (ORB_REALM_CONFIG[orb?.id]) {
+          requestAnimationFrame(() => handleOrbRealmActivation(orb));
+          return;
+        }
+        const flashDuration = activateOrb(orb) || 0;
+        startOrbDialogueSequence(orb, flashDuration);
+      };
+      pauseForDialogue(
+        [
+          {
+            speaker: "Moi",
+            text: "La pierre s'est parfaitement inserer dans l'orbe.",
+          },
+        ],
+        runActivation
+      );
     };
 
     const handleNo = (event) => {
@@ -2554,7 +2881,7 @@ function showOrbPrompt(orb) {
       orbPromptState.choice = "no";
       hideOrbPrompt();
     };
-    const buttons = [noBtn, yesBtn].filter(Boolean);
+    const buttons = [yesBtn, noBtn].filter(Boolean);
     orbPromptState.buttons = buttons;
     orbPromptState.focusIndex = buttons.length === 2 ? 1 : 0;
     updatePromptFocus();
@@ -2785,7 +3112,9 @@ async function enterOrbRealm(orbId) {
   clampCameraToPlayer(player.x, player.y);
   setHudMode(true);
   applyHeroAnimations(true);
+  const orbSnapshot = getOrbInventorySnapshot();
   activeHud.update?.({
+    ...orbSnapshot,
     hp: player.hp,
     hpMax: player.maxHp ?? 100,
     stamina: player.stamina,
@@ -3103,8 +3432,8 @@ function handleGoldBossRiddleChoice(choiceIndex) {
   playSound("enigmeFailed");
   stopOrbChallengeSound();
   pauseForDialogue([
-    { speaker: "Fantome", text: "Tu t'es tromp?, Lioran." },
-    { speaker: "Fantome", text: "Je te ferai payer cette arrogance !" },
+    { speaker: "Fantome", text: "FAUX ! Tu va subir l'épreuve d'Epheria." },
+    { speaker: "Fantome", text: "Tu ne sortira d'ici que si tu survis à mon défi." },
   ]);
   pushStatus(GOLD_BOSS_RIDDLE.failure);
   goldState.stage = "storm";
@@ -4249,6 +4578,34 @@ function startTeleportEffect(storm) {
   orbRealmState.teleportEffect.phase = storm.teleportEffect.phase;
   orbRealmState.teleportEffect.origin = { x: origin.x, y: origin.y };
   orbRealmState.teleportEffect.descriptor = descriptor;
+  triggerOrbReturnPause(1.45);
+}
+
+function triggerOrbReturnPause(duration = 1.4) {
+  if (!Number.isFinite(duration) || duration <= 0) return;
+  if (!orbRealmState.returnAnimationActive) {
+    orbRealmState.returnAnimationPrevPaused = Boolean(State.paused);
+  }
+  orbRealmState.returnAnimationTimer = Math.max(
+    orbRealmState.returnAnimationTimer ?? 0,
+    duration
+  );
+  orbRealmState.returnAnimationActive = true;
+  State.paused = true;
+}
+
+function updateOrbReturnPause(dt) {
+  if (!orbRealmState.returnAnimationActive) return;
+  orbRealmState.returnAnimationTimer = Math.max(
+    0,
+    (orbRealmState.returnAnimationTimer ?? 0) - dt
+  );
+  if (orbRealmState.returnAnimationTimer <= 0) {
+    orbRealmState.returnAnimationActive = false;
+    State.paused = Boolean(orbRealmState.returnAnimationPrevPaused);
+    orbRealmState.returnAnimationTimer = 0;
+    orbRealmState.returnAnimationPrevPaused = false;
+  }
 }
 
 function hideOrbEntitiesForStorm(hidden) {
@@ -4356,7 +4713,7 @@ function checkOrbRealmReturn(player) {
       State.kael.follow = false;
       State.dialogue?.show?.([{ speaker: "Kael", text: "Nous n'avons pas de temps à perdre, décide toi vite." }]);
     };
-    const buttons = [noBtn, yesBtn].filter(Boolean);
+    const buttons = [yesBtn, noBtn].filter(Boolean);
     orbPromptState.buttons = buttons;
     orbPromptState.focusIndex = 0;
     updatePromptFocus();
@@ -4624,6 +4981,13 @@ function activateOrb(orb) {
   pushStatus("L'orbe s'embrase.");
 
   checkPrincessUnlock();
+  if (orb.id === 1) {
+    resetGhostsForOrbDrop("green");
+  } else if (orb.id === 2) {
+    resetGhostsForOrbDrop("blue");
+  } else if (orb.id === 3) {
+    resetGhostsForOrbDrop("red");
+  }
 
   // On renvoie la durée du flash pour caler le dialogue derrière
   return flashDuration || 0;
@@ -6068,6 +6432,8 @@ function registerKaelAggroTarget(ghost) {
         ghost.dead = true;
         ghost.animator?.play?.("dead", { sticky: true, force: true });
         unregisterKaelAggroTarget(ghost);
+        maybeDropGhostBag(ghost);
+        maybeDropGhostPotion(ghost);
       }
       if (inflicted > 0) {
         spawnFloatingText(inflicted, ghost.x, ghost.y - 20, { color: "rgba(255,215,110,1)" });
@@ -6125,6 +6491,8 @@ function registerKaelAggroTarget(ghost) {
         ghost.dead = true;
         ghost.animator?.play?.("dead", { sticky: true, force: true });
         unregisterKaelAggroTarget(ghost);
+        maybeDropGhostBag(ghost);
+        maybeDropGhostPotion(ghost);
       }
       if (inflicted > 0) {
         spawnFloatingText(inflicted, ghost.x, ghost.y - 20, { color: "rgba(255,215,110,1)" });
@@ -6538,34 +6906,6 @@ function drawGhosts(ctx) {
     startBossMusic();
   }
 
-  function enforcePreKaelBoundary(player) {
-    if (!player) return;
-    const spawn = State.spawnPoint;
-    if (!spawn) return;
-    const limit = spawn.y + 300;
-    if (player.y > limit) {
-      playGhostWallSound();
-      if (State.flags.princessQuestAccepted) {
-        return;
-      }
-      player.y = limit - 5;
-      clampCameraToPlayer(player.x, player.y);
-      if (!State.flags.preQuestBoundaryWarned) {
-        State.flags.preQuestBoundaryWarned = true;
-        pauseForDialogue(
-          [
-            {
-              speaker: "Moi",
-              text: "Je devrais parler a Kael avant d'entrer dans le labyrinthe.",
-            },
-          ]
-        );
-      }
-    } else {
-      State.flags.preQuestBoundaryWarned = false;
-    }
-  }
-
   function updatePromptFocus() {
     if (!orbPromptState.buttons.length) return;
     orbPromptState.buttons.forEach((btn, idx) => {
@@ -6590,6 +6930,7 @@ function drawGhosts(ctx) {
     pushStatus("Quete acceptee : aider Kael a retrouver la princesse.");
     State.questAnnouncement = { title: "Quete acceptee", subtitle: "Retrouver Aelya", timer: 4, max: 4 };
     scheduleKaelOrbHint();
+    State.preQuestShrubs = [];
   }
 
   function startKaelQuestDialogue() {
@@ -6712,6 +7053,7 @@ function render() {
       State.dialogue.draw(ctx, $canvas);
       return;
     }
+    drawPreQuestShrubSprites(ctx);
     drawPickups(ctx);
     drawGhosts(ctx);
     drawPlayerDashTrail(ctx);
