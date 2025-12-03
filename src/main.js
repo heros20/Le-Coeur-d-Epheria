@@ -28,6 +28,12 @@ let bossMapScaleBackup = null;
 let bossMapSpeedBackup = null;
 let skipNextOrbInteract = false;
 let kaelEpicActive = false;
+let heartTexture = null;
+const DRAGON_HEART_ASSET = "./assets/coeur/coeur.png";
+const DRAGON_HEART_ITEM_ID = "coeur-epheria";
+const DRAGON_HEART_SPRITE_SCALE = 0.45;
+const DRAGON_HEART_RADIUS_MIN = 6;
+const DRAGON_HEART_RADIUS_SCALE = 0.02;
 const $boot = document.getElementById("boot");
 const $game = document.getElementById("game");
 const $canvas = document.getElementById("gameCanvas");
@@ -165,7 +171,6 @@ const SOUND_SOURCES = {
   success: "./assets/sounds/enigmes/success.mp3",
   failed: "./assets/sounds/enigmes/failed.mp3",
   princessCry: "./assets/sounds/princesse/crying_princesse.mp3",
-  bossFight: "./assets/sounds/Kael_Spell/boss_fight.mp3",
   ghostWall: "./assets/sounds/Ghost/Laby_ghost.mp3",
   ghostDash: "./assets/sounds/Ghost/Ghost-attack.mp3",
   ghostCreepy: "./assets/sounds/Ghost/Creepy_ghost.mp3",
@@ -1457,6 +1462,7 @@ function syncDialogueOverlay() {
     blueKeyImage,
     bagImage,
     shrubImage,
+    heartImage,
     soundBank,
   ] = await Promise.all([
     loadImage("./assets/hero1.png"),
@@ -1476,6 +1482,7 @@ function syncDialogueOverlay() {
     loadImage(ORB_KEY_ASSET_PATHS.blue),
     loadImage("./assets/key/bag.png"),
     loadImage("./assets/map/arbuste.png"),
+    loadImage("./assets/coeur/coeur.png"),
     loadAudios(SOUND_SOURCES),
   ]);
   const byPath = {
@@ -1495,7 +1502,31 @@ function syncDialogueOverlay() {
     bagTexture = bagImage;
   preQuestShrubTexture = shrubImage;
   preQuestShrubSprite = createShrubSprite(shrubImage);
+  heartTexture = heartImage;
   State.sounds = soundBank ?? {};
+  const kaelDeadClip = kaelAnimations?.dead;
+  if (kaelDeadClip?.frames?.length) {
+    const lastFrame = kaelDeadClip.frames[kaelDeadClip.frames.length - 1];
+    kaelAnimations.dead = {
+      frames: [lastFrame],
+      fps: kaelDeadClip.fps ?? 8,
+      loop: false,
+      sticky: true,
+    };
+  }
+  const keepDeadLastFrame = (animations) => {
+    const deadClip = animations?.dead;
+    if (!deadClip?.frames?.length) return;
+    const lastFrame = deadClip.frames[deadClip.frames.length - 1];
+    animations.dead = {
+      frames: [lastFrame],
+      fps: deadClip.fps ?? 8,
+      loop: false,
+      sticky: true,
+    };
+  };
+  keepDeadLastFrame(kaelAnimations);
+  keepDeadLastFrame(dragonKaelAnimations);
   heroAnimations = heroAnimationsLoaded;
   heroGoldAnimations = heroGoldAnimationsLoaded;
   State.dialoguePortraits = {
@@ -1675,6 +1706,10 @@ function syncDialogueOverlay() {
   State.flags.kaelPhaseThreeDefeated = false;
   State.flags.princessEscapeOffered = false;
   State.flags.endingPending = false;
+  State.flags.kaelCorpseVisible = false;
+  State.flags.dragonHeartDropped = false;
+  State.flags.dragonHeartCollected = false;
+  State.flags.finalEscapeChoice = null;
 
   State.princess = new NPC(princessAnimations, princessPos.x, princessPos.y, "Aelya", {
     scale: ACTOR_SCALE,
@@ -1763,6 +1798,13 @@ function syncDialogueOverlay() {
         notify?.(`+${Math.round(player.hp - before)} HP`);
       },
     }),
+    [DRAGON_HEART_ITEM_ID]: () => ({
+      id: DRAGON_HEART_ITEM_ID,
+      name: "Coeur d'Éphéria",
+      iconSrc: DRAGON_HEART_ASSET,
+      keep: true,
+      inventory: "main",
+    }),
     ...Object.fromEntries(orbKeyEntries),
   };
 
@@ -1828,32 +1870,34 @@ function syncDialogueOverlay() {
     ];
   }
 
-  function buildShrubCollider(shrub) {
-    const sprite = preQuestShrubSprite ?? preQuestShrubTexture;
-    if (!sprite) return null;
-    const scale = shrub?.spriteScale ?? PRE_QUEST_SHRUB_SCALE;
-    const w = (sprite.width * scale * PRE_QUEST_SHRUB_LENGTH_FACTOR) || 0;
-    const h = (sprite.height * scale) || 0;
-    const rad = Math.max(w, h) * 0.5;
-    if (rad <= 0) return null;
-    return { x: shrub.x, y: shrub.y, radius: rad };
-  }
+function buildShrubCollider(shrub) {
+  if (bossMapActive) return null;
+  const sprite = preQuestShrubSprite ?? preQuestShrubTexture;
+  if (!sprite) return null;
+  const scale = shrub?.spriteScale ?? PRE_QUEST_SHRUB_SCALE;
+  const w = (sprite.width * scale * PRE_QUEST_SHRUB_LENGTH_FACTOR) || 0;
+  const h = (sprite.height * scale) || 0;
+  const rad = Math.max(w, h) * 0.5;
+  if (rad <= 0) return null;
+  return { x: shrub.x, y: shrub.y, radius: rad };
+}
 
-  function drawPreQuestShrubSprites(ctx) {
-    const shrubs = State.preQuestShrubs;
-    if (!Array.isArray(shrubs) || shrubs.length === 0) return;
-    const sprite = preQuestShrubSprite ?? preQuestShrubTexture;
-    if (!sprite) return;
-    ctx.save();
-    shrubs.forEach((shrub) => {
-      if (!shrub) return;
-      const scale = shrub.spriteScale ?? PRE_QUEST_SHRUB_SCALE;
-      const w = sprite.width * scale * PRE_QUEST_SHRUB_LENGTH_FACTOR;
-      const h = sprite.height * scale;
-      ctx.drawImage(sprite, shrub.x - w / 2, shrub.y - h / 2, w, h);
-    });
-    ctx.restore();
-  }
+function drawPreQuestShrubSprites(ctx) {
+  if (bossMapActive) return;
+  const shrubs = State.preQuestShrubs;
+  if (!Array.isArray(shrubs) || shrubs.length === 0) return;
+  const sprite = preQuestShrubSprite ?? preQuestShrubTexture;
+  if (!sprite) return;
+  ctx.save();
+  shrubs.forEach((shrub) => {
+    if (!shrub) return;
+    const scale = shrub.spriteScale ?? PRE_QUEST_SHRUB_SCALE;
+    const w = sprite.width * scale * PRE_QUEST_SHRUB_LENGTH_FACTOR;
+    const h = sprite.height * scale;
+    ctx.drawImage(sprite, shrub.x - w / 2, shrub.y - h / 2, w, h);
+  });
+  ctx.restore();
+}
 
   function addBossMapBottomWall(world) {
     if (!world) return;
@@ -1950,8 +1994,8 @@ function syncDialogueOverlay() {
       State.flags.princessQuestAccepted = true;
       State.flags.princessEscapeOffered = false;
     }
-    triggerBetrayal();
     bossMapActive = true;
+    triggerBetrayal();
   }
 
   function createShrubSprite(src) {
@@ -2022,6 +2066,30 @@ function syncDialogueOverlay() {
       iconSrc: ORB_KEY_ASSET_PATHS[color],
       source: opts.source ?? null,
     });
+  }
+
+  function spawnDragonHeartLoot(x, y) {
+    if (!heartTexture || !Number.isFinite(x) || !Number.isFinite(y)) return;
+    const flags = State.flags || (State.flags = {});
+    if (flags.dragonHeartDropped) return;
+    const radius = Math.max(
+      DRAGON_HEART_RADIUS_MIN,
+      getPickupRadiusForTexture(heartTexture, DRAGON_HEART_RADIUS_MIN, DRAGON_HEART_RADIUS_SCALE)
+    );
+    State.pickups.push({
+      type: "dragon-heart",
+      itemId: DRAGON_HEART_ITEM_ID,
+      name: "Coeur d'Éphéria",
+      x,
+      y,
+      radius,
+      spriteScale: DRAGON_HEART_SPRITE_SCALE,
+      blocking: true,
+      collisionShape: "dragon-heart",
+      texture: heartTexture,
+      iconSrc: DRAGON_HEART_ASSET,
+    });
+    flags.dragonHeartDropped = true;
   }
 
   function getRedBagPosition() {
@@ -2489,9 +2557,9 @@ function syncDialogueOverlay() {
           updateRedWall(dt, player);
         } else if (orbRealmState.id === 2) {
           updateGreenBossLifecycle(dt, player);
-          updateGreenWall(dt, player);
         } else if (orbRealmState.id === 3) {
           updateBlueBossLifecycle(dt, player);
+          updateGreenWall(dt, player);
         }
       updateQuestAnnouncement(dt);
       maybeAutoAcceptKaelQuest();
@@ -2621,6 +2689,7 @@ function syncDialogueOverlay() {
         if (State.flags.kaelPhaseThreeStarted && !State.flags.kaelPhaseThreeDefeated) {
           State.flags.kaelPhaseThreeDefeated = true;
           State.flags.princessEscapeOffered = false;
+          State.flags.kaelCorpseVisible = true;
           State.flags.betrayalHappened = false;
           pauseForDialogue(
             [
@@ -2641,12 +2710,22 @@ function syncDialogueOverlay() {
               pushStatus("Parle à Aelya avant que ce lieu ne s'effondre.");
             }
           );
+          spawnDragonHeartLoot(
+            (State.boss?.x ?? State.player?.x ?? 0) + 30,
+            State.boss?.y ?? State.player?.y ?? 0
+          );
         } else if (State.flags.kaelPhaseTwoStarted && !State.flags.kaelPhaseTwoDefeated) {
           State.flags.kaelPhaseTwoDefeated = true;
+          State.flags.kaelCorpseVisible = true;
           preparePrincessForPhaseTwo();
         }
         if (!State.flags.kaelPhaseTwoStarted) {
           State.flags.phaseTwoDialoguePending = true;
+          State.flags.kaelCorpseVisible = true;
+          pauseForDialogue(
+            [{ speaker: "Kael", text: "Ah ! je..." }],
+            () => {}
+          );
           pushStatus("Parle à Aelya pour poursuivre vers la phase deux.");
         } else {
           State.dialogue.show([{ speaker: "Moi", text: "Les ombres ce rapproche, nous devons fuir, et vite." }]);
@@ -2758,6 +2837,11 @@ function syncDialogueOverlay() {
       return true;
     }
     pickup.collected = true;
+    if (item.id === DRAGON_HEART_ITEM_ID) {
+      const flags = State.flags || (State.flags = {});
+      flags.dragonHeartCollected = true;
+      flags.kaelCorpseVisible = false;
+    }
     const name = item.name ?? pickup.name ?? item.id ?? "Objet";
     pushStatus(`${name} récupéré`);
     handlePickups();
@@ -2782,11 +2866,6 @@ function tryInteract() {
       startKaelQuestDialogue();
       return;
     }
-    if (State.flags.phaseTwoDialoguePending) {
-      startPrincessEncounter();
-      return;
-    }
-
     // Princess release example
     if (!State.flags.princessUnlocked) return;
     const dP = Math.hypot(State.player.x - State.princess.x, State.player.y - State.princess.y);
@@ -2801,6 +2880,10 @@ function tryInteract() {
       }
     }
     if (dP < 60 && !State.princess.follow) {
+      if (State.flags.phaseTwoDialoguePending) {
+        startPrincessEncounter();
+        return;
+      }
       if (!State.flags.princessUnlocked) {
         State.dialogue.show([
           {
@@ -2824,11 +2907,18 @@ function tryInteract() {
   }
 
   function startPrincessEncounter() {
+    if (
+      State.flags.kaelPhaseThreeDefeated &&
+      !(State.inventory?.has?.(DRAGON_HEART_ITEM_ID) ?? false)
+    ) {
+      State.pushStatus?.("Retourne chercher le Coeur avant de parler à Aelya.");
+      return;
+    }
     if (State.flags.phaseTwoDialoguePending) {
       pauseForDialogue(
         [
           { speaker: "Moi", text: "J'ai tué mon ami..." },
-          { speaker: "Aelya", text: "C'est terminé Lioran, partons d'ici" },
+          { speaker: "Aelya", text: "C'est terminé Lioran." },
         ],
         () => {
           State.flags.phaseTwoDialoguePending = false;
@@ -4230,7 +4320,7 @@ function beginOrbLightStorm(orbId, originX, originY) {
   }
   pushStatus("Les flèches de lumière s'abattent sur la carte !");
   orbRealmState.teleportEffect = null;
-  if (orbId === 2 || orbId === 0) {
+  if (orbId === 0 || orbId === 3) {
     const wallState = orbRealmState.greenWall ?? { active: false, cooldown: 0, enabled: true };
     wallState.enabled = true;
     wallState.active = false;
@@ -5325,7 +5415,7 @@ function startOrbDialogueSequence(orb, delay = 0) {
         root.classList.add("hidden");
         State.flags.endingPending = false;
         if (!State.flags.kaelPhaseTwoStarted) {
-          startKaelPhaseTwoRequiem();
+          pushStatus("Parle à Aelya pour déclencher la phase deux.");
           return;
         }
         if (!State.flags.kaelPhaseTwoDefeated) {
@@ -5391,6 +5481,7 @@ function startOrbDialogueSequence(orb, delay = 0) {
       hpMultiplier: State.boss.phaseTwo?.hpMultiplier ?? 1.5,
     };
     State.flags.kaelDefeated = false;
+    State.flags.kaelCorpseVisible = false;
     State.flags.endingPending = false;
     State.flags.kaelPhaseTwoStarted = true;
     State.flags.kaelPhaseTwoDefeated = false;
@@ -5487,22 +5578,95 @@ function startOrbDialogueSequence(orb, delay = 0) {
 
   function offerFinalEscapeAfterDragon() {
     State.flags.princessEscapeOffered = true;
-    pauseForDialogue(
-      [
-        {
-          speaker: "Princesse",
-          text: "Le souffle de Kael s'est éteint. Viens, Lioran, quittons pour de bon.",
-        },
-        {
-          speaker: "Princesse",
-          text: "Puisse-tu reposer en Paix.. Kael.. Mage déchu qui aura sombré au voix de ce lieu maudit.",
-        },
-      ],
+  pauseForDialogue(
+    [
+      {
+        speaker: "Princesse",
+        text: "Le souffle de Kael s'est éteint. Viens, Lioran, quittons pour de bon.",
+      },
+      {
+        speaker: "Princesse",
+        text: "Puisse-tu reposer en Paix.. Kael.. Mage déchu qui aura sombré aux voix de ce lieu maudit.",
+      },
+    ],
+    () => {
+      showFinalEscapeChoice();
+    }
+  );
+}
+
+function showFinalEscapeChoice() {
+  if (State.flags?.finalEscapeChoiceOpen) return;
+  State.flags = State.flags || {};
+  State.flags.finalEscapeChoiceOpen = true;
+  State.paused = true;
+  const overlay = document.createElement("div");
+  overlay.style.position = "fixed";
+  overlay.style.inset = "0";
+  overlay.style.background = "rgba(0,0,0,0.6)";
+  overlay.style.display = "flex";
+  overlay.style.alignItems = "center";
+  overlay.style.justifyContent = "center";
+  overlay.style.zIndex = "9999";
+  overlay.style.padding = "24px";
+  const card = document.createElement("div");
+  card.style.background = "#101020";
+  card.style.border = "2px solid #fbd38d";
+  card.style.borderRadius = "16px";
+  card.style.padding = "24px";
+  card.style.maxWidth = "420px";
+  card.style.textAlign = "center";
+  card.style.boxShadow = "0 8px 30px rgba(0,0,0,0.4)";
+  const title = document.createElement("h3");
+  title.textContent = "Aelya te demande un choix";
+  title.style.marginBottom = "12px";
+  const message = document.createElement("p");
+  message.textContent =
+    "La princesse t'implore de lui remettre le Cœur d'Éphéria. Que lui réponds-tu ?";
+  message.style.marginBottom = "18px";
+  const buttons = document.createElement("div");
+  buttons.style.display = "flex";
+  buttons.style.justifyContent = "space-between";
+  buttons.style.gap = "12px";
+  const createButton = (text, choice) => {
+    const btn = document.createElement("button");
+    btn.textContent = text;
+    btn.style.flex = "1";
+    btn.style.padding = "10px 0";
+    btn.style.border = "none";
+    btn.style.borderRadius = "10px";
+    btn.style.cursor = "pointer";
+    btn.style.fontWeight = "600";
+    btn.style.fontSize = "14px";
+    btn.style.background = choice === "agree" ? "#38bdf8" : "#f87171";
+    btn.style.color = "#fff";
+    btn.addEventListener(
+      "click",
       () => {
-        launchFinalEscape();
-      }
+        cleanup(choice);
+      },
+      { once: true }
     );
-  }
+    return btn;
+  };
+  buttons.append(createButton("OUI", "agree"));
+  buttons.append(createButton("NON", "refuse"));
+  card.append(title, message, buttons);
+  overlay.append(card);
+  document.body.appendChild(overlay);
+
+  const cleanup = (choice) => {
+    overlay.remove();
+    State.flags.finalEscapeChoiceOpen = false;
+    State.flags.finalEscapeChoice = choice;
+    State.paused = false;
+    if (choice === "agree") {
+      launchFinalEscape();
+    } else {
+      State.pushStatus?.("Aelya attend toujours que tu lui remettes le cœur.");
+    }
+  };
+}
 
   function launchFinalEscape() {
     playEscapeVideo(() => {
@@ -7045,6 +7209,9 @@ function drawGhosts(ctx) {
     if (!State.bossMusicPending) return;
     if (State.dialogue.isOpen()) return;
     State.bossMusicPending = false;
+    if (bossMapActive) {
+      applyBossMapScaling();
+    }
     startBossMusic();
   }
 
@@ -7109,6 +7276,9 @@ function drawGhosts(ctx) {
   function triggerBetrayal() {
     if (State.flags.betrayalHappened) return;
     State.flags.betrayalHappened = true;
+    State.flags.kaelCorpseVisible = false;
+    State.flags.dragonHeartDropped = false;
+    State.flags.dragonHeartCollected = false;
     State.kael.follow = false;
     State.boss.resetForFight({ x: State.kael.x, y: State.kael.y });
     if (bossMapActive) {
@@ -7185,9 +7355,9 @@ function render() {
         drawActiveLightStorm(ctx);
         drawActiveLightStormTimer(ctx);
       }
-  if (orbRealmState.id === 2 || orbRealmState.id === 0) {
-    drawGreenWall(ctx);
-  }
+      if (orbRealmState.id === 0 || orbRealmState.id === 3) {
+        drawGreenWall(ctx);
+      }
   if (orbRealmState.id === 0) {
     drawRedWall(ctx);
   }
@@ -7221,10 +7391,14 @@ function render() {
         drawQuestMarker(ctx, State.kael);
       }
     }
-    if (State.flags.betrayalHappened && !State.flags.kaelDefeated) {
+    const bossAlive = State.flags.betrayalHappened && !State.flags.kaelDefeated;
+    const bossCorpse = State.flags.kaelCorpseVisible;
+    if (bossAlive || bossCorpse) {
       State.boss.draw(ctx);
-      drawBossHpBar(ctx, boss);
-      drawKaelMechanicIndicator(ctx, boss);
+      if (bossAlive) {
+        drawBossHpBar(ctx, boss);
+        drawKaelMechanicIndicator(ctx, boss);
+      }
     }
     State.player.draw(ctx);
 
@@ -7323,6 +7497,7 @@ function resetGameOverSound() {
     stopBossMusic(true);
     State.bossMusicPending = false;
     el.classList.remove("hidden");
+    const showRetryButton = isOrbRealmActive();
     el.innerHTML = `
       <div class="card">
         <h2>Game Over</h2>
@@ -7348,6 +7523,9 @@ function resetGameOverSound() {
     const el = document.getElementById("ending");
     if (!el) return;
     stopBossMusic(true);
+    if (bossMapActive) {
+      stopKaelEpicTheme();
+    }
     State.bossMusicPending = false;
     State.bossRetryShown = true;
     State.paused = true;
@@ -7415,6 +7593,8 @@ function resetGameOverSound() {
     State.flags.kaelPhaseThreeStarted = false;
     State.flags.kaelPhaseThreeDefeated = false;
     State.flags.princessEscapeOffered = false;
+    State.flags.dragonHeartDropped = false;
+    State.flags.dragonHeartCollected = false;
     if (checkpoint) {
       checkpoint.phase = 1;
       checkpoint.hpMultiplier = 1;
@@ -7427,11 +7607,17 @@ function resetGameOverSound() {
       State.princess.follow = false;
     }
     State.flags.kaelDefeated = false;
+    if (bossMapActive) {
+      applyBossMapScaling();
+    }
     State.dialogue.close();
     clampCameraToPlayer(State.player.x, State.player.y);
     State.fog.reveal(State.player.x, State.player.y, 170);
     State.bossMusicPending = false;
     startBossMusic();
+    if (bossMapActive) {
+      startKaelEpicTheme();
+    }
   }
 
   function goToTitle() {
@@ -7454,12 +7640,13 @@ function renderDeath() {
     State.paused = true;
     State.awaitingEndingButton = true;
     el.classList.remove("hidden");
+    const showRetryButton = isOrbRealmActive();
     el.innerHTML = `
       <div class="card">
         <h2>Les âmes défuntes t'emporte.</h2>
         <p>Ton dernier souvenir disparais dans la poussière d'Ephéria.</p>
         <div class="choices">
-          <button data-retry>Retenter l'épreuve</button>
+          ${showRetryButton ? `<button data-retry>Retenter l'épreuve</button>` : ""}
           <button data-abandon>Retour à l'accueil</button>
         </div>
       </div>`;

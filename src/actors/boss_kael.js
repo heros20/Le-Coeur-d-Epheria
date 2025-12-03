@@ -151,7 +151,11 @@ export class BossKael {
 
     if (!this.alive) {
       this.animator.setBase("dead");
-      this.animator.update(dt);
+      const clip = this.animator.animations?.dead;
+      const count = Math.max(1, clip?.frames?.length ?? 1);
+      this.animator.frameIndex = count - 1;
+      this.animator.frameTimer = 0;
+      this.animator.blocking = null;
       return;
     }
 
