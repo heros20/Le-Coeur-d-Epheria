@@ -31,9 +31,9 @@ let kaelEpicActive = false;
 let heartTexture = null;
 const DRAGON_HEART_ASSET = "./assets/coeur/coeur.png";
 const DRAGON_HEART_ITEM_ID = "coeur-epheria";
-const DRAGON_HEART_SPRITE_SCALE = 0.45;
-const DRAGON_HEART_RADIUS_MIN = 6;
-const DRAGON_HEART_RADIUS_SCALE = 0.02;
+const DRAGON_HEART_SPRITE_SCALE = 0.675;
+const DRAGON_HEART_RADIUS_MIN = 9;
+const DRAGON_HEART_RADIUS_SCALE = 0.03;
 const $boot = document.getElementById("boot");
 const $game = document.getElementById("game");
 const $canvas = document.getElementById("gameCanvas");
@@ -402,6 +402,7 @@ const ORB_LIGHT_STORM_BASE_SPEED = 240;
 const ORB_LIGHT_STORM_MAX_SPEED = 560;
 const ORB_LIGHT_STORM_START_INTERVAL = 0.7;
 const ORB_LIGHT_STORM_END_INTERVAL = 0.18;
+const ORB_PROJECTILE_DENSITY = 0.8; // 80% = -20%
 const ORB_LIGHT_STORM_ARROW_RADIUS = 24;
 const ORB_LIGHT_STORM_BURST_COUNT = 12;
 const ORB_LIGHT_STORM_VERTICAL_OFFSET = 100;
@@ -1593,7 +1594,14 @@ function syncDialogueOverlay() {
   function finalizeWorldLoop(dt) {
     const player = State.player;
     if (!player) return false;
-    if (State.flags.kaelDefeated && State.princess.follow && !State.flags.endingPending) {
+    const flags = State.flags || {};
+    if (
+      State.flags.kaelDefeated &&
+      State.princess.follow &&
+      !State.flags.endingPending &&
+      flags.dragonHeartCollected &&
+      !State.flags.princessBossActive
+    ) {
       if (Math.hypot(player.x - entrance.x, player.y - entrance.y) < entrance.r) {
         State.flags.endingPending = true;
         showOnlyEscapeEnding();
@@ -1601,6 +1609,15 @@ function syncDialogueOverlay() {
     }
     if (player.hp <= 0) {
       State.flags = State.flags || {};
+      if (State.flags.princessBossActive && !State.flags.princessBossDefeated) {
+        if (!State.flags.princessBossDeathPending) {
+          State.flags.princessBossDeathPending = true;
+          State.flags.princessBossActive = false;
+          State.princessMechanics = null;
+          renderAelyaBossGameOver();
+        }
+        return true;
+      }
       if (!State.flags.deathPending) {
         State.flags.deathPending = true;
         State.deathPendingTimer = 0;
@@ -1995,6 +2012,9 @@ function drawPreQuestShrubSprites(ctx) {
       State.flags.princessEscapeOffered = false;
     }
     bossMapActive = true;
+    flashScreen(700);
+    startScreenShake(1200);
+    playSound("kaelEpic", 0.95);
     triggerBetrayal();
   }
 
@@ -2592,7 +2612,7 @@ function drawPreQuestShrubSprites(ctx) {
         ? keyboardVector
         : { x: player.facing === "left" ? -1 : 1, y: 0 };
       const dashed = player.tryDash(map, dashDir);
-      if (dashed && isKaelAllyAlive() && State.flags.princessQuestAccepted) {
+      if (dashed && isKaelAllyAlive() && State.flags.princessQuestAccepted && !bossMapActive) {
         const heroDashDuration = Math.max(
           0.05,
           Number.isFinite(player.dashDuration)
@@ -2616,37 +2636,45 @@ function drawPreQuestShrubSprites(ctx) {
     ) {
       State.princess.follow = true;
     }
-    let kaelTarget = player;
-    const savedKeep = State.kael.keepDistance;
-    if (!State.flags.betrayalHappened && isKaelAllyAlive() && State.flags.kaelAggro) {
-      const nearbyGhost = findNearestAliveGhost(170);
-      if (nearbyGhost) {
-        kaelTarget = nearbyGhost;
-        State.kael.keepDistance = 30;
+    if (!bossMapActive && isKaelAllyAlive()) {
+      const kael = State.kael;
+      if (kael) {
+        let kaelTarget = player;
+        const savedKeep = kael.keepDistance;
+        if (State.flags.kaelAggro) {
+          const nearbyGhost = findNearestAliveGhost(170);
+          if (nearbyGhost) {
+            kaelTarget = nearbyGhost;
+            kael.keepDistance = 30;
+          }
+        }
+        kael.update(dt, kaelTarget, map);
+        const kaelDashTrailLife = 0.36;
+        const kaelDashTrail = State.kaelDashTrail ?? [];
+        if (kael.isPartnerDashing?.()) {
+          kaelDashTrail.push({
+            x: kael.x,
+            y: kael.y,
+            life: kaelDashTrailLife,
+            maxLife: kaelDashTrailLife,
+          });
+          if (kaelDashTrail.length > 28) {
+            kaelDashTrail.splice(0, kaelDashTrail.length - 28);
+          }
+        }
+        kaelDashTrail.forEach((node) => {
+          node.life = Math.max(0, node.life - dt);
+        });
+        State.kaelDashTrail = kaelDashTrail.filter((node) => node.life > 0);
+        kael.keepDistance = savedKeep;
       }
     }
-    State.kael.update(dt, kaelTarget, map);
-    const kaelDashTrailLife = 0.36;
-    const kaelDashTrail = State.kaelDashTrail ?? [];
-    const kael = State.kael;
-    if (kael?.isPartnerDashing?.()) {
-      kaelDashTrail.push({
-        x: kael.x,
-        y: kael.y,
-        life: kaelDashTrailLife,
-        maxLife: kaelDashTrailLife,
-      });
-      if (kaelDashTrail.length > 28) {
-        kaelDashTrail.splice(0, kaelDashTrail.length - 28);
-      }
-    }
-    kaelDashTrail.forEach((node) => {
-      node.life = Math.max(0, node.life - dt);
-    });
-    State.kaelDashTrail = kaelDashTrail.filter((node) => node.life > 0);
-    State.kael.keepDistance = savedKeep;
     if (State.flags.princessUnlocked) {
-      State.princess.update(dt, player, map);
+      if (State.flags.princessBossActive && !State.flags.princessBossDefeated) {
+        updateAelyaBossFight(dt, player, map);
+      } else {
+        State.princess.update(dt, player, map);
+      }
     }
     updateGhosts(dt);
     if (!State.flags.betrayalHappened) {
@@ -2691,25 +2719,8 @@ function drawPreQuestShrubSprites(ctx) {
           State.flags.princessEscapeOffered = false;
           State.flags.kaelCorpseVisible = true;
           State.flags.betrayalHappened = false;
-          pauseForDialogue(
-            [
-              {
-                speaker: "Kael",
-                text: "Je... Pardonne... Moi...",
-              },
-              {
-                speaker: "???",
-                text: "Vous n'êtes pas les bienvenues en ces lieux... PARTEZ !",
-              },
-              {
-                speaker: "Moi",
-                text: "Aelya ! Prends ma main, partons vite !",
-              },
-            ],
-            () => {
-              pushStatus("Parle à Aelya avant que ce lieu ne s'effondre.");
-            }
-          );
+          State.flags.kaelDown = true;
+          // On laisse tomber directement le coeur d'Éphéria sans lancer de dialogue.
           spawnDragonHeartLoot(
             (State.boss?.x ?? State.player?.x ?? 0) + 30,
             State.boss?.y ?? State.player?.y ?? 0
@@ -2856,15 +2867,17 @@ function tryInteract() {
     if (tryInteractOrb()) return;
     if (tryInteractPickup()) return;
     // Simple example: speak to Kael when close
-    const dKael = Math.hypot(State.player.x - State.kael.x, State.player.y - State.kael.y);
-    if (
-      dKael < 70 &&
-      !State.flags.princessQuestAccepted &&
-      !State.orbPromptOpen &&
-      !State.bossRiddleOpen
-    ) {
-      startKaelQuestDialogue();
-      return;
+    if (!bossMapActive) {
+      const dKael = Math.hypot(State.player.x - State.kael.x, State.player.y - State.kael.y);
+      if (
+        dKael < 70 &&
+        !State.flags.princessQuestAccepted &&
+        !State.orbPromptOpen &&
+        !State.bossRiddleOpen
+      ) {
+        startKaelQuestDialogue();
+        return;
+      }
     }
     // Princess release example
     if (!State.flags.princessUnlocked) return;
@@ -3660,7 +3673,7 @@ function handleGoldBossRiddleChoice(choiceIndex) {
   playSound("enigmeFailed");
   stopOrbChallengeSound();
   pauseForDialogue([
-    { speaker: "Fantome", text: "FAUX ! Tu va subir l'épreuve d'Epheria." },
+    { speaker: "Fantome", text: "FAUX ! tu vas subir l'épreuve d'Epheria." },
     { speaker: "Fantome", text: "Tu ne sortira d'ici que si tu survis à mon défi." },
   ]);
   pushStatus(GOLD_BOSS_RIDDLE.failure);
@@ -4289,7 +4302,7 @@ function startOrbLightStorm(orbId) {
   const targetX = originX + ORB_LIGHT_STORM_TARGET_SHIFT_X;
   pauseForDialogue(
     [
-      { speaker: "Fantome", text: "FAUX ! Tu va subir l'épreuve d'Epheria." },
+      { speaker: "Fantome", text: "FAUX ! tu vas subir l'épreuve d'Epheria." },
       { speaker: "Fantome", text: `Si tu parvient à survivre, tu sera libre de poursuivre ta quête.` },
     ],
     () => beginOrbLightStorm(orbId, targetX, originY)
@@ -4320,21 +4333,35 @@ function beginOrbLightStorm(orbId, originX, originY) {
   }
   pushStatus("Les flèches de lumière s'abattent sur la carte !");
   orbRealmState.teleportEffect = null;
+
+  // 💀 Délai avant la première apparition des murs : 3 secondes
+  const ORB_WALL_INITIAL_DELAY = 3;
+
   if (orbId === 0 || orbId === 3) {
-    const wallState = orbRealmState.greenWall ?? { active: false, cooldown: 0, enabled: true };
+    const wallState = orbRealmState.greenWall ?? {
+      active: false,
+      cooldown: 0,
+      enabled: true,
+    };
     wallState.enabled = true;
     wallState.active = false;
-    wallState.cooldown = 0;
+    wallState.cooldown = ORB_WALL_INITIAL_DELAY; // ⬅️ avant 0
     orbRealmState.greenWall = wallState;
   }
+
   if (orbId === 0) {
-    const redWallState = orbRealmState.redWall ?? { active: false, cooldown: 0, enabled: true };
+    const redWallState = orbRealmState.redWall ?? {
+      active: false,
+      cooldown: 0,
+      enabled: true,
+    };
     redWallState.enabled = true;
     redWallState.active = false;
-    redWallState.cooldown = 0;
+    redWallState.cooldown = ORB_WALL_INITIAL_DELAY; // ⬅️ avant 0
     orbRealmState.redWall = redWallState;
   }
 }
+
 
 function createLightStormArrow(origin, opts = {}) {
   if (!origin) return null;
@@ -4397,13 +4424,18 @@ function updateActiveLightStorm(dt, player) {
     storm.spawnAccumulator += dt;
     while (storm.spawnAccumulator >= interval) {
       storm.spawnAccumulator -= interval;
-      const burstCount =
-        storm.orbId === 3
-          ? Math.max(1, Math.round(ORB_LIGHT_STORM_BURST_COUNT * (2 / 3)))
-          : ORB_LIGHT_STORM_BURST_COUNT;
-      for (let i = 0; i < burstCount; i++) {
-        storm.arrows.push(createLightStormArrow(storm.origin));
-      }
+const rawBurst =
+  storm.orbId === 3
+    ? ORB_LIGHT_STORM_BURST_COUNT * (2 / 3)
+    : ORB_LIGHT_STORM_BURST_COUNT;
+
+// 🧮 Applique le -20% ici aussi
+const burstCount = Math.max(1, Math.round(rawBurst * ORB_PROJECTILE_DENSITY));
+
+for (let i = 0; i < burstCount; i++) {
+  storm.arrows.push(createLightStormArrow(storm.origin));
+}
+
       if (hero && hero.hp > 0) {
         const dx = hero.x - storm.origin.x;
         const dy = hero.y - storm.origin.y;
@@ -4676,7 +4708,7 @@ function drawGreenWall(ctx) {
   if (!wallState || !wallState.active || !wallState.rect) return;
   const isRed = orbRealmState.id === 0;
   ctx.save();
-  ctx.fillStyle = isRed ? "rgba(255, 110, 40, 0.85)" : "rgba(46, 192, 101, 0.65)";
+  ctx.fillStyle = isRed ? "rgba(255, 110, 40, 0.85)" : "rgba(28, 95, 150, 0.78)";
   ctx.fillRect(wallState.rect.x, wallState.rect.y, wallState.rect.width, wallState.rect.height);
   ctx.strokeStyle = isRed ? "rgba(255, 180, 90, 0.9)" : "rgba(255,255,255,0.35)";
   ctx.lineWidth = 1.5;
@@ -5461,6 +5493,9 @@ function startOrbDialogueSequence(orb, delay = 0) {
     State.princess.follow = false;
     State.princess.waitingAtEntrance = true;
     State.flags.princessEscapeOffered = false;
+    State.flags.princessBossActive = false;
+    State.flags.princessBossDefeated = false;
+    State.princessMechanics = null;
   }
 
   function startPhaseTwoBattle() {
@@ -5489,9 +5524,12 @@ function startOrbDialogueSequence(orb, delay = 0) {
     State.flags.kaelPhaseThreeDefeated = false;
     State.flags.endingPending = false;
     State.flags.princessEscapeOffered = false;
+    State.flags.princessBossActive = false;
+    State.flags.princessBossDefeated = false;
     State.bossMusicPending = false;
     startBossMusic();
     startKaelEpicTheme();
+    State.princessMechanics = null;
   }
 
   function triggerBossFightShortcut() {
@@ -5571,29 +5609,39 @@ function startOrbDialogueSequence(orb, delay = 0) {
     State.flags.kaelPhaseThreeDefeated = false;
     State.flags.kaelPhaseTwoDefeated = true;
     State.flags.princessEscapeOffered = false;
+    State.flags.princessBossActive = false;
+    State.flags.princessBossDefeated = false;
     State.bossMusicPending = false;
     startBossMusic();
     startKaelEpicTheme();
+    State.princessMechanics = null;
   }
 
   function offerFinalEscapeAfterDragon() {
-    State.flags.princessEscapeOffered = true;
-  pauseForDialogue(
-    [
-      {
-        speaker: "Princesse",
-        text: "Le souffle de Kael s'est éteint. Viens, Lioran, quittons pour de bon.",
-      },
-      {
-        speaker: "Princesse",
-        text: "Puisse-tu reposer en Paix.. Kael.. Mage déchu qui aura sombré aux voix de ce lieu maudit.",
-      },
-    ],
-    () => {
-      showFinalEscapeChoice();
+    const hasHeart = State.inventory?.has?.(DRAGON_HEART_ITEM_ID) ?? false;
+    if (!hasHeart) {
+      State.pushStatus?.("Retourne chercher le Cœur avant de parler à Aelya.");
+      return;
     }
-  );
-}
+    State.flags.princessEscapeOffered = true;
+    State.flags.princessBossActive = false;
+    State.flags.princessBossDefeated = false;
+    pauseForDialogue(
+      [
+        {
+          speaker: "Princesse",
+          text: "Le souffle de Kael s'est éteint. Viens, Lioran, quittons pour de bon.",
+        },
+        {
+          speaker: "Princesse",
+          text: "Puisse-tu reposer en Paix.. Kael.. Mage déchu qui aura sombré aux voix de ce lieu maudit.",
+        },
+      ],
+      () => {
+        showFinalEscapeChoice();
+      }
+    );
+  }
 
 function showFinalEscapeChoice() {
   if (State.flags?.finalEscapeChoiceOpen) return;
@@ -5663,15 +5711,484 @@ function showFinalEscapeChoice() {
     if (choice === "agree") {
       launchFinalEscape();
     } else {
-      State.pushStatus?.("Aelya attend toujours que tu lui remettes le cœur.");
+      State.pushStatus?.("Aelya refuse de te rendre le Cœur.");
+      promptAelyaBossIntro();
     }
   };
 }
 
   function launchFinalEscape() {
     playEscapeVideo(() => {
-      renderEpilogue("release");
+      void renderEpilogue("release", { choice: State.flags.finalEscapeChoice });
     });
+  }
+
+function promptAelyaBossIntro() {
+    pauseForDialogue(
+      [
+        {
+          speaker: "Aelya",
+          text: "Tu ne peux le garder pour toi.. sa puissance est trop grande, et qu'en ferait-tu ?",
+        },
+        {
+          speaker: "Aelya",
+          text: "Tu ne me laisses pas le choix.. Pardonne moi mon amour.",
+        },
+      ],
+      () => {
+        startAelyaBossBattle();
+      }
+    );
+  }
+
+  function startAelyaBossBattle() {
+    if (!State.princess || State.flags.princessBossActive) return;
+    const player = State.player;
+    if (!player) return;
+    const boss = State.princess;
+    State.flags.princessBossActive = true;
+    State.flags.princessBossDefeated = false;
+    State.flags.princessBossDeathPending = false;
+    State.princessBossRetryShown = false;
+    State.princessMechanics = {
+      pulses: [],
+      orbs: [],
+      beams: [],
+      telegraphs: [],
+      currentAction: null,
+      cooldown: 0,
+      lastAction: null,
+      drift: { active: false, timer: 0, angle: 0, radius: 0, direction: 1 },
+    };
+    const baseHp = boss.maxHp ?? 200;
+    boss.hp = boss.maxHp = Math.max(200, baseHp);
+    boss.attackRange = boss.attackRange ?? 48;
+    boss.attackDamage = 26;
+    boss.attackCooldown = 1.2;
+    boss.speed = 150;
+    boss.keepDistance = 12;
+    boss.follow = true;
+    boss.hitRadius = Math.max(PLAYER_RADIUS, boss.hitRadius ?? PLAYER_RADIUS);
+    boss.realmLabel = "Aelya";
+    boss.realmColor = "rgba(255, 190, 190, 0.95)";
+    const offset = player.facing === "left" ? -80 : 80;
+    boss.x = player.x + offset;
+    boss.y = player.y;
+    State.flags.endingPending = false;
+    pushStatus?.("Aelya te défie. Prépare-toi !");
+    startBossMusic();
+  }
+
+  function spawnRadiantPulse(boss) {
+    if (!boss) return null;
+    return {
+      x: boss.x,
+      y: boss.y,
+      radius: 0,
+      maxRadius: 210,
+      thickness: 16,
+      speed: 240,
+      damage: 16,
+      hit: false,
+    };
+  }
+
+  function spawnLuminousOrbs(boss) {
+    if (!boss) return [];
+    const count = 4;
+    const speed = 150;
+    const orbs = [];
+    for (let i = 0; i < count; i += 1) {
+      const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.35;
+      orbs.push({
+        x: boss.x,
+        y: boss.y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        lifetime: 1.8,
+        radius: 10,
+        damage: 14,
+        hit: false,
+      });
+    }
+    return orbs;
+  }
+
+  function spawnCelestialBeam(boss, player) {
+    if (!boss || !player) return null;
+    const angle = Math.atan2(player.y - boss.y, player.x - boss.x);
+    return {
+      x: boss.x,
+      y: boss.y,
+      angle,
+      dirX: Math.cos(angle),
+      dirY: Math.sin(angle),
+      length: 360,
+      width: 18,
+      timer: 0.85,
+      damage: 20,
+      hitCooldown: 0,
+    };
+  }
+
+  function startAelyaDrift(boss, player, mechanics) {
+    if (!boss || !player || !mechanics) return;
+    const angle = Math.atan2(player.y - boss.y, player.x - boss.x);
+    mechanics.drift = {
+      active: true,
+      timer: AELYA_ACTIONS.drift.duration,
+      angle,
+      radius: 120 + Math.random() * 60,
+      direction: Math.random() < 0.5 ? -1 : 1,
+    };
+  }
+
+  function beginAelyaAction(mechanics, name, boss, player) {
+    const config = AELYA_ACTIONS[name];
+    if (!config || !mechanics) return;
+    mechanics.currentAction = {
+      name,
+      config,
+      phase: "telegraph",
+      timer: config.telegraph,
+    };
+    ensureAelyaTelegraph(mechanics, name, config.telegraph);
+  }
+
+  function finishAelyaAction(mechanics) {
+    if (!mechanics?.currentAction) return;
+    const { name, config } = mechanics.currentAction;
+    mechanics.lastAction = name;
+    mechanics.cooldown = (config?.cooldown ?? 1.2) + Math.random() * 0.4;
+    mechanics.currentAction = null;
+    if (mechanics.drift) {
+      mechanics.drift.active = false;
+    }
+  }
+
+  function tryQueueAelyaAction(mechanics, boss, player) {
+    if (!mechanics || mechanics.currentAction) return;
+    const available = Object.keys(AELYA_ACTIONS).filter((entry) => entry !== mechanics.lastAction);
+    const choices = available.length ? available : Object.keys(AELYA_ACTIONS);
+    const nextAction = choices[Math.floor(Math.random() * choices.length)];
+    beginAelyaAction(mechanics, nextAction, boss, player);
+  }
+
+  function aelyaDealDamage(player, amount) {
+    if (!player || amount <= 0) return;
+    const dealt = dealDamageToTarget(player, amount);
+    if (dealt > 0) {
+      spawnFloatingText(Math.round(dealt), player.x, player.y - 20, {
+        color: "rgba(255,220,220,0.95)",
+        stroke: "rgba(0,0,0,0.6)",
+      });
+    }
+  }
+
+  function projectOnLine(px, py, lx, ly, dx, dy) {
+    const vx = px - lx;
+    const vy = py - ly;
+    return vx * dx + vy * dy;
+  }
+
+  function distanceToLine(px, py, lx, ly, dx, dy) {
+    const vx = px - lx;
+    const vy = py - ly;
+    return vx * -dy + vy * dx;
+  }
+
+  function updateAelyaMechanics(dt, player, boss) {
+    const mechanics = State.princessMechanics;
+    if (!mechanics || !player || !boss) return;
+    mechanics.cooldown = Math.max(0, mechanics.cooldown - dt);
+    const active = mechanics.currentAction;
+    if (active) {
+      active.timer -= dt;
+      if (active.phase === "telegraph") {
+        if (active.timer <= 0) {
+          active.phase = "active";
+          active.timer = active.config.duration;
+          mechanics.telegraphs = (mechanics.telegraphs ?? []).filter(
+            (tele) => tele.type !== active.name
+          );
+          active.config.effect?.(boss, player, mechanics);
+        }
+      } else if (active.phase === "active") {
+        if (active.timer <= 0) {
+          finishAelyaAction(mechanics);
+        }
+      }
+    } else if (mechanics.cooldown <= 0) {
+      tryQueueAelyaAction(mechanics, boss, player);
+    }
+
+    if (mechanics.drift?.active) {
+      mechanics.drift.timer = Math.max(0, mechanics.drift.timer - dt);
+      if (mechanics.drift.timer <= 0) {
+        mechanics.drift.active = false;
+      }
+    }
+
+    mechanics.pulses = mechanics.pulses
+      .map((pulse) => {
+        pulse.radius += pulse.speed * dt;
+        const dist = Math.hypot(player.x - pulse.x, player.y - pulse.y);
+        if (!pulse.hit && Math.abs(dist - pulse.radius) <= pulse.thickness) {
+          aelyaDealDamage(player, pulse.damage);
+          pulse.hit = true;
+        }
+        if (pulse.radius >= pulse.maxRadius + pulse.thickness) {
+          return null;
+        }
+        return pulse;
+      })
+      .filter(Boolean);
+
+    const playerReach = player.r ?? 10;
+    mechanics.orbs = mechanics.orbs
+      .map((orb) => {
+        orb.x += orb.vx * dt;
+        orb.y += orb.vy * dt;
+        orb.lifetime -= dt;
+        const dist = Math.hypot(player.x - orb.x, player.y - orb.y);
+        if (!orb.hit && dist <= orb.radius + playerReach) {
+          aelyaDealDamage(player, orb.damage);
+          orb.hit = true;
+        }
+        if (orb.lifetime <= 0 || orb.hit) {
+          return null;
+        }
+        return orb;
+      })
+      .filter(Boolean);
+
+    mechanics.beams = mechanics.beams
+      .map((beam) => {
+        beam.timer -= dt;
+        beam.hitCooldown = Math.max(0, beam.hitCooldown - dt);
+        const dirX = Math.cos(beam.angle);
+        const dirY = Math.sin(beam.angle);
+        const relX = player.x - beam.x;
+        const relY = player.y - beam.y;
+        const proj = relX * dirX + relY * dirY;
+        if (proj > 0 && proj < beam.length) {
+          const perp = Math.abs(relX * -dirY + relY * dirX);
+          if (Math.abs(perp) <= beam.width) {
+            if (beam.hitCooldown <= 0) {
+              aelyaDealDamage(player, beam.damage * dt);
+              beam.hitCooldown = 0.18;
+            }
+          }
+        }
+        if (beam.timer <= 0) return null;
+        return beam;
+      })
+      .filter(Boolean);
+    mechanics.telegraphs = (mechanics.telegraphs ?? [])
+      .map((tele) => {
+        tele.remaining = Math.max(0, tele.remaining - dt);
+        return tele.remaining > 0 ? tele : null;
+      })
+      .filter(Boolean);
+  }
+
+  function drawAelyaMechanics(ctx) {
+    if (!ctx || !State.princessMechanics) return;
+    const mechanics = State.princessMechanics;
+    const boss = State.princess;
+    const player = State.player;
+    if (!boss || !player) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    mechanics.pulses.forEach((pulse) => {
+      const grad = ctx.createRadialGradient(
+        pulse.x,
+        pulse.y,
+        Math.max(2, pulse.radius * 0.3),
+        pulse.x,
+        pulse.y,
+        pulse.radius + 12
+      );
+      grad.addColorStop(0, "rgba(255,255,255,0.2)");
+      grad.addColorStop(0.5, "rgba(255,210,180,0.4)");
+      grad.addColorStop(1, "rgba(255,120,120,0)");
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.arc(pulse.x, pulse.y, pulse.radius, 0, Math.PI * 2);
+      ctx.stroke();
+    });
+    mechanics.orbs.forEach((orb) => {
+      ctx.save();
+      ctx.shadowColor = "rgba(255,210,170,0.9)";
+      ctx.shadowBlur = 18;
+      ctx.fillStyle = "rgba(255,255,220,0.95)";
+      ctx.beginPath();
+      ctx.arc(orb.x, orb.y, orb.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineWidth = 1.8;
+      ctx.strokeStyle = "rgba(255,255,255,0.45)";
+      ctx.stroke();
+      ctx.restore();
+    });
+    mechanics.beams.forEach((beam) => {
+      ctx.save();
+      ctx.translate(beam.x, beam.y);
+      const angle = Math.atan2(beam.dirY, beam.dirX);
+      ctx.rotate(angle);
+      const gradient = ctx.createLinearGradient(0, -beam.width * 0.6, beam.length, beam.width * 0.6);
+      gradient.addColorStop(0, "rgba(255,255,255,0.7)");
+      gradient.addColorStop(0.3, "rgba(255,190,220,0.45)");
+      gradient.addColorStop(1, "rgba(255,120,170,0)");
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, -beam.width, beam.length, beam.width * 2);
+      ctx.restore();
+    });
+    ctx.restore();
+    mechanics.telegraphs?.forEach((tele) => {
+      const progress = tele.remaining / Math.max(0.0001, tele.duration);
+      ctx.save();
+      const alpha = 0.65 * progress;
+      if (tele.type === "pulse") {
+        ctx.strokeStyle = `rgba(255, 220, 200, ${alpha})`;
+        ctx.lineWidth = 6 + (1 - progress) * 6;
+        ctx.beginPath();
+        ctx.arc(boss.x, boss.y, 200, 0, Math.PI * 2);
+        ctx.stroke();
+      } else if (tele.type === "orb") {
+        ctx.strokeStyle = `rgba(255, 200, 255, ${alpha * 0.9})`;
+        ctx.lineWidth = 3;
+        const dotCount = 6;
+        const radius = 180;
+        for (let i = 0; i < dotCount; i += 1) {
+          const angle = (i / dotCount) * Math.PI * 2 + tele.remaining * 2;
+          ctx.beginPath();
+          ctx.arc(
+            boss.x + Math.cos(angle) * radius,
+            boss.y + Math.sin(angle) * radius,
+            4 + progress * 3,
+            0,
+            Math.PI * 2
+          );
+          ctx.stroke();
+        }
+      } else if (tele.type === "beam" && player) {
+        const angle = Math.atan2(player.y - boss.y, player.x - boss.x);
+        ctx.translate(boss.x, boss.y);
+        ctx.rotate(angle);
+        ctx.strokeStyle = `rgba(255, 240, 180, ${alpha * 0.6})`;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(0, -20);
+        ctx.lineTo(280, -20);
+        ctx.moveTo(0, 20);
+        ctx.lineTo(280, 20);
+        ctx.stroke();
+      }
+      ctx.restore();
+    });
+  }
+
+  function updateAelyaBossFight(dt, player, map) {
+    if (!State.flags.princessBossActive || State.flags.princessBossDefeated) return;
+    const boss = State.princess;
+    if (!boss || !player) return;
+    const mechanics = State.princessMechanics;
+    boss.speed = 150;
+    boss.follow = false;
+    boss.keepDistance = 200;
+    boss.update(dt, player, map);
+    updateAelyaMechanics(dt, player, boss);
+    const driftActive = Boolean(mechanics?.drift?.active);
+    const previewActive = (mechanics?.telegraphs?.length ?? 0) > 0;
+    const dx = player.x - boss.x;
+    const dy = player.y - boss.y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const dirX = dx / dist;
+    const dirY = dy / dist;
+    const desiredDistance = previewActive ? 90 : 200;
+    const moveSpeed = previewActive ? 180 : 50;
+    if (driftActive && mechanics?.drift) {
+      const drift = mechanics.drift;
+      drift.angle += drift.direction * Math.PI * 1.8 * dt;
+      const targetX = player.x + Math.cos(drift.angle) * drift.radius;
+      const targetY = player.y + Math.sin(drift.angle) * drift.radius;
+      const diffX = targetX - boss.x;
+      const diffY = targetY - boss.y;
+      const diffNorm = Math.max(0.0001, Math.hypot(diffX, diffY));
+      boss.x += (diffX / diffNorm) * 240 * dt;
+      boss.y += (diffY / diffNorm) * 240 * dt;
+    } else {
+      let moveX = 0;
+      let moveY = 0;
+      if (previewActive) {
+        if (dist > 120) {
+          moveX = dirX * moveSpeed * dt;
+          moveY = dirY * moveSpeed * dt;
+        }
+      } else {
+        if (dist < desiredDistance - 18) {
+          moveX = -dirX * moveSpeed * dt;
+          moveY = -dirY * moveSpeed * dt;
+        } else if (dist > desiredDistance + 18) {
+          moveX = dirX * moveSpeed * dt;
+          moveY = dirY * moveSpeed * dt;
+        }
+      }
+      if (moveX !== 0 || moveY !== 0) {
+        boss.x += moveX;
+        boss.y += moveY;
+      }
+    }
+    const newDx = player.x - boss.x;
+    const newDy = player.y - boss.y;
+    const newDist = Math.hypot(newDx, newDy) || 1;
+    const attackRange = player.attackRadius ?? 70;
+    if (
+      player.canDealAttackDamage?.() &&
+      newDist < attackRange &&
+      player.isTargetInAttackArc?.(boss.x, boss.y)
+    ) {
+      const dmg = player.getCurrentAttackDamage?.() ?? 15;
+      const defeated = boss.applyDamage?.(dmg);
+      if (typeof spawnFloatingText === "function") {
+        spawnFloatingText(dmg, boss.x, boss.y - 20, {
+          color: "rgba(255,180,180,1)",
+          stroke: "rgba(0,0,0,0.6)",
+        });
+      }
+      player.confirmAttackHit?.();
+      if (defeated) {
+        handleAelyaBossDefeat();
+      }
+    }
+  }
+
+  function handleAelyaBossDefeat() {
+    State.flags.finalEscapeChoice = State.flags.finalEscapeChoice ?? "refuse";
+    State.flags.princessBossActive = false;
+    State.flags.princessBossDefeated = true;
+    if (State.princess) {
+      State.princess.follow = true;
+    }
+    State.flags.endingPending = false;
+    stopBossMusic(true);
+    State.princessMechanics = null;
+    pauseForDialogue(
+      [
+        {
+          speaker: "Aelya",
+          text: "Tu nous as tous.. Condamné..",
+        },
+        {
+          speaker: "Moi",
+          text: "Ce pouvoir désormais m'appartient.",
+        },
+      ],
+      () => {
+        launchFinalEscape();
+      }
+    );
   }
 
   function spawnGhosts(world, spawnPoint, animations, count = 5) {
@@ -5740,6 +6257,59 @@ function createGhost(x, y, animations) {
   };
 }
 
+const AELYA_TELEGRAPH_WARN = {
+  pulse: 0.85,
+  orb: 1.1,
+  beam: 1.4,
+  drift: 0.9,
+};
+
+const AELYA_ACTIONS = {
+  pulse: {
+    telegraph: 0.85,
+    duration: 1.4,
+    cooldown: 2.2,
+    effect: (boss, player, mechanics) => {
+      const pulse = spawnRadiantPulse(boss);
+      if (pulse) mechanics.pulses.push(pulse);
+    },
+  },
+  orb: {
+    telegraph: 1.0,
+    duration: 1.6,
+    cooldown: 2.4,
+    effect: (boss, player, mechanics) => {
+      mechanics.orbs.push(...spawnLuminousOrbs(boss));
+    },
+  },
+  beam: {
+    telegraph: 0.7,
+    duration: 1.3,
+    cooldown: 2.1,
+    effect: (boss, player, mechanics) => {
+      const beam = spawnCelestialBeam(boss, player);
+      if (beam) {
+        mechanics.beams.push(beam);
+      }
+    },
+  },
+  drift: {
+    telegraph: 0.9,
+    duration: 1.5,
+    cooldown: 2.6,
+    effect: (boss, player, mechanics) => {
+      startAelyaDrift(boss, player, mechanics);
+    },
+  },
+};
+
+function ensureAelyaTelegraph(mechanics, type, duration) {
+  if (!mechanics || !type) return;
+  if ((mechanics.telegraphs ?? []).some((tele) => tele.type === type)) return;
+  mechanics.telegraphs = mechanics.telegraphs ?? [];
+  mechanics.telegraphs.push({ type, remaining: duration, duration });
+}
+
 function dealDamageToTarget(target, amount) {
   if (!target || !Number.isFinite(amount) || amount <= 0) return 0;
   if (target.realmId === 0 || target.realmId === 3) return 0;
@@ -5780,11 +6350,16 @@ function spawnOrbProjectile(ghost, angle, speed, damage, opts = {}) {
 
 function spawnOrbProjectileCircle(ghost, count, speed, damage, opts = {}) {
   if (!Number.isFinite(count) || count <= 0) return;
-  for (let i = 0; i < count; i += 1) {
-    const angle = (i / count) * Math.PI * 2;
+
+  // 🧮 Réduction globale du nombre de projectiles
+  const effectiveCount = Math.max(1, Math.round(count * ORB_PROJECTILE_DENSITY));
+
+  for (let i = 0; i < effectiveCount; i += 1) {
+    const angle = (i / effectiveCount) * Math.PI * 2;
     spawnOrbProjectile(ghost, angle, speed, damage, opts);
   }
 }
+
 
 function spawnOrbHazard(x, y, radius, duration, damage, opts = {}) {
   if (!Number.isFinite(radius) || radius <= 0 || !Number.isFinite(duration) || duration <= 0) return;
@@ -7163,9 +7738,9 @@ function drawGhosts(ctx) {
         { speaker: "???", text: "h..h...h..ha ha ha ha HA HA HA HA HA HA HA" },
       ],
       () => {
-        playEscapeVideo(() => {
-          renderEpilogue("release");
-        });
+      playEscapeVideo(() => {
+        void renderEpilogue("release", { choice: State.flags.finalEscapeChoice });
+      });
       }
     );
   }
@@ -7279,6 +7854,9 @@ function drawGhosts(ctx) {
     State.flags.kaelCorpseVisible = false;
     State.flags.dragonHeartDropped = false;
     State.flags.dragonHeartCollected = false;
+    State.flags.princessBossActive = false;
+    State.flags.princessBossDefeated = false;
+    State.princessMechanics = null;
     State.kael.follow = false;
     State.boss.resetForFight({ x: State.kael.x, y: State.kael.y });
     if (bossMapActive) {
@@ -7382,9 +7960,10 @@ function render() {
     if (State.flags.princessUnlocked) {
       State.princess.draw(ctx);
     }
-    if (!State.flags.betrayalHappened) {
+    const kaelVisible = !bossMapActive && isKaelAllyAlive();
+    if (kaelVisible) {
       State.kael.draw(ctx);
-      if (State.flags.princessQuestAccepted && isKaelAllyAlive()) {
+      if (State.flags.princessQuestAccepted) {
         drawKaelAllyHpBar(ctx, State.kael);
       }
       if (!State.flags.princessQuestAccepted) {
@@ -7400,7 +7979,11 @@ function render() {
         drawKaelMechanicIndicator(ctx, boss);
       }
     }
+    if (State.flags.princessBossActive && !State.flags.princessBossDefeated) {
+      drawBossHpBar(ctx, State.princess);
+    }
     State.player.draw(ctx);
+    drawAelyaMechanics(ctx);
 
     if (State.player?.isAttackActive?.()) {
       const facing = State.player?.facing === "left" ? Math.PI : 0;
@@ -7428,11 +8011,13 @@ function render() {
 
     ctx.restore();
     ctx.restore();
-    drawAtmosphericFog(ctx, $canvas.width, $canvas.height);
+    if (!State.flags.princessBossActive) {
+      drawAtmosphericFog(ctx, $canvas.width, $canvas.height);
+    }
 
     const playerScreenX = (player.x - camX) * scaleX;
     const playerScreenY = (player.y - camY) * scaleY;
-    if (!State.flags.betrayalHappened || State.flags.kaelDefeated) {
+    if ((!State.flags.betrayalHappened || State.flags.kaelDefeated) && !State.flags.princessBossActive) {
       drawHeroShroud(ctx, playerScreenX, playerScreenY);
     }
     if (State.bossObjective) {
@@ -7565,6 +8150,57 @@ function resetGameOverSound() {
     });
   }
 
+  function renderAelyaBossGameOver() {
+    if (State.princessBossRetryShown) return;
+    const el = document.getElementById("ending");
+    if (!el) return;
+    stopBossMusic(true);
+    State.flags.princessBossActive = false;
+    State.princessMechanics = null;
+    State.flags.princessBossDeathPending = false;
+    State.princessBossRetryShown = true;
+    State.paused = true;
+    State.awaitingEndingButton = true;
+    el.classList.remove("hidden");
+    el.innerHTML = `
+      <div class="card">
+        <h2>Game Over</h2>
+        <p>Aelya t'a repoussé. Relance le duel !</p>
+        <div class="choices">
+          <button data-retry-aelya>Retenter le combat</button>
+          <button data-abandon>Abandonner</button>
+        </div>
+      </div>`;
+    const retryBtn = el.querySelector("[data-retry-aelya]");
+    const abandonBtn = el.querySelector("[data-abandon]");
+    retryBtn?.addEventListener(
+      "click",
+      () => {
+        State.princessBossRetryShown = false;
+        State.awaitingEndingButton = false;
+        State.paused = false;
+        el.classList.add("hidden");
+        el.innerHTML = "";
+        if (State.player) {
+          State.player.hp = State.player.maxHp ?? 100;
+          State.player.stamina = State.player.staminaMax;
+        }
+        startAelyaBossBattle();
+      },
+      { once: true }
+    );
+    abandonBtn?.addEventListener(
+      "click",
+      () => {
+        State.princessBossRetryShown = false;
+        State.awaitingEndingButton = false;
+        State.paused = false;
+        goToTitle();
+      },
+      { once: true }
+    );
+  }
+
   function retryBossFight() {
     const el = document.getElementById("ending");
     if (el) {
@@ -7595,6 +8231,9 @@ function resetGameOverSound() {
     State.flags.princessEscapeOffered = false;
     State.flags.dragonHeartDropped = false;
     State.flags.dragonHeartCollected = false;
+    State.flags.princessBossActive = false;
+    State.flags.princessBossDefeated = false;
+    State.princessMechanics = null;
     if (checkpoint) {
       checkpoint.phase = 1;
       checkpoint.hpMultiplier = 1;
@@ -7728,10 +8367,17 @@ function renderDeath() {
     }
     State.awaitingEndingButton = false;
     State.paused = false;
+
     if (State.player) {
-      State.player.hp = State.player.maxHp ?? 100;
+      // Reset HP / état combat
+      State.player.hp = State.player.maxHp ?? 200;
       State.player.resetCombatState?.();
+
+      // 🔁 Respawn au-dessus du centre de la map d’orbe
+      State.player.x = ORB_REALM_CENTER.x;
+      State.player.y = ORB_REALM_CENTER.y - 100; // 100px au-dessus du centre
     }
+
     if (opts.showDialogue && orbRealmState.goldBoss) {
       orbRealmState.goldBoss.stage = "storm";
       orbRealmState.goldBoss.returnUnlocked = false;

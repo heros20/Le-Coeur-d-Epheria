@@ -47,6 +47,7 @@ export const State = {
   bossObjectiveReminder: null,
   bossObjectiveReminderActive: false,
   awaitingEndingButton: false,
+  princessBossRetryShown: false,
   dialoguePortraits: {
     hero1: null,
     hero2: null,
@@ -78,6 +79,9 @@ export const State = {
     endingPending: false,
     visited: new Set(),
     princessUnlocked: false,
+    princessBossActive: false,
+    princessBossDefeated: false,
+    princessBossDeathPending: false,
     princessQuestBlockedForOrbs: false,
   }
 };

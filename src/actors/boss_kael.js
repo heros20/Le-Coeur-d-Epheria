@@ -37,7 +37,7 @@ export class BossKael {
     this.windupDuration = cfg.attackWindup ?? 0.75;
     this.dashDuration = cfg.dashDuration ?? 0.35;
     this.dashSpeed = cfg.dashSpeed ?? this.speed * 3;
-    this.dashDamage = cfg.dashDamage ?? 40;
+    this.dashDamage = cfg.dashDamage ?? 25;
     this.knockback = cfg.knockback ?? 24;
     this.knockbackResistance = cfg.knockbackResistance ?? 0.35;
         // Distances "confort" pour l'IA de Kael
@@ -105,10 +105,18 @@ export class BossKael {
     this.lastAction = null;
     this.lastMoveVector = { x: 0, y: 0 };
     this._meteorLaunchActive = 0;
+    this.dashZones = [];
+    this._dashSequence = { active: false, points: [], index: 0 };
+    this._closeTimer = 0;
+    this._fleeing = false;
+    this._fleeTimer = 0;
+    this._fleeThreshold = 2;
+    this._fleeDuration = 5;
   }
 
   enterPhaseThree(opts = {}) {
     this.phase = 3;
+    this._pendingMechanic = null;
     const multiplier = Number.isFinite(opts.hpMultiplier)
       ? opts.hpMultiplier
       : this.phaseThreeCfg.hpMultiplier;
@@ -173,12 +181,12 @@ export class BossKael {
 
     const dx = player.x - this.x;
     const dy = player.y - this.y;
-    const dist = Math.hypot(dx, dy) || 1;
+    const dist = Math.max(Math.hypot(dx, dy), 0.0001);
     const dirX = dx / dist;
     const dirY = dy / dist;
     let moved = false;
-
     let stuckAgainstWall = false;
+    const fleeState = this._handleFleeState(dt, dist, dirX, dirY, world);
 
     if (this.windupTimer > 0) {
       this.windupTimer -= dt;
@@ -198,11 +206,13 @@ export class BossKael {
         player.applyDamage(this.dashDamage);
         this.dashHit = true;
       }
-      if (this.dashTimer <= 0) {
-        this.telegraph = null;
-        this._finishAction("dash");
-      }
-        } else {
+        if (this.dashTimer <= 0) {
+          this.telegraph = null;
+          if (!this._handleDashCompletion(world)) {
+            this._finishAction("dash");
+          }
+        }
+          } else if (!fleeState.handled) {
       let moveX = 0;
       let moveY = 0;
 
@@ -257,6 +267,11 @@ export class BossKael {
       if (!moved && dist < this.hitRadius + 20) {
         stuckAgainstWall = true;
       }
+    } else {
+      moved = fleeState.moved;
+      if (!moved && dist < this.hitRadius + 20) {
+        stuckAgainstWall = true;
+      }
     }
 
 
@@ -266,6 +281,7 @@ export class BossKael {
     this.animator.update(dt);
 
     this._updateOrbs(dt, player);
+    this._updateDashZones(dt, player);
     this._updateFissures(dt, player);
     if (this.phase === 2) {
       this._updateSigils(dt, player);
@@ -318,10 +334,12 @@ export class BossKael {
     this.animator.play?.("idle", { force: true, sticky: true });
     this.currentAction = null;
     this.lastAction = null;
+    this._pendingMechanic = null;
   }
 
   enterPhaseTwo(opts = {}) {
     this.phase = 2;
+    this._pendingMechanic = null;
     const multiplier = Number.isFinite(opts.hpMultiplier)
       ? opts.hpMultiplier
       : this.phaseTwo.hpMultiplier;
@@ -431,9 +449,10 @@ export class BossKael {
     } else if (this.phase === 3) {
       this._drawMeteors(ctx);
       this._drawShockwaves(ctx);
-    this._drawStormBolts(ctx);
-    this._drawInferno(ctx);
+      this._drawStormBolts(ctx);
+      this._drawInferno(ctx);
     }
+    this._drawDashZones(ctx);
 
     const frame = this.animator.getFrame();
     if (!frame) return;
@@ -458,19 +477,99 @@ export class BossKael {
       radius: Math.max(50, this.attackRange * 0.35),
       progress: 0,
     };
-    this.lastTarget = { x: player.x, y: player.y };
+    this._prepareDashSequence(player);
+    const firstTarget = this._dashSequence.points?.[0];
+    this.lastTarget = firstTarget
+      ? { x: firstTarget.x, y: firstTarget.y }
+      : { x: player.x, y: player.y };
     this.animator.setBase("idle");
     this._playSound("kaelJump");
   }
 
+  _prepareDashSequence(player) {
+    if (!player) return;
+    const diag = this._mapDiagonal();
+    const minSegment = Math.max(120, diag * 0.3);
+    const maxSegment = Math.max(minSegment, diag * 0.6);
+    const baseAngle = Math.random() * Math.PI * 2;
+    const rotate = (Math.PI * 2) / 3;
+    const points = [];
+    for (let index = 0; index < 3; index += 1) {
+      const angle = baseAngle + rotate * index;
+      points.push(
+        this._dashPointFrom(player, angle, minSegment, maxSegment)
+      );
+    }
+    this._dashSequence.points = points;
+    this._dashSequence.index = 0;
+    this._dashSequence.active = true;
+  }
+
+  _dashPointFrom(origin, angle, minDistance, maxDistance) {
+    const distance =
+      minDistance + Math.random() * Math.max(0, maxDistance - minDistance);
+    const point = {
+      x: origin.x + Math.cos(angle) * distance,
+      y: origin.y + Math.sin(angle) * distance,
+    };
+    return this._clampPointToWorld(point);
+  }
+
+  _clampPointToWorld(point) {
+    const world = this._lastWorld;
+    if (!world || !Number.isFinite(world.w) || !Number.isFinite(world.h)) {
+      return point;
+    }
+    const margin = Math.max(40, this.hitRadius ?? 30);
+    const clampedX = Math.max(margin, Math.min(world.w - margin, point.x));
+    const clampedY = Math.max(margin, Math.min(world.h - margin, point.y));
+    return { x: clampedX, y: clampedY };
+  }
+
+  _mapDiagonal() {
+    const world = this._lastWorld;
+    if (world && Number.isFinite(world.w) && Number.isFinite(world.h)) {
+      return Math.max(1, Math.hypot(world.w, world.h));
+    }
+    return 640;
+  }
+
   _beginDash() {
-    const dx = this.lastTarget.x - this.x;
-    const dy = this.lastTarget.y - this.y;
-    const len = Math.hypot(dx, dy) || 1;
+    const target = this._getCurrentDashTarget();
+    if (!target) return;
+    this._startDashToPoint(target);
+  }
+
+  _getCurrentDashTarget() {
+    const points = this._dashSequence.points ?? [];
+    if (this._dashSequence.active && points.length > this._dashSequence.index) {
+      return points[this._dashSequence.index];
+    }
+    return this.lastTarget;
+  }
+
+  _startDashToPoint(point) {
+    const dx = point.x - this.x;
+    const dy = point.y - this.y;
+    const len = Math.max(Math.hypot(dx, dy), 0.0001);
     this.dashVector = { x: dx / len, y: dy / len };
     this.dashTimer = this.dashDuration;
     this.dashHit = false;
     this.dashCanDamage = true;
+    this.lastTarget = { x: point.x, y: point.y };
+  }
+
+  _handleDashCompletion(world) {
+    this._spawnDashZone(this.x, this.y);
+    if (!this._dashSequence.active) return false;
+    this._dashSequence.index += 1;
+    if (this._dashSequence.index < this._dashSequence.points.length) {
+      const target = this._dashSequence.points[this._dashSequence.index];
+      this._startDashToPoint(target);
+      return true;
+    }
+    this._dashSequence.active = false;
+    return false;
   }
 
   _move(world, mx, my) {
@@ -583,6 +682,46 @@ export class BossKael {
     const walk = `walk_${this.facing}`;
     if (this.animator.animations[walk]) return walk;
     return action;
+  }
+
+  _handleFleeState(dt, dist, dirX, dirY, world) {
+    const result = { handled: false, moved: false };
+    const retreatSpeed = this.speed * 0.95;
+    if (dist <= 0) {
+      dirX = 1;
+      dirY = 0;
+    }
+    if (this._fleeing) {
+      this._fleeTimer = Math.max(0, this._fleeTimer - dt);
+      const moveX = -dirX * retreatSpeed * dt;
+      const moveY = -dirY * retreatSpeed * dt;
+      this.lastMoveVector = { x: moveX, y: moveY };
+      result.moved = this._move(world, moveX, moveY);
+      this.animator.setBase(this._directionalAction("run"));
+      if (this._fleeTimer <= 0) {
+        this._fleeing = false;
+      }
+      result.handled = true;
+      return result;
+    }
+    if (dist <= 20) {
+      this._closeTimer += dt;
+      if (this._closeTimer >= this._fleeThreshold) {
+        this._fleeing = true;
+        this._fleeTimer = this._fleeDuration;
+        this._closeTimer = 0;
+        const moveX = -dirX * retreatSpeed * dt;
+        const moveY = -dirY * retreatSpeed * dt;
+        this.lastMoveVector = { x: moveX, y: moveY };
+        result.moved = this._move(world, moveX, moveY);
+        this.animator.setBase(this._directionalAction("run"));
+        result.handled = true;
+        return result;
+      }
+    } else {
+      this._closeTimer = 0;
+    }
+    return result;
   }
 
   _spawnOrbs(player) {
@@ -708,19 +847,38 @@ export class BossKael {
 
   _spawnSigils(player) {
     this.sigils = [];
-    for (let i = 0; i < 3; i++) {
-      const offsetAngle = Math.random() * Math.PI * 2;
-      const offsetDist = 40 + Math.random() * 160;
+    const spacing = 60;
+    const rings = [0, 1, 2];
+    const positions = [];
+    rings.forEach((ring) => {
+      if (ring === 0) {
+        positions.push({ x: 0, y: 0 });
+        return;
+      }
+      const segments = 6 * ring;
+      const radius = spacing * ring;
+      const offset = Math.random() * Math.PI * 2;
+      for (let segment = 0; segment < segments; segment += 1) {
+        const angle = offset + (segment / segments) * Math.PI * 2;
+        positions.push({
+          x: Math.cos(angle) * radius,
+          y: Math.sin(angle) * radius,
+        });
+      }
+    });
+    const baseRadius = 18;
+    const radiusVariance = 5;
+    positions.forEach((offset) => {
       this.sigils.push({
-        x: player.x + Math.cos(offsetAngle) * offsetDist,
-        y: player.y + Math.sin(offsetAngle) * offsetDist,
-        radius: 60 + Math.random() * 20,
-        timer: 0.85 + Math.random() * 0.4,
-        explode: 0.45,
+        x: player.x + offset.x,
+        y: player.y + offset.y,
+        radius: baseRadius + Math.random() * radiusVariance,
+        timer: 0.65 + Math.random() * 0.45,
+        explode: 0.45 + Math.random() * 0.15,
         exploding: false,
         done: false,
       });
-    }
+    });
     this._playSound("kaelOrbCast");
   }
 
@@ -820,6 +978,35 @@ export class BossKael {
           ctx.stroke();
         }
       }
+    }
+    ctx.restore();
+  }
+
+  _drawDashZones(ctx) {
+    if (!this.dashZones.length) return;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const time = (typeof performance !== "undefined" ? performance.now() : Date.now()) * 0.001;
+    for (const zone of this.dashZones) {
+      const alpha = Math.max(0, Math.min(1, zone.timer / Math.max(zone.duration, 0.01)));
+      const radius =
+        zone.radius +
+        (1 - alpha) * 12 +
+        Math.sin(time * 3 + zone.x + zone.y) * 6;
+      const gradient = ctx.createRadialGradient(zone.x, zone.y, 0, zone.x, zone.y, radius);
+      gradient.addColorStop(0, `rgba(255, 190, 70, ${alpha})`);
+      gradient.addColorStop(0.5, `rgba(255, 120, 40, ${alpha * 0.6})`);
+      gradient.addColorStop(1, "rgba(255, 40, 40, 0)");
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(zone.x, zone.y, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.strokeStyle = `rgba(255, 220, 180, ${alpha * 0.7})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(zone.x, zone.y, zone.radius, 0, Math.PI * 2);
+      ctx.stroke();
     }
     ctx.restore();
   }
@@ -924,13 +1111,16 @@ export class BossKael {
 
   _startBeam(player) {
     const angle = Math.atan2(player.y - this.y, player.x - this.x);
+    const duration = 1.4;
     this.beamAttack = {
       angle,
       windup: 0.6,
-      duration: 1.4,
+      duration,
       active: false,
       width: 55,
       reach: 420,
+      baseAngle: angle,
+      totalDuration: duration,
     };
     this._playSound("kaelFireCone");
   }
@@ -946,6 +1136,10 @@ export class BossKael {
       }
     } else {
       beam.duration -= dt;
+      const totalDuration = Math.max(beam.totalDuration ?? beam.duration, 0.0001);
+      const remaining = Math.max(0, beam.duration);
+      const progress = Math.min(1, (totalDuration - remaining) / totalDuration);
+      beam.angle = beam.baseAngle + Math.PI * 2 * progress;
       const dirX = Math.cos(beam.angle);
       const dirY = Math.sin(beam.angle);
       const relX = player.x - this.x;
@@ -1050,21 +1244,53 @@ export class BossKael {
   }
 
   _spawnMeteorRain(player) {
-    const count = 18;
+    const desiredCount = 36;
+    const minSpacing = 60;
+    const areaRadius = 240;
     this.meteors = [];
-    for (let i = 0; i < count; i++) {
-      const offsetAngle = Math.random() * Math.PI * 2;
-      const offsetDist = 60 + Math.random() * 160;
-      const targetX = player.x + Math.cos(offsetAngle) * offsetDist;
-      const targetY = player.y + Math.sin(offsetAngle) * offsetDist;
+    const points = [];
+    let attempts = 0;
+    const maxAttempts = desiredCount * 14;
+    while (points.length < desiredCount && attempts < maxAttempts) {
+      attempts += 1;
+      const angle = Math.random() * Math.PI * 2;
+      const distance = 80 + Math.random() * (areaRadius - 80);
+      const radius = 24 + Math.random() * 10;
+      const candidate = {
+        x: player.x + Math.cos(angle) * distance,
+        y: player.y + Math.sin(angle) * distance,
+        radius,
+      };
+      const tooClose = points.some((prev) => {
+        const dx = prev.x - candidate.x;
+        const dy = prev.y - candidate.y;
+        const distBetween = Math.hypot(dx, dy);
+        const requiredSpacing = minSpacing + prev.radius + candidate.radius;
+        return distBetween < requiredSpacing;
+      });
+      if (tooClose) continue;
+      points.push(candidate);
+    }
+    if (points.length < desiredCount) {
+      for (let i = points.length; i < desiredCount; i += 1) {
+        const fallbackAngle = (Math.PI * 2 * i) / desiredCount;
+        const fallbackRadius = 24 + Math.random() * 10;
+        points.push({
+          x: player.x + Math.cos(fallbackAngle) * areaRadius * 0.7,
+          y: player.y + Math.sin(fallbackAngle) * areaRadius * 0.7,
+          radius: fallbackRadius,
+        });
+      }
+    }
+    for (const point of points) {
       this.meteors.push({
-        targetX,
-        targetY,
+        targetX: point.x,
+        targetY: point.y,
         telegraph: 0.9 + Math.random() * 0.4,
         fall: 0.6 + Math.random() * 0.2,
         state: "telegraph",
         blast: 0.45,
-        radius: 45 + Math.random() * 15,
+        radius: point.radius,
       });
     }
     this._playSound("kaelOrbCast");
@@ -1523,6 +1749,19 @@ export class BossKael {
     this._playSound("kaelFireCone");
   }
 
+  _spawnDashZone(x, y) {
+    const radius = 65;
+    this.dashZones.push({
+      x,
+      y,
+      radius,
+      timer: 3.2,
+      duration: 3.2,
+      damage: this.dashDamage * 0.7,
+      hitCooldown: 0,
+    });
+  }
+
   _updateFissures(dt, player) {
     if (this.fissures.length === 0) return;
     for (const fissure of this.fissures) {
@@ -1594,6 +1833,22 @@ export class BossKael {
       this._finishAction("inferno");
     }
   }
+  _updateDashZones(dt, player) {
+    if (!this.dashZones.length || !player) return;
+    const radiusModifier = player.r ?? 10;
+    this.dashZones = this.dashZones
+      .map((zone) => {
+        zone.timer = Math.max(0, zone.timer - dt);
+        zone.hitCooldown = Math.max(0, (zone.hitCooldown ?? 0) - dt);
+        const dist = Math.hypot(player.x - zone.x, player.y - zone.y);
+        if (dist <= zone.radius + radiusModifier && zone.hitCooldown <= 0) {
+          player.applyDamage(zone.damage * dt);
+          zone.hitCooldown = 0.5;
+        }
+        return zone;
+      })
+      .filter((zone) => zone.timer > 0);
+  }
 
   _announceMechanic(action, delay = 0) {
     if (!this.onMechanic || !action) return;
@@ -1651,6 +1906,7 @@ export class BossKael {
     this.lastAction = name;
     this.cooldownTimer = this.attackCooldown;
     this.dashCanDamage = true;
+    this._dashSequence.active = false;
   }
 
   _tryScheduleAction(player) {
