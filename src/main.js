@@ -409,6 +409,50 @@ const ORB_LIGHT_STORM_VERTICAL_OFFSET = 100;
 const ORB_LIGHT_STORM_ZONE_SHIFT_X = 0;
 const ORB_LIGHT_STORM_TARGET_SHIFT_X = 0;
 const ORB_LIGHT_STORM_GHOST_APPROACH_SPEED = 360;
+const GOLD_CHALLENGE_STORAGE_KEY = "goldChallengeBestTime";
+const GOLD_CHALLENGE_RAMP_DURATION = 140;
+const GOLD_CHALLENGE_GREEN_WALL_DELAY = 90;
+const GOLD_CHALLENGE_EXPLOSION_DELAY = 45;
+const GOLD_CHALLENGE_EXPLOSION_INTERVAL = 5;
+const GOLD_CHALLENGE_RED_WALL_DELAY = 120;
+
+function formatChallengeTime(value) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return "0.0s";
+  }
+  const minutes = Math.floor(value / 60);
+  const seconds = value % 60;
+  if (minutes > 0) {
+    return `${minutes}m ${seconds.toFixed(1)}s`;
+  }
+  return `${seconds.toFixed(1)}s`;
+}
+
+function readGoldChallengeBestTime() {
+  try {
+    const raw = localStorage.getItem(GOLD_CHALLENGE_STORAGE_KEY);
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeGoldChallengeBestTime(value) {
+  if (!Number.isFinite(value) || value <= 0) return;
+  try {
+    localStorage.setItem(GOLD_CHALLENGE_STORAGE_KEY, value.toFixed(1));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function updateGoldChallengeBestDisplay() {
+  const el = document.getElementById("goldChallengeBestScore");
+  if (!el) return;
+  const best = readGoldChallengeBestTime();
+  el.textContent = best ? formatChallengeTime(best) : "Aucun record";
+}
 
 
 function applyHeroAnimations(useGold) {
@@ -1205,11 +1249,16 @@ const ANIMATION_DEFAULTS = {
   dead: { fps: 6, loop: false, sticky: true },
 };
 
+let queuedOrbId = null;
+let queuedOrbStorm = false;
+let goldChallengeModeActive = false;
+
 function setupBoot() {
   const cards = [...document.querySelectorAll(".hero-card")];
   const startBtn = document.getElementById("startBtn");
   const menuToggle = document.getElementById("toggleMenuSound");
   const gameToggle = document.getElementById("toggleGameSound");
+  const goldChallengeBtn = document.getElementById("goldChallengeBtn");
   if (cards.length === 0) return;
   heroSelection = cards[0].getAttribute("data-src");
   cards.forEach((card) => {
@@ -1218,15 +1267,16 @@ function setupBoot() {
   });
   startBtn.disabled = false;
   let startSequenceTriggered = false;
-  const cleanupStartAnimation = () => {
-    if (!startBtn) return;
-    startBtn.classList.remove("menu-btn-launching");
-    startBtn.style.removeProperty("--launch-duration");
+  const cleanupStartAnimation = (btn) => {
+    if (!btn) return;
+    btn.classList.remove("menu-btn-launching");
+    btn.style.removeProperty("--launch-duration");
   };
-  const handleStartClick = () => {
+  const runStartSequence = (options = {}, triggerButton = startBtn) => {
     if (startSequenceTriggered) return;
     startSequenceTriggered = true;
-    if (startBtn) startBtn.disabled = true;
+    const targetBtn = triggerButton ?? startBtn;
+    if (targetBtn) targetBtn.disabled = true;
     menuThemeAudio.pause();
     menuThemeAudio.currentTime = 0;
     const clip = createMenuClip("start", 0.95);
@@ -1235,19 +1285,20 @@ function setupBoot() {
       return () => {
         if (done) return;
         done = true;
-        cleanupStartAnimation();
-        startGame();
+        cleanupStartAnimation(targetBtn);
+        if (targetBtn) targetBtn.disabled = false;
+        startGame(options);
       };
     })();
     if (!clip) {
       finalize();
       return;
     }
-    startBtn.classList.add("menu-btn-launching");
+    if (targetBtn) targetBtn.classList.add("menu-btn-launching");
     const applyDuration = () => {
       const duration = clip.duration;
-      if (Number.isFinite(duration) && duration > 0) {
-        startBtn.style.setProperty("--launch-duration", `${duration}s`);
+      if (Number.isFinite(duration) && duration > 0 && targetBtn) {
+        targetBtn.style.setProperty("--launch-duration", `${duration}s`);
       }
     };
     applyDuration();
@@ -1256,7 +1307,26 @@ function setupBoot() {
     clip.addEventListener("error", finalize, { once: true });
     clip.play().catch(() => finalize());
   };
+  const handleStartClick = () => {
+    goldChallengeModeActive = false;
+    State.flags = State.flags ?? {};
+    State.flags.goldChallengeActive = false;
+    queuedOrbId = null;
+    runStartSequence({}, startBtn);
+  };
+  const handleGoldChallengeClick = () => {
+    playMenuClickSound();
+    queuedOrbId = 1;
+    queuedOrbStorm = true;
+    State.flags = State.flags ?? {};
+    State.flags.goldChallengeActive = true;
+    goldChallengeModeActive = true;
+    runStartSequence({ skipIntro: true }, goldChallengeBtn);
+  };
   startBtn.addEventListener("click", handleStartClick);
+  if (goldChallengeBtn) {
+    goldChallengeBtn.addEventListener("click", handleGoldChallengeClick);
+  }
   const bindToggle = (element, settingKey, label) => {
     if (!element) return;
     const sync = () => {
@@ -1296,6 +1366,7 @@ function setupBoot() {
   bindToggle(menuToggle, "menu", "Musique menu");
   bindToggle(gameToggle, "game", "Son du jeu");
   updateMenuThemePlayback();
+  updateGoldChallengeBestDisplay();
 }
 
 async function loadImage(src) {
@@ -1411,7 +1482,7 @@ function sliceSheet(img) {
   return frames;
 }
 
-async function startGame() {
+async function startGame(options = {}) {
   $boot.classList.add("hidden");
   $game.classList.remove("hidden");
   menuThemeAudio.pause();
@@ -1769,7 +1840,21 @@ function syncDialogueOverlay() {
   setupPointer($canvas);
   setupPointer($canvas);
 
-  await showIntroCrawl();
+  if (!options.skipIntro) {
+    await showIntroCrawl();
+  }
+  if (typeof options.onReady === "function") {
+    await Promise.resolve(options.onReady());
+  }
+  if (queuedOrbId != null) {
+    const targetOrb = queuedOrbId;
+    const shouldStorm = queuedOrbStorm && targetOrb === 1;
+    queuedOrbId = null;
+    queuedOrbStorm = false;
+    enterOrbRealm(targetOrb, { skipEntryDialogue: true, forceGoldStorm: shouldStorm }).catch((error) => {
+      console.error("Failed to enter queued orb realm", error);
+    });
+  }
 
   // Boucle principale
   function frame(ts) {
@@ -2466,6 +2551,10 @@ function drawPreQuestShrubSprites(ctx) {
 
     if (interactPressed && !State.dialogue.isOpen()) tryInteract();
 
+    const shrubColliders = orbRealmState.active
+      ? []
+      : (State.preQuestShrubs?.map((shrub) => buildShrubCollider(shrub)).filter(Boolean) ?? []);
+
     // Mouvements joueur
     player.update(dt, map, State.mode, {
       attackPressed,
@@ -2481,7 +2570,7 @@ function drawPreQuestShrubSprites(ctx) {
       colliders: [
         ...(State.puzzleOrbs ?? []),
         ...(State.pickups?.filter((p) => p.blocking) ?? []),
-        ...(State.preQuestShrubs?.map((shrub) => buildShrubCollider(shrub)).filter(Boolean) ?? []),
+        ...shrubColliders,
       ],
       staminaDrainMult: bossMapActive ? 0.5 : 1,
       dashHold,
@@ -2570,6 +2659,12 @@ function drawPreQuestShrubSprites(ctx) {
           updateGoldBossLifecycle(dt, player);
           if (orbRealmState.kaelReplica && orbRealmState.goldBoss?.combatActive) {
             orbRealmState.kaelReplica.update(dt, player, State.map);
+          }
+          if (orbRealmState.activeStorm?.challengeWallsActive) {
+            updateGreenWall(dt, player);
+          }
+          if (orbRealmState.redWall?.enabled) {
+            updateRedWall(dt, player);
           }
         } else if (orbRealmState.id === 0) {
           updateRedBossLifecycle(dt, player);
@@ -3186,7 +3281,8 @@ function isOrbRealmActive() {
   return Boolean(State.flags?.orbRealm != null || orbRealmState.active);
 }
 
-async function enterOrbRealm(orbId) {
+async function enterOrbRealm(orbId, options = {}) {
+  const skipEntryDialogue = Boolean(options?.skipEntryDialogue);
   const entry = orbRealmEntries[orbId];
   if (!entry) return Promise.resolve();
   hideOrbPrompt();
@@ -3316,9 +3412,12 @@ async function enterOrbRealm(orbId) {
   State.fog.reveal(State.map.w / 2, State.map.h / 2, Math.max(State.map.w, State.map.h));
   player.x = Math.max(30, State.map.w / 2);
   player.y = ORB_REALM_START_Y;
-  pauseForDialogue([
-    { speaker: "???", text: "L'orbe ne doit pas être activé.. part d'ici !" },
-  ]);
+  if (!skipEntryDialogue) {
+    pauseForDialogue([
+      { speaker: "???", text: "L'orbe ne doit pas être activé.. part d'ici !" },
+    ]);
+  }
+  const forceGoldStorm = Boolean(options?.forceGoldStorm && orbId === 1);
   if (orbId === 1 && orbRealmState.kaelReplica) {
     orbRealmState.goldBoss = {
       stage: "waiting",
@@ -3328,6 +3427,16 @@ async function enterOrbRealm(orbId) {
       combatActive: false,
       returnUnlocked: false,
     };
+    if (forceGoldStorm) {
+      orbRealmState.goldBoss.stage = "storm";
+      orbRealmState.goldBoss.riddleShown = true;
+      orbRealmState.goldBoss.combatActive = false;
+      orbRealmState.goldBoss.returnUnlocked = false;
+      startOrbLightStorm(1, {
+        challenge: true,
+        challengeDuration: GOLD_CHALLENGE_RAMP_DURATION,
+      });
+    }
     const boss = orbRealmState.kaelReplica;
     const baseScale = boss.baseScale ?? boss.scale ?? 1;
     boss.x = ORB_REALM_CENTER.x;
@@ -4287,7 +4396,7 @@ function handleOrbRiddleChoice(orbId, choiceIndex) {
   startOrbLightStorm(orbId);
 }
 
-function startOrbLightStorm(orbId) {
+function startOrbLightStorm(orbId, opts = {}) {
   const map = State.map;
   if (!map) return;
   playSound("miniBossAppear", 0.3);
@@ -4300,21 +4409,29 @@ function startOrbLightStorm(orbId) {
   const originY = Math.max(0, map.h * 0.5 - ORB_LIGHT_STORM_VERTICAL_OFFSET);
   const descriptor = ORB_STORM_DESCRIPTORS[orbId] ?? ORB_STORM_DESCRIPTORS[1];
   const targetX = originX + ORB_LIGHT_STORM_TARGET_SHIFT_X;
-  pauseForDialogue(
-    [
-      { speaker: "Fantome", text: "FAUX ! tu vas subir l'épreuve d'Epheria." },
-      { speaker: "Fantome", text: `Si tu parvient à survivre, tu sera libre de poursuivre ta quête.` },
-    ],
-    () => beginOrbLightStorm(orbId, targetX, originY)
-  );
+  const challengeMode = Boolean(opts?.challenge);
+  const dialogueLines = challengeMode
+    ? [
+        { speaker: "Fantome", text: "L'épreuve va bientôt débuter, prépare-toi !" },
+        {
+          speaker: "Fantome",
+          text: "Tiens le plus longtemps possible : chaque seconde te rapproche du record.",
+        },
+      ]
+    : [
+        { speaker: "Fantome", text: "FAUX ! tu vas subir l'épreuve d'Epheria." },
+        { speaker: "Fantome", text: `Si tu parvient à survivre, tu sera libre de poursuivre ta quête.` },
+      ];
+  pauseForDialogue(dialogueLines, () => beginOrbLightStorm(orbId, targetX, originY, opts));
 }
 State.startOrbLightStorm = startOrbLightStorm;
 
-function beginOrbLightStorm(orbId, originX, originY) {
+function beginOrbLightStorm(orbId, originX, originY, opts = {}) {
+  const challengeMode = Boolean(opts?.challenge);
   const explosionTimer = [0, 2, 3].includes(orbId) ? 5 : null;
   const storm = {
     orbId,
-    timer: ORB_LIGHT_STORM_DURATION,
+    timer: challengeMode ? null : ORB_LIGHT_STORM_DURATION,
     spawnAccumulator: 0,
     origin: { x: originX, y: originY },
     arrows: [],
@@ -4323,6 +4440,16 @@ function beginOrbLightStorm(orbId, originX, originY) {
     completed: false,
     waitingForGhost: true,
     explosionTimer,
+    challengeMode,
+    challengeDuration: Math.max(20, opts?.challengeDuration ?? GOLD_CHALLENGE_RAMP_DURATION),
+    elapsed: 0,
+    challengeRecorded: false,
+    challengeExplosionTimer: challengeMode ? GOLD_CHALLENGE_EXPLOSION_DELAY : null,
+    challengeExplosionsActive: false,
+    challengeWallCountdown: challengeMode ? GOLD_CHALLENGE_GREEN_WALL_DELAY : null,
+    challengeWallsActive: false,
+    challengeRedWallCountdown: challengeMode ? GOLD_CHALLENGE_RED_WALL_DELAY : null,
+    challengeRedWallsActive: false,
   };
   orbRealmState.activeStorm = storm;
   const bossEntity = orbRealmState.kaelReplica ?? orbRealmState.orbGhost;
@@ -4413,14 +4540,23 @@ function updateActiveLightStorm(dt, player) {
       return;
     }
   }
-  storm.timer = Math.max(0, storm.timer - dt);
-  const progress = Math.min(1, 1 - storm.timer / Math.max(0.0001, ORB_LIGHT_STORM_DURATION));
   const hero = player ?? State.player;
-  if (storm.timer > 0) {
-    const interval = Math.max(
-      0.05,
-      lerp(ORB_LIGHT_STORM_START_INTERVAL, ORB_LIGHT_STORM_END_INTERVAL, progress)
-    );
+  if (storm.challengeMode) {
+    storm.elapsed = (storm.elapsed ?? 0) + dt;
+  } else {
+    storm.timer = Math.max(0, (storm.timer ?? ORB_LIGHT_STORM_DURATION) - dt);
+  }
+  const baseDuration = storm.challengeMode
+    ? Math.max(0.0001, storm.challengeDuration ?? GOLD_CHALLENGE_RAMP_DURATION)
+    : Math.max(0.0001, ORB_LIGHT_STORM_DURATION);
+  const progress = storm.challengeMode
+    ? Math.min(1, (storm.elapsed ?? 0) / baseDuration)
+    : Math.min(1, 1 - (storm.timer ?? 0) / baseDuration);
+  const interval = Math.max(
+    0.05,
+    lerp(ORB_LIGHT_STORM_START_INTERVAL, ORB_LIGHT_STORM_END_INTERVAL, progress)
+  );
+  if (storm.challengeMode || (storm.timer ?? 0) > 0) {
     storm.spawnAccumulator += dt;
     while (storm.spawnAccumulator >= interval) {
       storm.spawnAccumulator -= interval;
@@ -4464,9 +4600,72 @@ for (let i = 0; i < burstCount; i++) {
     survivors.push(arrow);
   }
   storm.arrows = survivors;
-  if (!storm.completed && storm.timer <= 0) {
+  if (!storm.challengeMode && !storm.completed && (storm.timer ?? 0) <= 0) {
     if (!hero || hero.hp > 0) {
       handleStormCompletion(storm);
+    }
+  }
+  if (storm.challengeMode && hero && hero.hp <= 0) {
+    finalizeGoldChallengeRecord(storm);
+  }
+  if (storm.challengeMode && hero && hero.hp > 0) {
+    if (!storm.challengeExplosionsActive) {
+      storm.challengeExplosionTimer = Math.max(
+        0,
+        (storm.challengeExplosionTimer ?? GOLD_CHALLENGE_EXPLOSION_DELAY) - dt
+      );
+      if (storm.challengeExplosionTimer <= 0) {
+        storm.challengeExplosionsActive = true;
+        storm.challengeExplosionTimer = GOLD_CHALLENGE_EXPLOSION_INTERVAL;
+        triggerOrbExplosion(hero);
+      }
+    } else {
+      storm.challengeExplosionTimer = Math.max(
+        0,
+        (storm.challengeExplosionTimer ?? GOLD_CHALLENGE_EXPLOSION_INTERVAL) - dt
+      );
+      if (storm.challengeExplosionTimer <= 0) {
+        storm.challengeExplosionTimer = GOLD_CHALLENGE_EXPLOSION_INTERVAL;
+        triggerOrbExplosion(hero);
+      }
+    }
+  }
+  if (storm.challengeMode && hero && hero.hp > 0 && !storm.challengeWallsActive) {
+    storm.challengeWallCountdown = Math.max(
+      0,
+      (storm.challengeWallCountdown ?? GOLD_CHALLENGE_GREEN_WALL_DELAY) - dt
+    );
+    if (storm.challengeWallCountdown <= 0) {
+      storm.challengeWallsActive = true;
+      const wallState = orbRealmState.greenWall ?? { active: false, cooldown: 0, enabled: false };
+      wallState.enabled = true;
+      wallState.active = false;
+      wallState.cooldown = 0;
+      wallState.damageApplied = false;
+      orbRealmState.greenWall = wallState;
+      pushStatus?.("Des murs de lumière se forment autour de toi !");
+    }
+  }
+  if (
+    storm.challengeMode &&
+    hero &&
+    hero.hp > 0 &&
+    storm.challengeWallsActive &&
+    !storm.challengeRedWallsActive
+  ) {
+    storm.challengeRedWallCountdown = Math.max(
+      0,
+      (storm.challengeRedWallCountdown ?? GOLD_CHALLENGE_RED_WALL_DELAY) - dt
+    );
+    if (storm.challengeRedWallCountdown <= 0) {
+      storm.challengeRedWallsActive = true;
+      const wallState = orbRealmState.redWall ?? { active: false, cooldown: 0, enabled: false };
+      wallState.enabled = true;
+      wallState.active = false;
+      wallState.cooldown = 0;
+      wallState.damageApplied = false;
+      orbRealmState.redWall = wallState;
+      pushStatus?.("Un second mur de lumière se manifeste !");
     }
   }
   if (hero && hero.hp > 0 && typeof storm.explosionTimer === "number" && storm.explosionTimer != null) {
@@ -4913,19 +5112,49 @@ function drawActiveLightStorm(ctx) {
 function drawActiveLightStormTimer(ctx) {
   const storm = orbRealmState.activeStorm;
   if (!ctx || !storm) return;
-  const remaining = Math.max(0, storm.timer);
-  const label = `${Math.ceil(remaining)}s`;
+  const value = storm.challengeMode ? Math.max(0, storm.elapsed ?? 0) : Math.max(0, storm.timer);
+  const label = storm.challengeMode ? formatChallengeTime(value) : `${Math.ceil(value)}s`;
   const x = $canvas.width / 2;
-  const y = 12;
+  const baseY = 28;
+  const boxWidth = 280;
+  const boxHeight = 90;
+  const textY = baseY + 12;
   ctx.save();
-  ctx.font = "600 22px 'Inter', system-ui";
+  ctx.globalAlpha = 0.92;
+  ctx.fillStyle = "rgba(24, 24, 24, 0.94)";
+  ctx.beginPath();
+  const rectX = x - boxWidth / 2;
+  const rectY = baseY - 18;
+  const radius = 22;
+  ctx.moveTo(rectX + radius, rectY);
+  ctx.lineTo(rectX + boxWidth - radius, rectY);
+  ctx.quadraticCurveTo(rectX + boxWidth, rectY, rectX + boxWidth, rectY + radius);
+  ctx.lineTo(rectX + boxWidth, rectY + boxHeight - radius);
+  ctx.quadraticCurveTo(
+    rectX + boxWidth,
+    rectY + boxHeight,
+    rectX + boxWidth - radius,
+    rectY + boxHeight
+  );
+  ctx.lineTo(rectX + radius, rectY + boxHeight);
+  ctx.quadraticCurveTo(rectX, rectY + boxHeight, rectX, rectY + boxHeight - radius);
+  ctx.lineTo(rectX, rectY + radius);
+  ctx.quadraticCurveTo(rectX, rectY, rectX + radius, rectY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.font = "700 34px 'Inter', system-ui";
   ctx.textAlign = "center";
-  ctx.textBaseline = "top";
-  ctx.strokeStyle = "rgba(0, 0, 0, 0.65)";
-  ctx.lineWidth = 5;
-  ctx.strokeText(label, x, y);
-  ctx.fillStyle = "#fff";
-  ctx.fillText(label, x, y);
+  ctx.textBaseline = "middle";
+  ctx.fillStyle = "#ffe066";
+  ctx.strokeStyle = "#201e1a";
+  ctx.lineWidth = 10;
+  ctx.strokeText(label, x, textY);
+  ctx.fillText(label, x, textY);
+  if (storm.challengeMode) {
+    ctx.font = "500 16px 'Inter', system-ui";
+    ctx.fillStyle = "rgba(255, 255, 255, 0.88)";
+  }
   ctx.restore();
 }
 
@@ -5387,19 +5616,42 @@ function startOrbDialogueSequence(orb, delay = 0) {
     attempt();
   }
 
-  function pauseForDialogue(lines = [], onComplete) {
-    const hasLines = Array.isArray(lines) && lines.length > 0;
-    if (!hasLines) {
-      if (typeof onComplete === "function") onComplete();
-      return;
-    }
-    State.paused = true;
-    const handleClose = () => {
-      State.paused = false;
-      if (typeof onComplete === "function") onComplete();
-    };
-    State.dialogue.show(lines, { onClose: handleClose });
+function pauseForDialogue(lines = [], onComplete) {
+  const hasLines = Array.isArray(lines) && lines.length > 0;
+  if (!hasLines) {
+    if (typeof onComplete === "function") onComplete();
+    return;
   }
+  State.paused = true;
+  const handleClose = () => {
+    State.paused = false;
+    if (typeof onComplete === "function") onComplete();
+  };
+  State.dialogue.show(lines, { onClose: handleClose });
+}
+
+function finalizeGoldChallengeRecord(storm) {
+  if (!storm || !storm.challengeMode || storm.challengeRecorded) return;
+  storm.challengeRecorded = true;
+  const elapsed = Math.max(0, storm.elapsed ?? 0);
+  const previousBest = readGoldChallengeBestTime();
+  const isNewBest = previousBest == null || elapsed > previousBest;
+  if (isNewBest) {
+    writeGoldChallengeBestTime(elapsed);
+  }
+  updateGoldChallengeBestDisplay();
+  stopOrbChallengeSound();
+  const lines = [
+    { speaker: "Fantome", text: `Tu as tenu ${formatChallengeTime(elapsed)}.` },
+  ];
+  if (isNewBest) {
+    lines.push({ speaker: "Fantome", text: "Nouveau record doré !" });
+  }
+  pauseForDialogue(lines, () => {
+    window.location.reload();
+  });
+  orbRealmState.activeStorm = null;
+}
 
   function scheduleKaelOrbHint() {
     const flags = State.flags || (State.flags = {});
@@ -7252,6 +7504,7 @@ function updateGhosts(dt) {
   }
 
   function maybeAutoAcceptKaelQuest() {
+    if (State.flags?.goldChallengeActive || goldChallengeModeActive) return;
     if (State.flags.princessQuestAccepted) return;
     if (!State.flags.princessUnlocked) return;
     const player = State.player;
@@ -7818,6 +8071,7 @@ function drawGhosts(ctx) {
   }
 
   function startKaelQuestDialogue() {
+    if (State.flags?.goldChallengeActive || goldChallengeModeActive) return;
     if (
       State.dialogue.isOpen() ||
       State.orbPromptOpen ||
@@ -7933,8 +8187,11 @@ function render() {
         drawActiveLightStorm(ctx);
         drawActiveLightStormTimer(ctx);
       }
-      if (orbRealmState.id === 0 || orbRealmState.id === 3) {
+      if (orbRealmState.greenWall?.enabled) {
         drawGreenWall(ctx);
+      }
+      if (orbRealmState.redWall?.enabled) {
+        drawRedWall(ctx);
       }
   if (orbRealmState.id === 0) {
     drawRedWall(ctx);
@@ -8082,7 +8339,8 @@ function resetGameOverSound() {
     stopBossMusic(true);
     State.bossMusicPending = false;
     el.classList.remove("hidden");
-    const showRetryButton = isOrbRealmActive();
+    const showRetryButton =
+      isOrbRealmActive() && !goldChallengeModeActive && !Boolean(State.flags?.goldChallengeActive);
     el.innerHTML = `
       <div class="card">
         <h2>Game Over</h2>
@@ -8279,13 +8537,15 @@ function renderDeath() {
     State.paused = true;
     State.awaitingEndingButton = true;
     el.classList.remove("hidden");
-    const showRetryButton = isOrbRealmActive();
+    const challengeDefeat =
+      orbRealmState.active && Boolean(orbRealmState.activeStorm?.challengeMode);
+    const showRetryButton = isOrbRealmActive() && !challengeDefeat;
     el.innerHTML = `
       <div class="card">
         <h2>Les âmes défuntes t'emporte.</h2>
         <p>Ton dernier souvenir disparais dans la poussière d'Ephéria.</p>
         <div class="choices">
-          ${showRetryButton ? `<button data-retry>Retenter l'épreuve</button>` : ""}
+        ${showRetryButton ? `<button data-retry>Retenter l'épreuve</button>` : ""}
           <button data-abandon>Retour à l'accueil</button>
         </div>
       </div>`;

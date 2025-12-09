@@ -423,6 +423,14 @@
         gap: 0.45rem;
         margin-top: 0.6rem;
       }
+      .menu-gold-score {
+        font-size: 0.75rem;
+        letter-spacing: 0.08em;
+        color: #ffe1a9;
+        margin-top: 0.5rem;
+        display: flex;
+        justify-content: space-between;
+      }
 
       .menu-btn.secondary {
         border-color: rgba(255, 255, 255, 0.45);
@@ -740,6 +748,14 @@
                   <button id="toggleGameSound" class="menu-btn secondary" type="button">
                     <span class="label">Son du jeu : On</span>
                   </button>
+                  <button id="goldChallengeBtn" class="menu-btn secondary" type="button">
+                    <span class="label">Défi doré</span>
+                    <span class="hint">Carte gold</span>
+                  </button>
+                  <div class="menu-gold-score">
+                    <span>Record doré</span>
+                    <strong id="goldChallengeBestScore">Aucun record</strong>
+                  </div>
                 </div>
 
               </div>
