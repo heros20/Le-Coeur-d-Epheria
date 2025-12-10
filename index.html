@@ -281,12 +281,13 @@
           rgba(12, 12, 24, 0.98),
           rgba(25, 9, 34, 0.98)
         );
-        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05),
+        box-shadow:
+          0 0 0 1px rgba(255, 255, 255, 0.05),
           0 18px 40px rgba(0, 0, 0, 0.75);
         display: flex;
         flex-direction: column;
-        gap: 0.9rem;
-        justify-content: center;
+        gap: 1.3rem;
+        justify-content: flex-start;
       }
 
       .menu-panel::before {
@@ -299,21 +300,43 @@
         pointer-events: none;
       }
 
-      .menu-title {
+      .menu-section {
+        position: relative;
+        padding-bottom: 0.9rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .menu-section:last-of-type {
+        border-bottom: none;
+        padding-bottom: 0;
+        margin-top: 0.1rem;
+      }
+
+      .menu-section-main .menu-title {
         font-family: "Cinzel", system-ui, serif;
-        font-size: 0.9rem;
-        letter-spacing: 0.25em;
+        font-size: 0.95rem;
+        letter-spacing: 0.22em;
         text-transform: uppercase;
         color: #d7d4ff;
-        opacity: 0.85;
+        opacity: 0.9;
         margin-bottom: 0.25rem;
       }
 
-      .menu-sub {
+      .menu-section-main .menu-sub {
         font-size: 0.8rem;
         color: #a8b0ff;
-        opacity: 0.85;
-        margin-bottom: 0.8rem;
+        opacity: 0.9;
+        margin-bottom: 0.9rem;
+      }
+
+      .menu-section-settings .menu-title {
+        font-family: "Cinzel", system-ui, serif;
+        font-size: 0.8rem;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #b5b8ff;
+        opacity: 0.75;
+        margin-bottom: 0.5rem;
       }
 
       .menu-btn {
@@ -322,11 +345,8 @@
         padding: 0.75rem 1rem;
         border-radius: 999px;
         border: 1px solid rgba(214, 216, 255, 0.45);
-        background: radial-gradient(
-            circle at 0 0,
-            rgba(160, 197, 255, 0.26),
-            transparent 55%
-          ),
+        background:
+          radial-gradient(circle at 0 0, rgba(160, 197, 255, 0.26), transparent 55%),
           linear-gradient(120deg, rgba(9, 11, 26, 0.95), rgba(22, 13, 42, 0.98));
         color: #f5f3ff;
         font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
@@ -340,8 +360,11 @@
         align-items: center;
         justify-content: space-between;
         gap: 0.75rem;
-        transition: transform 120ms ease-out, box-shadow 120ms ease-out,
-          border-color 120ms ease-out, background 160ms ease-out,
+        transition:
+          transform 120ms ease-out,
+          box-shadow 120ms ease-out,
+          border-color 120ms ease-out,
+          background 160ms ease-out,
           filter 120ms ease-out;
       }
 
@@ -356,27 +379,26 @@
         text-transform: none;
       }
 
-      .menu-btn::after {
-        content: "➜";
-        opacity: 0.7;
-        font-size: 0.9rem;
-      }
-
       .menu-btn.primary {
         border-color: rgba(255, 231, 166, 0.85);
-        background: radial-gradient(
-            circle at 0 0,
-            rgba(255, 243, 197, 0.35),
-            transparent 55%
-          ),
-          radial-gradient(
-            circle at 100% 100%,
-            rgba(156, 114, 255, 0.4),
-            transparent 55%
-          ),
+        background:
+          radial-gradient(circle at 0 0, rgba(255, 243, 197, 0.35), transparent 55%),
+          radial-gradient(circle at 100% 100%, rgba(156, 114, 255, 0.4), transparent 55%),
           linear-gradient(120deg, #20151e, #3f223b);
-        box-shadow: 0 0 22px rgba(238, 221, 163, 0.45),
+        box-shadow:
+          0 0 22px rgba(238, 221, 163, 0.45),
           0 12px 30px rgba(0, 0, 0, 0.85);
+      }
+
+      .menu-btn-gold {
+        border-color: rgba(255, 204, 130, 0.95);
+        background:
+          radial-gradient(circle at 0 0, rgba(255, 248, 208, 0.3), transparent 60%),
+          radial-gradient(circle at 100% 100%, rgba(255, 190, 120, 0.35), transparent 60%),
+          linear-gradient(120deg, #251710, #4d3018);
+        box-shadow:
+          0 0 18px rgba(255, 210, 140, 0.6),
+          0 10px 26px rgba(0, 0, 0, 0.9);
       }
 
       .menu-btn:active {
@@ -396,10 +418,27 @@
         --launch-duration: 1.6s;
         animation: menu-launch-pulse var(--launch-duration) ease-in-out infinite;
         transform: scale(1.03);
-        box-shadow: 0 0 32px rgba(255, 230, 180, 0.55),
+        box-shadow:
+          0 0 32px rgba(255, 230, 180, 0.55),
           0 0 48px rgba(129, 175, 255, 0.65);
       }
+.menu-section-main .menu-btn {
+  margin-bottom: 0.45rem;
+}
+/* Empêche les gros boutons d'exploser en responsive */
+.menu-section-main .menu-btn {
+  max-width: 100%;
+  width: auto;
+}
 
+/* Sur mobile : limite la largeur du bouton principal */
+@media (max-width: 480px) {
+  #startBtn {
+    padding: 0.6rem 1rem;
+    font-size: 0.8rem;
+    border-radius: 18px;
+  }
+}
       @keyframes menu-launch-pulse {
         0% {
           transform: scale(1);
@@ -421,15 +460,115 @@
         display: flex;
         flex-direction: column;
         gap: 0.45rem;
-        margin-top: 0.6rem;
+        margin-top: 0.2rem;
       }
+
       .menu-gold-score {
         font-size: 0.75rem;
         letter-spacing: 0.08em;
         color: #ffe1a9;
-        margin-top: 0.5rem;
+        margin-top: 0.55rem;
         display: flex;
         justify-content: space-between;
+      }
+      /* ====== CARTE SCORE DORÉ (SUPABASE) ====== */
+
+      .gold-score-card {
+        margin-top: 0.45rem;
+        padding: 0.65rem 0.9rem;
+        border-radius: 999px;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        background:
+          radial-gradient(circle at 0 0, rgba(255, 245, 215, 0.1), transparent 60%),
+          radial-gradient(circle at 100% 100%, rgba(255, 191, 120, 0.18), transparent 60%),
+          linear-gradient(120deg, #1a111a, #120f22);
+        box-shadow:
+          0 0 12px rgba(0, 0, 0, 0.7),
+          0 0 18px rgba(255, 211, 140, 0.25);
+        border: 1px solid rgba(255, 219, 160, 0.35);
+      }
+
+      .gold-score-label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.1rem;
+      }
+
+      .gold-score-title {
+        font-family: "Cinzel", system-ui, serif;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.16em;
+        color: #f7ead2;
+      }
+
+      .gold-score-sub {
+        font-size: 0.7rem;
+        color: #e7cfaa;
+        opacity: 0.8;
+      }
+
+      .gold-score-value {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        flex: 1;
+      }
+
+      .gold-score-pill {
+        display: inline-flex;
+        align-items: baseline;
+        gap: 0.4rem;
+        padding: 0.25rem 0.8rem;
+        border-radius: 999px;
+        background:
+          radial-gradient(circle at 0 0, rgba(255, 255, 255, 0.15), transparent 60%),
+          linear-gradient(120deg, #2a1a15, #40301c);
+        border: 1px solid rgba(255, 224, 163, 0.7);
+        box-shadow:
+          0 0 12px rgba(255, 210, 140, 0.5),
+          0 4px 12px rgba(0, 0, 0, 0.6);
+        white-space: nowrap;
+      }
+
+      .gold-score-prefix {
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.11em;
+        color: #ffe6b4;
+        opacity: 0.9;
+      }
+
+      .gold-score-number {
+        font-family: "Cinzel", system-ui, serif;
+        font-size: 0.85rem;
+        color: #ffffff;
+      }
+
+      /* Responsive : un peu plus compact sur mobile */
+      @media (max-width: 640px) {
+        .gold-score-card {
+          flex-direction: column;
+          align-items: flex-start;
+          border-radius: 14px;
+        }
+
+        .gold-score-value {
+          width: 100%;
+          justify-content: flex-start;
+        }
+
+        .gold-score-pill {
+          padding: 0.2rem 0.7rem;
+        }
+
+        .gold-score-number {
+          font-size: 0.8rem;
+        }
       }
 
       .menu-btn.secondary {
@@ -442,7 +581,9 @@
       }
 
       .menu-options .menu-btn:hover,
-      .menu-options .menu-btn:focus-visible {
+      .menu-options .menu-btn:focus-visible,
+      .menu-section-main .menu-btn:hover,
+      .menu-section-main .menu-btn:focus-visible {
         border-color: rgba(255, 255, 255, 0.9);
         background:
           radial-gradient(circle at 0 0, rgba(255, 255, 255, 0.15), transparent 55%),
@@ -453,7 +594,8 @@
         transform: translateY(-1px);
       }
 
-      .menu-options .menu-btn::after {
+      .menu-options .menu-btn::after,
+      .menu-section-main .menu-btn::after {
         content: "";
       }
 
@@ -471,6 +613,7 @@
           filter: brightness(1);
         }
       }
+
 
       /* Aide en bas */
 
@@ -728,37 +871,73 @@
                 </div>
               </div>
 
-              <!-- PANNEAU MENU PRINCIPAL -->
+              <!-- PANNEAU MENU PRINCIPAL RESTRUCTURÉ -->
               <div class="menu-panel">
-                <div>
-                  <div class="menu-title">Menu principal</div>
+
+                <!-- SECTION : MODES DE JEU -->
+                <div class="menu-section menu-section-main">
+                  <div class="menu-title">Modes de jeu</div>
                   <div class="menu-sub">
                     Choisis ton destin au cœur d’Éphéria.
                   </div>
+
+                  <!-- Garder le même id pour la logique JS -->
+                  <button id="startBtn" class="menu-btn primary" disabled>
+                    <span class="label">Nouvelle partie</span>
+                    <span class="hint">Histoire principale</span>
+                  </button>
+
+                  <button
+                    id="goldChallengeBtn"
+                    class="menu-btn secondary menu-btn-gold"
+                    type="button"
+                  >
+                    <span class="label">Défi doré</span>
+                    <span class="hint">Épreuve spéciale</span>
+                  </button>
+
+                  <div class="gold-score-card">
+  <div class="gold-score-label">
+    <span class="gold-score-title">Record défi</span>
+    <span class="gold-score-sub">Meilleur temps enregistré</span>
+  </div>
+
+  <div class="gold-score-value">
+    <span class="gold-score-pill">
+      <span id="goldChallengeBestScore" class="gold-score-number">
+        Aucun record
+      </span>
+    </span>
+  </div>
+</div>
+
                 </div>
 
-                <!-- Garder le même id pour la logique JS -->
-                <button id="startBtn" class="menu-btn primary" disabled>
-                  <span class="label">Nouvelle partie</span>
-                </button>
-                <div class="menu-options">
-                  <button id="toggleMenuSound" class="menu-btn secondary" type="button">
-                    <span class="label">Musique menu : On</span>
-                  </button>
-                  <button id="toggleGameSound" class="menu-btn secondary" type="button">
-                    <span class="label">Son du jeu : On</span>
-                  </button>
-                  <button id="goldChallengeBtn" class="menu-btn secondary" type="button">
-                    <span class="label">Défi doré</span>
-                    <span class="hint">Carte gold</span>
-                  </button>
-                  <div class="menu-gold-score">
-                    <span>Record doré</span>
-                    <strong id="goldChallengeBestScore">Aucun record</strong>
+                <!-- SECTION : PARAMÈTRES RAPIDES -->
+                <div class="menu-section menu-section-settings">
+                  <div class="menu-title">Paramètres rapides</div>
+
+                  <div class="menu-options">
+                    <button
+                      id="toggleMenuSound"
+                      class="menu-btn secondary"
+                      type="button"
+                    >
+                      <span class="label">Musique menu : On</span>
+                    </button>
+
+                    <button
+                      id="toggleGameSound"
+                      class="menu-btn secondary"
+                      type="button"
+                    >
+                      <span class="label">Son du jeu : On</span>
+                    </button>
                   </div>
                 </div>
 
               </div>
+
             </section>
 
            <section class="help">
