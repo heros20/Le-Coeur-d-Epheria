@@ -29,6 +29,16 @@ let bossMapSpeedBackup = null;
 let skipNextOrbInteract = false;
 let kaelEpicActive = false;
 let heartTexture = null;
+let supabase = null;
+
+if (window.SUPABASE_URL && window.SUPABASE_ANON_KEY && window.supabase) {
+  supabase = window.supabase.createClient(
+    window.SUPABASE_URL,
+    window.SUPABASE_ANON_KEY
+  );
+} else {
+  console.warn("[SUPABASE] Client non initialisé (URL/KEY manquants ?)");
+}
 const DRAGON_HEART_ASSET = "./assets/coeur/coeur.png";
 const DRAGON_HEART_ITEM_ID = "coeur-epheria";
 const DRAGON_HEART_SPRITE_SCALE = 0.675;
@@ -452,6 +462,46 @@ function updateGoldChallengeBestDisplay() {
   if (!el) return;
   const best = readGoldChallengeBestTime();
   el.textContent = best ? formatChallengeTime(best) : "Aucun record";
+}
+async function syncGoldChallengeBestFromSupabase() {
+  const el = document.getElementById("goldChallengeBestScore");
+  if (!el) return;
+
+  // Fallback : record local si pas de Supabase
+  if (!supabase) {
+    updateGoldChallengeBestDisplay();
+    return;
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("gold_challenge_scores")
+      .select("score_seconds")
+      .order("score_seconds", { ascending: false }) // plus haut = meilleure survie
+      .limit(1);
+
+    if (error) {
+      console.error("[SUPABASE] Erreur fetch best score:", error);
+      updateGoldChallengeBestDisplay();
+      return;
+    }
+
+    if (!data || data.length === 0) {
+      el.textContent = "Aucun record en ligne";
+      return;
+    }
+
+    const best = Number(data[0].score_seconds);
+    if (!Number.isFinite(best) || best <= 0) {
+      el.textContent = "Aucun record en ligne";
+      return;
+    }
+
+    el.textContent = `Record en ligne : ${formatChallengeTime(best)}`;
+  } catch (err) {
+    console.error("[SUPABASE] Exception fetch best score:", err);
+    updateGoldChallengeBestDisplay();
+  }
 }
 
 
@@ -1366,7 +1416,7 @@ function setupBoot() {
   bindToggle(menuToggle, "menu", "Musique menu");
   bindToggle(gameToggle, "game", "Son du jeu");
   updateMenuThemePlayback();
-  updateGoldChallengeBestDisplay();
+  syncGoldChallengeBestFromSupabase();
 }
 
 async function loadImage(src) {
@@ -1701,13 +1751,19 @@ function syncDialogueOverlay() {
       }
       State.paused = true;
       State.flags.orbRealmPaused = Boolean(orbRealmState.active);
+      const waitingForDialogue =
+        (State.flags?.goldChallengeActive || goldChallengeModeActive) &&
+        State.dialogue?.isOpen?.();
+      if (waitingForDialogue) {
+        queueGoldChallengeGameOver();
+        return true;
+      }
       if (State.flags.betrayalHappened && !State.flags.kaelDefeated) {
         renderBossGameOver();
       } else {
         renderDeath();
       }
-      State.flags.deathPending = false;
-      State.deathPendingTimer = 0;
+      finalizeDeathPendingState();
       return true;
     }
     State.flags = State.flags || {};
@@ -2419,6 +2475,9 @@ function drawPreQuestShrubSprites(ctx) {
   // ===== Update =====
   function update(dt) {
     updateAnimationPause(dt);
+    if (processPendingGoldChallengeGameOver()) {
+      return;
+    }
     const { player, map } = State;
 
   State.questPromptCooldown = Math.max(0, (State.questPromptCooldown ?? 0) - dt);
@@ -5630,6 +5689,41 @@ function pauseForDialogue(lines = [], onComplete) {
   State.dialogue.show(lines, { onClose: handleClose });
 }
 
+  let goldChallengeGameOverQueued = false;
+
+  function queueGoldChallengeGameOver() {
+    if (goldChallengeGameOverQueued) return;
+    goldChallengeGameOverQueued = true;
+    State.flags = State.flags ?? {};
+    State.flags.challengeGameOverPending = true;
+  }
+
+  function clearGoldChallengeGameOverQueue() {
+    if (!goldChallengeGameOverQueued) return;
+    goldChallengeGameOverQueued = false;
+    State.flags = State.flags ?? {};
+    State.flags.challengeGameOverPending = false;
+  }
+
+  function finalizeDeathPendingState() {
+    State.flags = State.flags ?? {};
+    State.flags.deathPending = false;
+    State.deathPendingTimer = 0;
+    State.flags.challengeGameOverPending = false;
+  }
+
+  function processPendingGoldChallengeGameOver() {
+    if (!goldChallengeGameOverQueued) return false;
+    State.paused = true;
+    if (State.dialogue?.isOpen?.()) {
+      return false;
+    }
+    clearGoldChallengeGameOverQueue();
+    renderDeath();
+    finalizeDeathPendingState();
+    return true;
+  }
+
 function finalizeGoldChallengeRecord(storm) {
   if (!storm || !storm.challengeMode || storm.challengeRecorded) return;
   storm.challengeRecorded = true;
@@ -5640,6 +5734,12 @@ function finalizeGoldChallengeRecord(storm) {
     writeGoldChallengeBestTime(elapsed);
   }
   updateGoldChallengeBestDisplay();
+
+  // 🔁 Envoie en BDD (fire-and-forget)
+  if (elapsed > 0) {
+    saveGoldChallengeScoreToSupabase(elapsed);
+  }
+
   stopOrbChallengeSound();
   const lines = [
     { speaker: "Fantome", text: `Tu as tenu ${formatChallengeTime(elapsed)}.` },
@@ -5647,10 +5747,35 @@ function finalizeGoldChallengeRecord(storm) {
   if (isNewBest) {
     lines.push({ speaker: "Fantome", text: "Nouveau record doré !" });
   }
+  State.flags = State.flags ?? {};
+  State.flags.goldChallengeDefeatDialogActive = true;
+  State.flags.goldChallengeDefeatPendingOverlay = true;
   pauseForDialogue(lines, () => {
-    window.location.reload();
+    State.flags.goldChallengeDefeatDialogActive = false;
+    State.paused = true;
+    renderDeath();
   });
   orbRealmState.activeStorm = null;
+}
+
+async function saveGoldChallengeScoreToSupabase(seconds) {
+  if (!supabase) {
+    console.warn("[SUPABASE] Pas de client, score non envoyé.");
+    return;
+  }
+  try {
+    const { error } = await supabase
+      .from("gold_challenge_scores")
+      .insert({ score_seconds: seconds });
+
+    if (error) {
+      console.error("[SUPABASE] Erreur insert score:", error);
+    } else {
+      console.log("[SUPABASE] Score défi doré enregistré:", seconds);
+    }
+  } catch (err) {
+    console.error("[SUPABASE] Exception insert score:", err);
+  }
 }
 
   function scheduleKaelOrbHint() {
@@ -8539,7 +8664,10 @@ function renderDeath() {
     el.classList.remove("hidden");
     const challengeDefeat =
       orbRealmState.active && Boolean(orbRealmState.activeStorm?.challengeMode);
-    const showRetryButton = isOrbRealmActive() && !challengeDefeat;
+    const isGoldChallengeActive =
+      goldChallengeModeActive || Boolean(State.flags?.goldChallengeActive);
+    const showRetryButton =
+      isOrbRealmActive() && !challengeDefeat && !isGoldChallengeActive;
     el.innerHTML = `
       <div class="card">
         <h2>Les âmes défuntes t'emporte.</h2>
