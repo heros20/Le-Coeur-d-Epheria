@@ -2623,6 +2623,7 @@ function drawPreQuestShrubSprites(ctx) {
     const dashPressed = consume(" ") || (State.isMobile && consumeMobileDashPress());
     const potionPressed = consume("p");
     const quickItemPressed = consume("l") || consume("2");
+    const specialMeleePressed = consume("+");
     const bossShortcutPressed = consume("9");
     const goldTeleportPressed = consume("8");
     const greenTeleportPressed = consume("4");
@@ -2665,6 +2666,9 @@ function drawPreQuestShrubSprites(ctx) {
 
     if (potionPressed) tryUsePotion();
     if (quickItemPressed) tryUseQuickItem();
+    if (specialMeleePressed && player) {
+      player.queueAttack("special");
+    }
     if (rangedPressed && player.rangedCooldown <= 0) {
       fireRangedAttack(player, currentAim);
     }
@@ -6287,9 +6291,14 @@ function showFinalEscapeChoice() {
 }
 
   function launchFinalEscape() {
-    playEscapeVideo(() => {
-      void renderEpilogue("release", { choice: State.flags.finalEscapeChoice });
-    });
+    const resolvedChoice = State.flags.finalEscapeChoice ?? "refuse";
+    const continueToEpilogue = () =>
+      void renderEpilogue("release", { choice: resolvedChoice });
+    if (resolvedChoice === "agree") {
+      playEscapeVideo(continueToEpilogue);
+    } else {
+      continueToEpilogue();
+    }
   }
 
 function promptAelyaBossIntro() {
@@ -8333,9 +8342,14 @@ function drawGhosts(ctx) {
 { speaker: "Moi", text: "Je dois en finir." },
       ],
       () => {
-      playEscapeVideo(() => {
-        void renderEpilogue("release", { choice: State.flags.finalEscapeChoice });
-      });
+        const finalChoice = State.flags.finalEscapeChoice ?? "refuse";
+        const proceedToEpilogue = () =>
+          void renderEpilogue("release", { choice: finalChoice });
+        if (finalChoice === "agree") {
+          playEscapeVideo(proceedToEpilogue);
+        } else {
+          proceedToEpilogue();
+        }
       }
     );
   }
