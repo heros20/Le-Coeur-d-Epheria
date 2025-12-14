@@ -2100,3 +2100,108 @@ body {
     line-height: 1.4;
   }
 }
+/* ===========================
+   ENDING / EPILOGUE / CREDITS
+   =========================== */
+
+.ending-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10005;
+  display: flex;
+  justify-content: center;
+  overflow: hidden;
+  padding: clamp(18px, 4vw, 48px);
+  background: var(--ending-bg, rgba(0,0,0,0.95));
+  backdrop-filter: blur(8px);
+}
+
+.ending-overlay::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(circle at 20% 10%, rgba(255,255,255,0.06), transparent 45%),
+    radial-gradient(circle at 80% 30%, rgba(255,255,255,0.04), transparent 55%);
+  opacity: 0.6;
+  animation: endingMist 18s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes endingMist {
+  0%   { transform: translate3d(-2%, -1%, 0) scale(1.02); }
+  50%  { transform: translate3d( 2%,  1%, 0) scale(1.05); }
+  100% { transform: translate3d(-2%, -1%, 0) scale(1.02); }
+}
+
+.ending-skip {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  padding: 0.45rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.55);
+  background: rgba(4, 6, 20, 0.75);
+  color: #fff;
+  font-size: 0.85rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.epilogue-track {
+  width: min(860px, 100%);
+  text-align: center;
+  color: var(--ending-text, #fff);
+  text-shadow: 0 0 18px var(--ending-accent, rgba(255,255,255,0.6));
+  font-family: "Cardo", "Times New Roman", serif;
+  letter-spacing: 0.12em;
+  line-height: 2;
+  text-transform: uppercase;
+
+  /* “panneau” */
+  padding: clamp(18px, 3vw, 32px);
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.15));
+  box-shadow: 0 18px 60px rgba(0,0,0,0.55);
+  pointer-events: none;
+  will-change: transform;
+}
+
+.epilogue-track p {
+  margin: 0 0 18px 0;
+  opacity: 0.98;
+  filter: blur(0px);
+  animation: epilogueLineIn 700ms ease both;
+}
+
+@keyframes epilogueLineIn {
+  from { opacity: 0; transform: translateY(6px); filter: blur(2px); }
+  to   { opacity: 0.98; transform: translateY(0); filter: blur(0px); }
+}
+
+.credits-track {
+  width: min(780px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  text-align: center;
+  color: #fff;
+  font-family: "Space Grotesk", "Segoe UI", "Inter", system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  line-height: 1.6;
+  pointer-events: none;
+  will-change: transform;
+
+  padding: clamp(18px, 3vw, 28px);
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(0,0,0,0.20);
+  box-shadow: 0 18px 60px rgba(0,0,0,0.55);
+}
+
+.credits-track [data-thank-you-line="true"]{
+  text-shadow: 0 0 28px rgba(255,255,255,0.75);
+  filter: drop-shadow(0 0 18px rgba(255,255,255,0.25));
+}

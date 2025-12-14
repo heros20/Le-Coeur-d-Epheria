@@ -339,6 +339,42 @@
         margin-bottom: 0.5rem;
       }
 
+      .menu-credits-callout {
+        margin-top: 1rem;
+        padding: 1.1rem 1.25rem;
+        border-radius: 18px;
+        background: linear-gradient(
+          160deg,
+          rgba(27, 53, 118, 0.25),
+          rgba(9, 4, 20, 0.75)
+        );
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 20px 35px rgba(0, 0, 0, 0.35);
+        display: flex;
+        flex-direction: column;
+        gap: 0.55rem;
+      }
+
+      .menu-credits-title {
+        font-family: "Cinzel", system-ui, serif;
+        font-size: 0.9rem;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #e7e6ff;
+      }
+
+      .menu-credits-sub {
+        margin: 0;
+        font-size: 0.75rem;
+        letter-spacing: 0.06em;
+        color: rgba(255, 255, 255, 0.72);
+      }
+
+      .menu-credits-callout .menu-btn {
+        margin-top: 0.35rem;
+        align-self: stretch;
+      }
+
       .menu-btn {
         position: relative;
         width: 100%;
@@ -930,11 +966,23 @@
                       id="toggleGameSound"
                       class="menu-btn secondary"
                       type="button"
-                    >
-                      <span class="label">Son du jeu : On</span>
-                    </button>
+                   >
+                     <span class="label">Son du jeu : On</span>
+                   </button>
+                 </div>
+                <div class="menu-credits-callout">
+                  <div class="menu-credits-info">
+                    <span class="menu-credits-title">Crédits</span>
                   </div>
+                  <button
+                    id="creditsBtn"
+                    class="menu-btn tertiary"
+                    type="button"
+                  >
+                    <span class="label">Lancer les crédits</span>
+                  </button>
                 </div>
+              </div>
 
               </div>
 

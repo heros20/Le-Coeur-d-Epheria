@@ -28,6 +28,8 @@ let bossMapScaleBackup = null;
 let bossMapSpeedBackup = null;
 let skipNextOrbInteract = false;
 let kaelEpicActive = false;
+let kaelEpicClip = null;
+let kaelEpicPausedTime = 0;
 let heartTexture = null;
 let supabase = null;
 
@@ -278,6 +280,7 @@ const ORB_REALM_CONFIG = {
   3: { label: "Orbe bleue", mapSrc: "./assets/map/Blue_orb.png", statusMessage: "Exploration bleue" },
 };
 const DESKTOP_ATTACK_KEYS = ["1", "&", "k"];
+const SPECIAL_ATTACK_KEYS = ["+"];
 const ORB_MESSAGES = [
   "A toi qui n'a pas su écouter les voix, paye ton crime de ton âme.",
   "Vous n'êtes pas les bienvenus en ces lieux.",
@@ -945,14 +948,13 @@ function playSound(name, volume = 1) {
   if (!clip) return;
   try {
     const node = clip.cloneNode();
-    // Sécurité: ne jamais laisser un SFX hériter d'un loop=true (ex: musiques).
-    node.loop = false;
+    node.loop = false;           // ✅ important : empêche l’héritage d’un loop=true
+    node.currentTime = 0;
     node.volume = Math.max(0, Math.min(1, volume));
     node.play().catch(() => {});
-  } catch (err) {
-    // ignore play errors (autoplay policies, etc.)
-  }
+  } catch (err) {}
 }
+
 
 function createMenuClip(name, volume = 1) {
   const path = MENU_SFX_PATHS[name];
@@ -1536,25 +1538,66 @@ async function loadAudios(sourceMap) {
   return Object.fromEntries(entries);
 }
 
-function startKaelEpicTheme() {
-  if (State.flags?.kaelPhaseThreeDefeated) return;
-  const audio = State.sounds?.kaelEpic;
-  if (!audio) return;
-  if (!audio.paused) {
-    audio.currentTime = 0;
-  }
-  audio.loop = true;
-  audio.volume = 0.65;
-  audio.play().catch(() => {});
+function startKaelEpicTheme(phase) {
+  const source = State.sounds?.kaelEpic;
+  if (!source) return;
+
+  const resolvedPhase =
+    Number.isFinite(phase) && phase > 0
+      ? phase
+      : State.flags?.kaelPhaseThreeStarted
+      ? 3
+      : State.flags?.kaelPhaseTwoStarted
+      ? 2
+      : 1;
+
+  const resumeTime = Math.max(0, Math.min(kaelEpicPausedTime, source.duration ?? kaelEpicPausedTime));
+
+  try {
+    if (kaelEpicClip && !kaelEpicClip.paused) kaelEpicClip.pause();
+  } catch {}
+
+  const createClip = () => {
+    try {
+      return source.cloneNode();
+    } catch {
+      return source;
+    }
+  };
+
+  kaelEpicClip = createClip();
+  if (!kaelEpicClip) return;
+  kaelEpicClip.loop = true;
+  kaelEpicClip.volume = 0.65;
+  kaelEpicClip.currentTime = resumeTime;
+  kaelEpicClip.play().catch(() => {});
   kaelEpicActive = true;
 }
 
-function stopKaelEpicTheme() {
-  const audio = State.sounds?.kaelEpic;
-  if (!audio) return;
-  audio.pause();
-  audio.currentTime = 0;
+function pauseKaelEpicTheme() {
+  if (!kaelEpicClip) return;
+  try {
+    const current = kaelEpicClip.currentTime ?? 0;
+    const duration = kaelEpicClip.duration ?? current;
+    kaelEpicPausedTime = Math.max(0, Math.min(current, duration));
+    kaelEpicClip.pause();
+  } catch {}
   kaelEpicActive = false;
+}
+
+function stopKaelEpicTheme() {
+  const source = State.sounds?.kaelEpic;
+  const targets = [kaelEpicClip, source].filter(Boolean);
+  targets.forEach((audio) => {
+    try {
+      audio.loop = false;
+      audio.pause();
+      audio.currentTime = 0;
+    } catch {}
+  });
+  kaelEpicClip = null;
+  kaelEpicActive = false;
+  kaelEpicPausedTime = 0;
 }
 
 async function loadAnimations(sourceMap) {
@@ -1604,6 +1647,67 @@ function sliceSheet(img) {
     frames.push({ image: img, sx: i * frameW, sy: 0, sw: frameW, sh: frameH });
   }
   return frames;
+}
+function spawnGhosts(world, spawnPoint, animations, count = 5) {
+  if (!world || !animations) return [];
+  const ghosts = [];
+  const spawnY = (spawnPoint?.y ?? 0) + 300;
+  const minY = Math.min(Math.max(40, spawnY), Math.max(40, world.h - 60));
+  const usableHeight = Math.max(60, world.h - minY - 40);
+  for (let i = 0; i < count; i++) {
+    let pos = null;
+    for (let attempt = 0; attempt < 30; attempt++) {
+      const randX = 40 + Math.random() * Math.max(40, world.w - 80);
+      const randY = minY + Math.random() * usableHeight;
+      const candidate = world.nearestOpen(randX, randY, PLAYER_RADIUS);
+      if (candidate && candidate.y >= minY) {
+        pos = candidate;
+        break;
+      }
+    }
+    if (!pos) {
+      pos = {
+        x: (spawnPoint?.x ?? world.w / 2) + (i - count / 2) * 30,
+        y: minY + i * 35,
+      };
+    }
+    ghosts.push(createGhost(pos.x, pos.y, animations));
+  }
+  return ghosts;
+}
+
+function createGhost(x, y, animations) {
+  const animator = new Animator(animations, "idle");
+  return {
+    x,
+    y,
+    hp: 70,
+    maxHp: 70,
+    speed: 60,
+    chaseSpeed: 115,
+    attackRange: 26,
+    attackDamage: 8,
+    attackCooldown: 0,
+
+    specialCooldown: 0,
+    specialFlash: 0,
+    specialState: null,
+
+    chargeTimer: 0,
+    chargeMax: 0,
+    warpTimer: 0,
+    warpDuration: 0,
+    warpHit: false,
+    warpDir: { x: 0, y: 0 },
+
+    hurtTimer: 0,
+    hitFlash: 0,
+    dead: false,
+    scale: 0.128,
+    animator,
+
+    ghostTrail: [],
+  };
 }
 
 async function startGame(options = {}) {
@@ -2090,17 +2194,19 @@ function syncDialogueOverlay() {
     return Math.max(min, scaled || min);
   }
 
-  function initPreQuestShrubs(centerX, boundaryY) {
-    if (!Number.isFinite(centerX) || !Number.isFinite(boundaryY)) return;
-    State.preQuestShrubs = [
-      {
-        x: centerX,
+function initPreQuestShrubs(centerX, boundaryY) {
+  if (!Number.isFinite(centerX) || !Number.isFinite(boundaryY)) return;
+  State.preQuestShrubs = [
+    {
+      x: centerX,
       y: boundaryY - PRE_QUEST_SHRUB_SPREAD.yOffset - 35,
-        radius: Math.max((PRE_QUEST_SHRUB_WIDTH ?? 0) / 2, PRE_QUEST_SHRUB_SPREAD.minRadius),
-        spriteScale: PRE_QUEST_SHRUB_SCALE,
-      },
-    ];
-  }
+      radius: Math.max((PRE_QUEST_SHRUB_WIDTH ?? 0) / 2, PRE_QUEST_SHRUB_SPREAD.minRadius),
+      spriteScale: PRE_QUEST_SHRUB_SCALE,
+    },
+  ];
+}
+
+}
 
 function buildShrubCollider(shrub) {
   if (bossMapActive) return null;
@@ -2229,7 +2335,7 @@ function drawPreQuestShrubSprites(ctx) {
     bossMapActive = true;
     flashScreen(700);
     startScreenShake(1200);
-    startKaelEpicTheme();
+    playSound("kaelEpic", 0.95);
     triggerBetrayal();
   }
 
@@ -2325,7 +2431,6 @@ function drawPreQuestShrubSprites(ctx) {
       iconSrc: DRAGON_HEART_ASSET,
     });
     flags.dragonHeartDropped = true;
-    stopKaelEpicTheme();
   }
 
   function getRedBagPosition() {
@@ -2598,6 +2703,7 @@ function drawPreQuestShrubSprites(ctx) {
     const attackButtonHeld = State.isMobile
       ? mobileAttackHeld()
       : DESKTOP_ATTACK_KEYS.some((key) => Keys.has(key));
+    const specialAttackPressed = SPECIAL_ATTACK_KEYS.some((key) => consume(key));
     const attackState = State.attackInput;
     let attackReleased = false;
     let attackHoldTime = attackButtonHeld && attackState.wasHeld ? State.time - attackState.holdStart : 0;
@@ -2679,6 +2785,10 @@ function drawPreQuestShrubSprites(ctx) {
       } else {
         void transitionToBossMap();
       }
+    }
+
+    if (specialAttackPressed) {
+      player.queueAttack?.("special");
     }
 
     const dashHold = Keys.has(" ") || (touchControlState.dashHeld ?? false);
@@ -2914,10 +3024,6 @@ function drawPreQuestShrubSprites(ctx) {
     maybeAutoAcceptKaelQuest();
     updateBossObjective(dt);
 
-    if (State.boss?.alive === false && kaelEpicActive) {
-      stopKaelEpicTheme();
-    }
-
     // Camera & fog
     clampCameraToPlayer(player.x, player.y);
     State.fog.reveal(player.x, player.y, 170);
@@ -2941,21 +3047,24 @@ function drawPreQuestShrubSprites(ctx) {
       }
       if (!State.boss.alive && !State.flags.kaelDefeated) {
         State.flags.kaelDefeated = true;
-        stopKaelEpicTheme();
+        const inPhaseThree = State.flags.kaelPhaseThreeStarted && !State.flags.kaelPhaseThreeDefeated;
+        if (inPhaseThree) {
+          stopKaelEpicTheme();
+        } else {
+          pauseKaelEpicTheme();
+        }
         State.bossObjectiveReminderActive = false;
         updateBossObjectiveBanner();
         State.bossObjective = null;
         State.bossMusicPending = false;
         stopBossMusic(true);
-        if (State.flags.kaelPhaseThreeStarted && !State.flags.kaelPhaseThreeDefeated) {
+        if (inPhaseThree) {
           State.flags.kaelPhaseThreeDefeated = true;
-          // Coupe immédiatement la musique de phase 3 (epic.mp3)
-          stopKaelEpicTheme();
           State.flags.princessEscapeOffered = false;
           State.flags.kaelCorpseVisible = true;
           State.flags.betrayalHappened = false;
           State.flags.kaelDown = true;
-          // On laisse tomber directement le coeur d'Éphéria sans lancer de dialogue.
+          // On laisse tomber directement le coeur d'Epheria sans lancer de dialogue.
           spawnDragonHeartLoot(
             (State.boss?.x ?? State.player?.x ?? 0) + 30,
             State.boss?.y ?? State.player?.y ?? 0
@@ -2965,19 +3074,8 @@ function drawPreQuestShrubSprites(ctx) {
           State.flags.kaelCorpseVisible = true;
           preparePrincessForPhaseTwo();
         }
-        if (!State.flags.kaelPhaseTwoStarted) {
-          State.flags.phaseTwoDialoguePending = true;
-          State.flags.kaelCorpseVisible = true;
-          pauseForDialogue(
-            [{ speaker: "Kael", text: "Ah ! je..." }],
-            () => {}
-          );
-          pushStatus("Parle à Aelya pour poursuivre vers la phase deux.");
-        } else {
-          State.dialogue.show([{ speaker: "Moi", text: "C'est fini Kael.. Je suis désolé." }]);
-        }
       }
-    }
+
     damageGhostsFromPlayer();
 
     if (finalizeWorldLoop(dt)) return;
@@ -6075,7 +6173,7 @@ async function saveGoldChallengeScoreToSupabase(seconds) {
     State.flags.princessBossDefeated = false;
     State.bossMusicPending = false;
     startBossMusic();
-    startKaelEpicTheme();
+    startKaelEpicTheme(2);
     State.princessMechanics = null;
   }
 
@@ -6166,21 +6264,14 @@ async function saveGoldChallengeScoreToSupabase(seconds) {
     State.flags.princessBossDefeated = false;
     State.bossMusicPending = false;
     startBossMusic();
-    startKaelEpicTheme();
+    startKaelEpicTheme(3);
     State.princessMechanics = null;
   }
 
   function offerFinalEscapeAfterDragon() {
-      // ✅ Stoppe les musiques de combat dès la mort de Kael (phase 3)
-  stopKaelEpicTheme();
-  stopKaelEpicTheme();
-if (State?.sounds?.kaelEpic) {
-  State.sounds.kaelEpic.pause();
-  State.sounds.kaelEpic.currentTime = 0;
-}
     const hasHeart = State.inventory?.has?.(DRAGON_HEART_ITEM_ID) ?? false;
     if (!hasHeart) {
-      State.pushStatus?.("Retourne chercher le Cœur avant de parler à Aelya.");
+      State.pushStatus?.("Retourne chercher le Coeur avant de parler a Aelya.");
       return;
     }
     State.flags.princessEscapeOffered = true;
@@ -6188,23 +6279,22 @@ if (State?.sounds?.kaelEpic) {
     State.flags.princessBossDefeated = false;
     pauseForDialogue(
       [
- {
-  speaker: "Princesse",
-  text: "Le souffle de Kael s’est éteint.",
-},
-{
-  speaker: "Princesse",
-  text: "Puisse-tu reposer en paix… Kael. Mage déchu, ayant sombré sous les voix de ce lieu maudit.",
-},
-{
-  speaker: "Princesse",
-  text: "As-tu ramassé le Cœur sur le corps de Kael ?",
-},
-{
-  speaker: "Princesse",
-  text: "Peux-tu me le rendre, s’il te plaît ? Son pouvoir est trop grand… Il te consumerait si tu le gardais.",
-},
-
+        {
+          speaker: "Princesse",
+          text: "Le souffle de Kael semble s'eteindre.",
+        },
+        {
+          speaker: "Princesse",
+          text: "Puisse-tu reposer en paix, Kael. Mage tombe, que les voix de ce lieu maudit ne te retiennent plus.",
+        },
+        {
+          speaker: "Princesse",
+          text: "As-tu recupere le Coeur sur son corps ?",
+        },
+        {
+          speaker: "Princesse",
+          text: "Peux-tu me le rendre, s'il te plait ? Son pouvoir est trop grand et il te consumerait si tu le gardais.",
+        },
       ],
       () => {
         showFinalEscapeChoice();
@@ -6239,7 +6329,7 @@ function showFinalEscapeChoice() {
   title.style.marginBottom = "12px";
   const message = document.createElement("p");
   message.textContent =
-    "La princesse t'implore de lui remettre le Cœur d'Éphéria. Que lui réponds-tu ?";
+    "La princesse t'implore de lui remettre le Coeur d'Epheria. Que lui reponds-tu ?";
   message.style.marginBottom = "18px";
   const buttons = document.createElement("div");
   buttons.style.display = "flex";
@@ -6280,7 +6370,7 @@ function showFinalEscapeChoice() {
     if (choice === "agree") {
       launchFinalEscape();
     } else {
-      State.pushStatus?.("Aelya refuse de te rendre le Cœur.");
+      State.pushStatus?.("Aelya refuse de te rendre le Coeur.");
       promptAelyaBossIntro();
     }
   };
@@ -6295,30 +6385,30 @@ function showFinalEscapeChoice() {
 function promptAelyaBossIntro() {
     pauseForDialogue(
       [
-    {
-  speaker: "Aelya",
-  text: "Tu ne peux pas le garder pour toi… Sa puissance est trop grande. Et qu’en ferais-tu ?",
-},
-{
-  speaker: "Moi",
-  text: "Il est à moi désormais… Le pouvoir du Cœur d’Éphéria, tout entier, dans la paume de ma main !",
-},
-{
-  speaker: "Aelya",
-  text: "Non.. Je t’en supplie… rends-le-moi. Sinon, je serai forcée de t’arrêter.",
-},
-{
-  speaker: "Moi",
-  text: "Je ne souhaite pas ta mort Aelya, n'insiste pas.",
-},{
-  speaker: "",
-  text: "Aelya sanglote.",
-},
-{
-  speaker: "Aelya",
-  text: "Tu ne me laisses pas le choix… Pardonne-moi. Mais je dois le reprendre, quitte à te blesser !",
-},
-
+        {
+          speaker: "Aelya",
+          text: "Tu ne peux pas le garder pour toi. Sa puissance est trop grande. Que feras-tu de ce pouvoir ?",
+        },
+        {
+          speaker: "Moi",
+          text: "Il est a moi desormais. Le pouvoir du Coeur d'Epheria, tout entier, dans la paume de ma main !",
+        },
+        {
+          speaker: "Aelya",
+          text: "Non.. Je t'en supplie, rends-le moi. Sinon, je serai forcee de t'arreter.",
+        },
+        {
+          speaker: "Moi",
+          text: "Je ne souhaite pas ta mort Aelya, n'insiste pas.",
+        },
+        {
+          speaker: "",
+          text: "Aelya sanglote.",
+        },
+        {
+          speaker: "Aelya",
+          text: "Tu ne me laisses pas le choix. Pardonne-moi. Mais je dois le reprendre, quitte a te blesser !",
+        },
       ],
       () => {
         startAelyaBossBattle();
@@ -6780,72 +6870,6 @@ function promptAelyaBossIntro() {
       }
     );
   }
-
-  function spawnGhosts(world, spawnPoint, animations, count = 5) {
-    if (!world || !animations) return [];
-    const ghosts = [];
-    const spawnY = (spawnPoint?.y ?? 0) + 300;
-    const minY = Math.min(Math.max(40, spawnY), Math.max(40, world.h - 60));
-    const usableHeight = Math.max(60, world.h - minY - 40);
-    for (let i = 0; i < count; i++) {
-      let pos = null;
-      for (let attempt = 0; attempt < 30; attempt++) {
-        const randX = 40 + Math.random() * Math.max(40, world.w - 80);
-        const randY = minY + Math.random() * usableHeight;
-        const candidate = world.nearestOpen(randX, randY, PLAYER_RADIUS);
-        if (candidate && candidate.y >= minY) {
-          pos = candidate;
-          break;
-        }
-      }
-      if (!pos) {
-        pos = {
-          x: (spawnPoint?.x ?? world.w / 2) + (i - count / 2) * 30,
-          y: minY + i * 35,
-        };
-      }
-      ghosts.push(createGhost(pos.x, pos.y, animations));
-    }
-    return ghosts;
-  }
-
-function createGhost(x, y, animations) {
-  const animator = new Animator(animations, "idle");
-  return {
-    x,
-    y,
-    hp: 70,
-    maxHp: 70,
-    speed: 60,
-    chaseSpeed: 115,
-    attackRange: 26,
-    attackDamage: 8,
-    attackCooldown: 0,
-
-    // Gestion ancienne / nouvelle spé
-    specialCooldown: 0,
-    specialFlash: 0,
-    specialState: null, // null | "warp_charge" | "warp_dash"
-
-    // Timers spéciaux
-    chargeTimer: 0,
-    chargeMax: 0,
-    warpTimer: 0,
-    warpDuration: 0,
-    warpHit: false,
-    warpDir: { x: 0, y: 0 },
-
-    // Visuel / feedback
-    hurtTimer: 0,
-    hitFlash: 0,
-    dead: false,
-    scale: 0.128,
-    animator,
-
-    // Trail fantomatique (servira si on pimpe drawGhosts plus tard)
-    ghostTrail: [], // { x, y, life, maxLife }
-  };
-}
 
 const AELYA_TELEGRAPH_WARN = {
   pulse: 0.85,

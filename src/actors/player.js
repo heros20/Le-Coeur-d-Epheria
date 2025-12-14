@@ -40,6 +40,7 @@ export class Player {
       light: { type: "light", duration: 0.24, damage: CONFIG.lightAttackDamage ?? 15, sound: "heroSlash" },
       heavy: { type: "heavy", duration: 0.48, damage: CONFIG.heavyAttackDamage ?? 32, sound: "heroSlash" },
       combo: { type: "combo", duration: 0.3, damage: CONFIG.comboAttackDamage ?? 22, sound: "heroSlash" },
+      special: { type: "special", duration: 0.35, damage: 1000, sound: "heroSlash" },
     };
     this.currentAttack = null;
     this.chargeProgress = 0;
