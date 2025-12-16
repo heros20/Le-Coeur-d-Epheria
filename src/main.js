@@ -5192,6 +5192,7 @@ function updateRedWall(dt, player) {
 function handleStormCompletion(storm) {
   if (!storm || storm.completed) return;
   storm.completed = true;
+  stopOrbChallengeSound();
   hideOrbEntitiesForStorm(false);
   const descriptor = ORB_STORM_DESCRIPTORS[storm.orbId] ?? ORB_STORM_DESCRIPTORS[1];
   pushStatus(`Les flèches de ${descriptor.colorLabel} s'estompent, la sortie se dévoile.`);
@@ -5224,6 +5225,11 @@ function handleStormCompletion(storm) {
   if (wallState) {
     wallState.enabled = false;
     wallState.active = false;
+  }
+  const redWallState = orbRealmState.redWall;
+  if (redWallState) {
+    redWallState.enabled = false;
+    redWallState.active = false;
   }
   startTeleportEffect(storm);
   congratulateHeroForOrb(storm.orbId, storm);
