@@ -14,7 +14,6 @@ import { showEndings, renderEpilogue, launchCredits } from "./systems/endings-2.
 import { vignette, strokeText } from "./utils/draw.js";
 import { Animator } from "./utils/animator.js";
 import { createHUD } from "./ui/hud.js";
-import { Analytics } from "@vercel/analytics/next"
 console.log("### VERSION CURSOR OK ###");
 let heroAnimations = null;
 let heroGoldAnimations = null;
