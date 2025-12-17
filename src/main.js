@@ -181,6 +181,7 @@ const SOUND_SOURCES = {
   success: "./assets/sounds/enigmes/success.mp3",
   failed: "./assets/sounds/enigmes/failed.mp3",
   princessCry: "./assets/sounds/princesse/crying_princesse.mp3",
+  aelyaFight: "./assets/sounds/princesse/Aelya_fight.mp3",
   ghostWall: "./assets/sounds/Ghost/Laby_ghost.mp3",
   ghostDash: "./assets/sounds/Ghost/Ghost-attack.mp3",
   ghostCreepy: "./assets/sounds/Ghost/Creepy_ghost.mp3",
@@ -1113,6 +1114,23 @@ function startBossMusic() {
   }
 }
 
+function fadeActiveBossMusic(targetVolume, duration = 1200) {
+  const track = State.activeBossTrack;
+  if (!track) return;
+  if (track.paused) {
+    track.play().catch(() => {});
+  }
+  fadeAudio(track, targetVolume, duration);
+}
+
+function restoreBossMusicVolume() {
+  if (!State.activeBossTrack) {
+    startBossMusic();
+  } else {
+    fadeActiveBossMusic(0.75, 1200);
+  }
+}
+
 let orbChallengeAudioNode = null;
 function startOrbChallengeSound(volume = 0.3, fadeDuration = 600) {
   const clip = State.sounds?.miniBoss;
@@ -1161,6 +1179,49 @@ function stopBossMusic(withFade = true) {
   };
   if (withFade) {
     fadeAudio(track, 0, 1500, finalize);
+  } else {
+    finalize();
+  }
+}
+
+let aelyaFightAudioNode = null;
+function startAelyaFightMusic(volume = 0.55, fadeDuration = 1500) {
+  const clip = State.sounds?.aelyaFight;
+  if (!clip) return;
+  if (aelyaFightAudioNode) {
+    try {
+      if (!aelyaFightAudioNode.paused && !aelyaFightAudioNode.ended) {
+        return;
+      }
+    } catch {
+      // ignore
+    }
+    stopAelyaFightMusic(false);
+  }
+  try {
+    const node = clip.cloneNode();
+    node.loop = true;
+    node.volume = 0;
+    node.play().catch(() => {});
+    aelyaFightAudioNode = node;
+    fadeAudio(node, volume, fadeDuration);
+  } catch {
+    aelyaFightAudioNode = null;
+  }
+}
+
+function stopAelyaFightMusic(withFade = true, duration = 1500) {
+  const node = aelyaFightAudioNode;
+  if (!node) return;
+  aelyaFightAudioNode = null;
+  const finalize = () => {
+    try {
+      node.pause();
+      node.currentTime = 0;
+    } catch {}
+  };
+  if (withFade) {
+    fadeAudio(node, 0, duration, finalize);
   } else {
     finalize();
   }
@@ -2950,7 +3011,7 @@ function drawPreQuestShrubSprites(ctx) {
         updateBossObjectiveBanner();
         State.bossObjective = null;
         State.bossMusicPending = false;
-        stopBossMusic(true);
+        fadeActiveBossMusic(0.1, 1200);
         if (State.flags.kaelPhaseThreeStarted && !State.flags.kaelPhaseThreeDefeated) {
           State.flags.kaelPhaseThreeDefeated = true;
           // Coupe immédiatement la musique de phase 3 (epic.mp3)
@@ -6084,7 +6145,7 @@ async function saveGoldChallengeScoreToSupabase(seconds) {
     State.flags.princessBossActive = false;
     State.flags.princessBossDefeated = false;
     State.bossMusicPending = false;
-    startBossMusic();
+    restoreBossMusicVolume();
     startKaelEpicTheme();
     State.princessMechanics = null;
   }
@@ -6175,7 +6236,7 @@ async function saveGoldChallengeScoreToSupabase(seconds) {
     State.flags.princessBossActive = false;
     State.flags.princessBossDefeated = false;
     State.bossMusicPending = false;
-    startBossMusic();
+    restoreBossMusicVolume();
     startKaelEpicTheme();
     State.princessMechanics = null;
   }
@@ -6288,8 +6349,10 @@ function showFinalEscapeChoice() {
     State.flags.finalEscapeChoice = choice;
     State.paused = false;
     if (choice === "agree") {
+      stopAelyaFightMusic(true);
       launchFinalEscape();
     } else {
+      startAelyaFightMusic();
       State.pushStatus?.("Aelya refuse de te rendre le Cœur.");
       promptAelyaBossIntro();
     }
@@ -6347,6 +6410,9 @@ function promptAelyaBossIntro() {
     if (!player) return;
     const boss = State.princess;
     State.flags.princessBossActive = true;
+    if (State.flags.finalEscapeChoice === "refuse") {
+      startAelyaFightMusic();
+    }
     State.flags.princessBossDefeated = false;
     State.flags.princessBossDeathPending = false;
     State.princessBossRetryShown = false;
@@ -6355,18 +6421,33 @@ function promptAelyaBossIntro() {
       orbs: [],
       beams: [],
       telegraphs: [],
+      explosions: [],
+      zones: [],
+      streaks: [],
+      shockwaves: [],
+      pillars: [],
+      spiralOrbs: [],
       currentAction: null,
       cooldown: 0,
       lastAction: null,
+      elapsed: 0,
+      enrage: 0,
+      glowTimer: 0,
       drift: { active: false, timer: 0, angle: 0, radius: 0, direction: 1 },
     };
-    const baseHp = boss.maxHp ?? 200;
-    boss.hp = boss.maxHp = Math.max(200, baseHp);
-    boss.attackRange = boss.attackRange ?? 48;
-    boss.attackDamage = 26;
-    boss.attackCooldown = 1.2;
-    boss.speed = 150;
-    boss.keepDistance = 12;
+const baseHp = boss.maxHp ?? 200;
+const targetHp = Math.max(900, baseHp * 3);
+// Boss final = grosse barre de vie (réduite de moitié)
+boss.hp = boss.maxHp = Math.max(450, Math.round(targetHp / 2));
+
+boss.attackDamage = 34;        // punition
+boss.attackCooldown = 0.85;    // elle tape plus souvent
+boss.speed = 175;
+boss.keepDistance = 220;       // elle “kite” et cast
+
+// la rendre moins “papier”
+boss.damageTakenMultiplier = 0.85; // si ton dealDamageToTarget le respecte pour elle
+
     boss.follow = true;
     boss.hitRadius = Math.max(PLAYER_RADIUS, boss.hitRadius ?? PLAYER_RADIUS);
     boss.realmLabel = "Aelya";
@@ -6379,8 +6460,9 @@ function promptAelyaBossIntro() {
     startBossMusic();
   }
 
-  function spawnRadiantPulse(boss) {
+  function spawnRadiantPulse(boss, mechanics) {
     if (!boss) return null;
+    const enrageBonus = (mechanics?.enrage ?? 0) * 3;
     return {
       x: boss.x,
       y: boss.y,
@@ -6388,12 +6470,12 @@ function promptAelyaBossIntro() {
       maxRadius: 210,
       thickness: 16,
       speed: 240,
-      damage: 16,
+      damage: 28 + enrageBonus,
       hit: false,
     };
   }
 
-  function spawnLuminousOrbs(boss) {
+  function spawnLuminousOrbs(boss, mechanics) {
     if (!boss) return [];
     const count = 4;
     const speed = 150;
@@ -6407,14 +6489,14 @@ function promptAelyaBossIntro() {
         vy: Math.sin(angle) * speed,
         lifetime: 1.8,
         radius: 10,
-        damage: 14,
+        damage: 18 + (mechanics?.enrage ?? 0) * 4,
         hit: false,
       });
     }
     return orbs;
   }
 
-  function spawnCelestialBeam(boss, player) {
+  function spawnCelestialBeam(boss, player, mechanics) {
     if (!boss || !player) return null;
     const angle = Math.atan2(player.y - boss.y, player.x - boss.x);
     return {
@@ -6426,9 +6508,126 @@ function promptAelyaBossIntro() {
       length: 360,
       width: 18,
       timer: 0.85,
-      damage: 20,
+      damage: 34 + (mechanics?.enrage ?? 0) * 3,
       hitCooldown: 0,
     };
+  }
+function spawnAelyaExplosion(x, y, radius, damage) {
+  return {
+    x, y,
+    radius,
+    damage,
+    timer: 0.35,   // petit délai après la télégraph pour le “BOOM”
+    hit: false,
+  };
+}
+
+function spawnAelyaZone(x, y, radius, duration, dps) {
+  return {
+    x, y,
+    radius,
+    duration,
+    tick: 0,
+    cooldown: 0.22,
+    dps,
+  };
+}
+
+function spawnAelyaPillars(mechanics, player) {
+  if (!mechanics || !player) return;
+  const offsets = [-140, -60, 60, 140];
+  mechanics.pillars = mechanics.pillars ?? [];
+  offsets.forEach((offset) => {
+    mechanics.pillars.push({
+      x: player.x + offset,
+      y: player.y,
+      timer: 0,
+      duration: 1.5,
+      radius: 58,
+      damage: 32 + (mechanics?.enrage ?? 0) * 4,
+      hit: false,
+    });
+  });
+}
+
+function spawnAelyaSpiral(mechanics, boss) {
+  if (!mechanics || !boss) return;
+  const count = 6;
+  mechanics.spiralOrbs = mechanics.spiralOrbs ?? [];
+  for (let i = 0; i < count; i += 1) {
+    const angle = (i / count) * Math.PI * 2;
+    mechanics.spiralOrbs.push({
+      angle,
+      speed: Math.PI * 0.7,
+      timer: 0,
+      release: 1.5,
+      arcOffset: Math.random() * 0.4,
+      baseRadius: 70,
+      damage: 30 + (mechanics?.enrage ?? 0) * 3,
+      hit: false,
+      id: `${Date.now()}_${Math.random()}`,
+    });
+  }
+}
+
+function spawnAelyaShockwave(mechanics, options = {}) {
+  if (!mechanics) return;
+  const { radius = 200, duration = 1.2, color = "255, 200, 255" } = options;
+  mechanics.shockwaves = mechanics.shockwaves ?? [];
+  mechanics.shockwaves.push({
+    radius,
+    duration,
+    timer: 0,
+    color,
+  });
+}
+
+function spawnAelyaStreaks(mechanics, boss, player, options = {}) {
+  if (!mechanics || !boss) return;
+  const { count = 10, length = 180 } = options;
+  const palette = ["255, 210, 255", "255, 160, 220", "255, 140, 120"];
+  mechanics.streaks = mechanics.streaks ?? [];
+  for (let i = 0; i < count; i += 1) {
+    mechanics.streaks.push({
+      angle: Math.random() * Math.PI * 2,
+      length: length * (0.75 + Math.random() * 0.5),
+      speed: 1 + Math.random() * 1.3,
+      progress: 0,
+      thickness: 2 + Math.random() * 5,
+      color: palette[Math.floor(Math.random() * palette.length)],
+      offset: Math.random() * Math.PI * 2,
+    });
+  }
+}
+
+  function triggerAelyaActionVFX(mechanics, name, boss, player) {
+    if (!mechanics || !boss) return;
+    let baseColor = "255, 205, 235";
+    if (name === "meteor") {
+      baseColor = "255, 120, 140";
+    } else if (name === "beam") {
+      baseColor = "200, 230, 255";
+    } else if (name === "pillar") {
+      baseColor = "255, 130, 220";
+    } else if (name === "spiral") {
+      baseColor = "255, 210, 255";
+    }
+    spawnAelyaShockwave(mechanics, {
+      radius: 190 + Math.random() * 40,
+      duration: 1.1 + Math.random() * 0.4,
+      color: baseColor,
+    });
+    spawnAelyaStreaks(mechanics, boss, player, {
+      count: 6 + Math.floor(Math.random() * 6),
+      length: 160 + (name === "meteor" ? 40 : name === "pillar" ? 20 : 0),
+    });
+    if (name === "meteor" || name === "pillar") {
+      spawnAelyaShockwave(mechanics, {
+        radius: 240,
+        duration: 1.2,
+        color: name === "pillar" ? "255, 150, 255" : "255, 190, 80",
+      });
+    }
   }
 
   function startAelyaDrift(boss, player, mechanics) {
@@ -6452,25 +6651,103 @@ function promptAelyaBossIntro() {
       phase: "telegraph",
       timer: config.telegraph,
     };
-    ensureAelyaTelegraph(mechanics, name, config.telegraph);
+    if (name === "meteor") {
+  // cercle au sol sur le joueur (position lock)
+  ensureAelyaTelegraph(mechanics, name, config.telegraph, {
+    x: player.x,
+    y: player.y,
+    radius: 95,
+    id: `${Date.now()}_${Math.random()}`,
+  });
+} else if (name === "beam") {
+  const angle = Math.atan2(player.y - boss.y, player.x - boss.x);
+  ensureAelyaTelegraph(mechanics, name, config.telegraph, { angle, length: 340 });
+} else if (name === "pillar") {
+  const offsets = [-140, -60, 60, 140];
+  ensureAelyaTelegraph(mechanics, name, config.telegraph, {
+    positions: offsets.map((offset) => ({
+      x: player.x + offset,
+      y: player.y,
+      radius: 70,
+    })),
+    id: `${Date.now()}_pillar`,
+  });
+} else if (name === "spiral") {
+  ensureAelyaTelegraph(mechanics, name, config.telegraph, {
+    radius: 210,
+    arc: 1.2,
+    id: `${Date.now()}_spiral`,
+  });
+} else {
+  ensureAelyaTelegraph(mechanics, name, config.telegraph);
+}
+    triggerAelyaActionVFX(mechanics, name, boss, player);
+
   }
 
   function finishAelyaAction(mechanics) {
     if (!mechanics?.currentAction) return;
     const { name, config } = mechanics.currentAction;
     mechanics.lastAction = name;
-    mechanics.cooldown = (config?.cooldown ?? 1.2) + Math.random() * 0.4;
+    const cooldownBase = Math.max(0.4, (config?.cooldown ?? 1.2) - (mechanics.enrage ?? 0) * 0.08);
+    mechanics.cooldown = cooldownBase + Math.random() * 0.35;
     mechanics.currentAction = null;
     if (mechanics.drift) {
       mechanics.drift.active = false;
     }
   }
 
+  function computeAelyaActionScore(name, dist, mechanics) {
+    let score = 1 + (mechanics.enrage ?? 0) * 0.12;
+    const close = dist <= 160;
+    const mid = dist > 160 && dist < 240;
+    const far = dist >= 240;
+    switch (name) {
+      case "pulse":
+        score += close ? 1.6 : far ? 0.6 : 1.0;
+        break;
+      case "orb":
+        score += far ? 1.3 : close ? 0.9 : 1.1;
+        break;
+      case "beam":
+        score += far ? 1.8 : 0.5;
+        break;
+      case "drift":
+        score += close ? 1.2 : 0.6;
+        break;
+      case "meteor":
+        score += close ? 1.4 : 0.9;
+        break;
+      case "pillar":
+        score += close ? 2.2 : 0.8;
+        break;
+      case "spiral":
+        score += mid ? 2.0 : 1.1;
+        break;
+      default:
+        score += 1;
+    }
+    if (mechanics.lastAction === name) {
+      score *= 0.35;
+    }
+    return Math.max(0.2, score);
+  }
+
   function tryQueueAelyaAction(mechanics, boss, player) {
     if (!mechanics || mechanics.currentAction) return;
-    const available = Object.keys(AELYA_ACTIONS).filter((entry) => entry !== mechanics.lastAction);
-    const choices = available.length ? available : Object.keys(AELYA_ACTIONS);
-    const nextAction = choices[Math.floor(Math.random() * choices.length)];
+    const dist = Math.hypot(player.x - boss.x, player.y - boss.y) || 1;
+    const choices = Object.keys(AELYA_ACTIONS).map((name) => ({
+      name,
+      weight: computeAelyaActionScore(name, dist, mechanics),
+    }));
+    const totalWeight = choices.reduce((sum, entry) => sum + entry.weight, 0);
+    if (totalWeight <= 0) return;
+    let roll = Math.random() * totalWeight;
+    const pick = choices.find((entry) => {
+      roll -= entry.weight;
+      return roll <= 0;
+    });
+    const nextAction = pick?.name ?? choices[0].name;
     beginAelyaAction(mechanics, nextAction, boss, player);
   }
 
@@ -6500,6 +6777,9 @@ function promptAelyaBossIntro() {
   function updateAelyaMechanics(dt, player, boss) {
     const mechanics = State.princessMechanics;
     if (!mechanics || !player || !boss) return;
+    mechanics.elapsed = (mechanics.elapsed ?? 0) + dt;
+    mechanics.enrage = Math.min(3, Math.floor(mechanics.elapsed / 18));
+// toutes les 18s -> +1 niveau (jusqu'à 3)
     mechanics.cooldown = Math.max(0, mechanics.cooldown - dt);
     const active = mechanics.currentAction;
     if (active) {
@@ -6590,6 +6870,91 @@ function promptAelyaBossIntro() {
         return tele.remaining > 0 ? tele : null;
       })
       .filter(Boolean);
+
+    mechanics.pillars = (mechanics.pillars ?? [])
+      .map((pillar) => {
+        pillar.timer += dt;
+        if (pillar.timer >= 0.7 && !pillar.hit) {
+          const dist = Math.hypot(player.x - pillar.x, player.y - pillar.y);
+          if (dist <= pillar.radius + (player.r ?? 10)) {
+            aelyaDealDamage(player, pillar.damage);
+            pillar.hit = true;
+          }
+        }
+        return pillar.timer >= pillar.duration ? null : pillar;
+      })
+      .filter(Boolean);
+
+    mechanics.spiralOrbs = (mechanics.spiralOrbs ?? [])
+      .map((orb) => {
+        orb.timer += dt;
+        orb.angle += orb.speed * dt;
+        const radius = orb.baseRadius + orb.timer * 45;
+        const angle = orb.angle + orb.arcOffset;
+        orb.x = boss.x + Math.cos(angle) * radius;
+        orb.y = boss.y + Math.sin(angle) * radius;
+        if (orb.timer >= orb.release && !orb.hit) {
+          const dist = Math.hypot(player.x - orb.x, player.y - orb.y);
+          if (dist <= 70 + (player.r ?? 10)) {
+            aelyaDealDamage(player, orb.damage);
+          }
+          spawnAelyaShockwave(mechanics, {
+            radius: radius * 0.8,
+            duration: 1.4,
+            color: "255, 230, 255",
+          });
+          orb.hit = true;
+          return null;
+        }
+        return orb;
+      })
+      .filter(Boolean);
+
+    mechanics.explosions = (mechanics.explosions ?? [])
+      .map((e) => {
+        e.timer -= dt;
+        if (e.timer <= 0 && !e.hit) {
+          const dist = Math.hypot(player.x - e.x, player.y - e.y);
+          if (dist <= e.radius + (player.r ?? 10)) {
+            aelyaDealDamage(player, e.damage);
+          }
+          e.hit = true;
+          return null;
+        }
+        return e;
+      })
+      .filter(Boolean);
+
+    mechanics.zones = (mechanics.zones ?? [])
+      .map((z) => {
+        z.duration -= dt;
+        z.tick += dt;
+        if (z.tick >= z.cooldown) {
+          z.tick = 0;
+          const dist = Math.hypot(player.x - z.x, player.y - z.y);
+          if (dist <= z.radius + (player.r ?? 10)) {
+            aelyaDealDamage(player, z.dps * z.cooldown);
+          }
+        }
+        return z.duration > 0 ? z : null;
+      })
+      .filter(Boolean);
+
+    mechanics.shockwaves = (mechanics.shockwaves ?? [])
+      .map((wave) => {
+        wave.timer += dt;
+        return wave.timer >= wave.duration ? null : wave;
+      })
+      .filter(Boolean);
+
+    mechanics.streaks = (mechanics.streaks ?? [])
+      .map((streak) => {
+        streak.progress += dt * streak.speed;
+        return streak.progress >= 1 ? null : streak;
+      })
+      .filter(Boolean);
+
+    mechanics.glowTimer = (mechanics.glowTimer ?? 0) + dt;
   }
 
   function drawAelyaMechanics(ctx) {
@@ -6655,7 +7020,23 @@ function promptAelyaBossIntro() {
         ctx.beginPath();
         ctx.arc(boss.x, boss.y, 200, 0, Math.PI * 2);
         ctx.stroke();
-      } else if (tele.type === "orb") {
+      } else if (tele.type === "meteor") {
+  // cercle qui se resserre + halo
+  const p = 1 - progress; // 0 -> 1
+  const r = (tele.radius ?? 90) * (0.6 + progress * 0.4);
+
+  ctx.strokeStyle = `rgba(255, 120, 120, ${alpha})`;
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.arc(tele.x, tele.y, r, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.strokeStyle = `rgba(255, 240, 240, ${alpha * 0.55})`;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(tele.x, tele.y, r * 0.55, 0, Math.PI * 2);
+  ctx.stroke();}
+      else if (tele.type === "orb") {
         ctx.strokeStyle = `rgba(255, 200, 255, ${alpha * 0.9})`;
         ctx.lineWidth = 3;
         const dotCount = 6;
@@ -6684,9 +7065,162 @@ function promptAelyaBossIntro() {
         ctx.moveTo(0, 20);
         ctx.lineTo(280, 20);
         ctx.stroke();
+      } else if (tele.type === "pillar" && Array.isArray(tele.positions)) {
+        ctx.strokeStyle = `rgba(255, 140, 220, ${alpha})`;
+        ctx.lineWidth = 10;
+        tele.positions.forEach((pos) => {
+          ctx.beginPath();
+          ctx.moveTo(pos.x, boss.y - 220);
+          ctx.lineTo(pos.x, boss.y + 220);
+          ctx.stroke();
+        });
+      } else if (tele.type === "spiral") {
+        const swirl = tele.radius ?? 210;
+        const steps = 5;
+        for (let i = 0; i < steps; i += 1) {
+          const inner = swirl * (0.6 + (i / steps) * 0.4);
+          ctx.strokeStyle = `rgba(255, 220, 255, ${alpha * 0.25 * (1 - i / steps)})`;
+          ctx.lineWidth = 4 - (i * 0.5);
+          ctx.beginPath();
+          ctx.arc(boss.x, boss.y, inner, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       }
+      
       ctx.restore();
     });
+
+    (mechanics.pillars ?? []).forEach((pillar) => {
+      const pulse = Math.min(1, pillar.timer / pillar.duration);
+      const glow = 0.6 + Math.sin(pulse * Math.PI) * 0.3;
+      const height = 260;
+      ctx.save();
+      ctx.globalAlpha = 0.35 + glow * 0.25;
+      const grad = ctx.createLinearGradient(pillar.x - 6, boss.y - height, pillar.x + 6, boss.y + height);
+      grad.addColorStop(0, "rgba(255, 160, 255, 0)");
+      grad.addColorStop(0.3, "rgba(255, 120, 220, 0.8)");
+      grad.addColorStop(0.7, "rgba(255, 80, 200, 0.95)");
+      grad.addColorStop(1, "rgba(255, 30, 140, 0.1)");
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 10;
+      ctx.beginPath();
+      ctx.moveTo(pillar.x, boss.y - height * (0.6 + pulse * 0.4));
+      ctx.lineTo(pillar.x, boss.y + height * (0.6 + pulse * 0.4));
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    (mechanics.spiralOrbs ?? []).forEach((orb) => {
+      const glow = 0.55 + Math.sin(orb.timer * Math.PI * 4) * 0.25;
+      const gradient = ctx.createRadialGradient(orb.x, orb.y, 0, orb.x, orb.y, 18);
+      gradient.addColorStop(0, `rgba(255, 255, 255, ${glow})`);
+      gradient.addColorStop(0.6, `rgba(255, 200, 255, ${glow * 0.8})`);
+      gradient.addColorStop(1, "rgba(255, 120, 200, 0)");
+      ctx.save();
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      ctx.arc(orb.x, orb.y, 16, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+
+    const auraCycle = ((mechanics.glowTimer ?? 0) % 3) / 3;
+    const auraRadius = 210 + Math.sin(auraCycle * Math.PI * 2) * 30;
+    const auraGradient = ctx.createRadialGradient(
+      boss.x,
+      boss.y,
+      auraRadius * 0.3,
+      boss.x,
+      boss.y,
+      auraRadius
+    );
+    auraGradient.addColorStop(0, `rgba(255, 255, 255, ${0.45 - auraCycle * 0.1})`);
+    auraGradient.addColorStop(1, "rgba(255, 180, 220, 0)");
+    ctx.save();
+    ctx.lineWidth = 8;
+    ctx.strokeStyle = auraGradient;
+    ctx.beginPath();
+    ctx.arc(boss.x, boss.y, auraRadius, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    (mechanics.shockwaves ?? []).forEach((wave) => {
+      const ratio = wave.timer / Math.max(0.0001, wave.duration);
+      ctx.save();
+      ctx.lineWidth = 6 + (1 - ratio) * 14;
+      ctx.strokeStyle = `rgba(${wave.color}, ${0.85 * (1 - ratio)})`;
+      ctx.beginPath();
+      ctx.arc(boss.x, boss.y, wave.radius + ratio * 90, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    (mechanics.streaks ?? []).forEach((streak) => {
+      const progress = Math.min(1, streak.progress);
+      const head = streak.length * progress;
+      const tail = Math.max(0, head - streak.length * 0.3);
+      const startX = boss.x + Math.cos(streak.angle) * tail;
+      const startY = boss.y + Math.sin(streak.angle) * tail;
+      const endX = boss.x + Math.cos(streak.angle) * head;
+      const endY = boss.y + Math.sin(streak.angle) * head;
+      const grad = ctx.createLinearGradient(startX, startY, endX, endY);
+      grad.addColorStop(0, `rgba(${streak.color}, 0)`);
+      grad.addColorStop(0.4, `rgba(${streak.color}, 0.85)`);
+      grad.addColorStop(1, `rgba(${streak.color}, 0)`);
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.lineWidth = streak.thickness;
+      ctx.strokeStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(startX, startY);
+      ctx.lineTo(endX, endY);
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    (mechanics.explosions ?? []).forEach((exp) => {
+      const lifespan = 0.35;
+      const progress = Math.min(1, (lifespan - exp.timer) / lifespan);
+      const outer = exp.radius * (0.6 + progress * 1.2);
+      const inner = outer * 0.45;
+      const grad = ctx.createRadialGradient(exp.x, exp.y, inner, exp.x, exp.y, outer);
+      grad.addColorStop(0, `rgba(255, 245, 220, ${0.8 * (1 - progress)})`);
+      grad.addColorStop(0.4, `rgba(255, 170, 120, ${0.65 * (1 - progress)})`);
+      grad.addColorStop(1, "rgba(255, 90, 90, 0)");
+      ctx.save();
+      ctx.globalAlpha = 0.9 * (1 - progress);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(exp.x, exp.y, outer, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+
+    (mechanics.zones ?? []).forEach((z) => {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const zoneAlpha = 0.32 + Math.sin((mechanics.glowTimer ?? 0) * 3 + z.tick * 4) * 0.12;
+      const grad = ctx.createRadialGradient(
+        z.x,
+        z.y,
+        Math.max(4, z.radius * 0.2),
+        z.x,
+        z.y,
+        z.radius
+      );
+      grad.addColorStop(0, `rgba(255, 180, 150, ${0.8 * zoneAlpha})`);
+      grad.addColorStop(1, `rgba(255, 70, 70, 0)`);
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(z.x, z.y, z.radius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = `rgba(255, 160, 160, 0.6)`;
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.restore();
+    });
+
   }
 
   function updateAelyaBossFight(dt, player, map) {
@@ -6773,6 +7307,7 @@ function promptAelyaBossIntro() {
     }
     State.flags.endingPending = false;
     stopBossMusic(true);
+    stopAelyaFightMusic(true);
     State.princessMechanics = null;
     pauseForDialogue(
       [
@@ -6867,32 +7402,35 @@ const AELYA_TELEGRAPH_WARN = {
   orb: 1.1,
   beam: 1.4,
   drift: 0.9,
+  meteor: 1.25,
+  pillar: 1.7,
+  spiral: 1.3,
 };
 
 const AELYA_ACTIONS = {
   pulse: {
     telegraph: 0.85,
     duration: 1.4,
-    cooldown: 2.2,
+    cooldown: 1.8,
     effect: (boss, player, mechanics) => {
-      const pulse = spawnRadiantPulse(boss);
+      const pulse = spawnRadiantPulse(boss, mechanics);
       if (pulse) mechanics.pulses.push(pulse);
     },
   },
   orb: {
     telegraph: 1.0,
     duration: 1.6,
-    cooldown: 2.4,
+    cooldown: 2.2,
     effect: (boss, player, mechanics) => {
-      mechanics.orbs.push(...spawnLuminousOrbs(boss));
+      mechanics.orbs.push(...spawnLuminousOrbs(boss, mechanics));
     },
   },
   beam: {
     telegraph: 0.7,
-    duration: 1.3,
-    cooldown: 2.1,
+    duration: 1.2,
+    cooldown: 1.9,
     effect: (boss, player, mechanics) => {
-      const beam = spawnCelestialBeam(boss, player);
+      const beam = spawnCelestialBeam(boss, player, mechanics);
       if (beam) {
         mechanics.beams.push(beam);
       }
@@ -6906,14 +7444,59 @@ const AELYA_ACTIONS = {
       startAelyaDrift(boss, player, mechanics);
     },
   },
+  meteor: {
+  telegraph: 1.25,
+  duration: 0.6,
+  cooldown: 3.2,
+  effect: (boss, player, mechanics) => {
+    // Position lock au moment du cast (très lisible, très punitif)
+    const tx = player.x;
+    const ty = player.y;
+
+    // Explosion principale
+    mechanics.explosions.push(spawnAelyaExplosion(tx, ty, 90, 48 + mechanics.enrage * 6));
+
+    // Petite explosion “anti panic” (offset aléatoire léger)
+    const ox = tx + (Math.random() - 0.5) * 140;
+    const oy = ty + (Math.random() - 0.5) * 110;
+    mechanics.explosions.push(spawnAelyaExplosion(ox, oy, 70, 36 + mechanics.enrage * 4));
+
+    // Zone au sol après explosion (punitif si tu restes)
+    mechanics.zones.push(spawnAelyaZone(tx, ty, 95, 2.2, 10 + mechanics.enrage * 2));
+  },
+},
+  pillar: {
+    telegraph: 1.4,
+    duration: 1.6,
+    cooldown: 3.6,
+    effect: (boss, player, mechanics) => {
+      spawnAelyaPillars(mechanics, player);
+    },
+  },
+  spiral: {
+    telegraph: 1.2,
+    duration: 1.8,
+    cooldown: 2.8,
+    effect: (boss, player, mechanics) => {
+      spawnAelyaSpiral(mechanics, boss);
+    },
+  },
+
 };
 
-function ensureAelyaTelegraph(mechanics, type, duration) {
+function ensureAelyaTelegraph(mechanics, type, duration, extra = {}) {
   if (!mechanics || !type) return;
-  if ((mechanics.telegraphs ?? []).some((tele) => tele.type === type)) return;
+  if ((mechanics.telegraphs ?? []).some((tele) => tele.type === type && tele.id === extra.id)) return;
+
   mechanics.telegraphs = mechanics.telegraphs ?? [];
-  mechanics.telegraphs.push({ type, remaining: duration, duration });
+  mechanics.telegraphs.push({
+    type,
+    remaining: duration,
+    duration,
+    ...extra, // x, y, radius, angle, length...
+  });
 }
+
 
 function dealDamageToTarget(target, amount) {
   if (!target || !Number.isFinite(amount) || amount <= 0) return 0;
@@ -8831,6 +9414,7 @@ function resetGameOverSound() {
     const el = document.getElementById("ending");
     if (!el) return;
     stopBossMusic(true);
+    stopAelyaFightMusic(true);
     State.flags.princessBossActive = false;
     State.princessMechanics = null;
     State.flags.princessBossDeathPending = false;
@@ -8860,6 +9444,9 @@ function resetGameOverSound() {
         if (State.player) {
           State.player.hp = State.player.maxHp ?? 100;
           State.player.stamina = State.player.staminaMax;
+          State.player.resetCombatState?.();
+          State.player.animator?.setBase("idle");
+          State.player.animator?.play?.("idle");
         }
         startAelyaBossBattle();
       },
