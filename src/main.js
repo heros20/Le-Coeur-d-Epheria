@@ -16,7 +16,6 @@ import { Animator } from "./utils/animator.js";
 import { createHUD } from "./ui/hud.js";
 import { Analytics } from "@vercel/analytics/next"
 console.log("### VERSION CURSOR OK ###");
-<Analytics/>
 let heroAnimations = null;
 let heroGoldAnimations = null;
 let goldAnimActive = false;
