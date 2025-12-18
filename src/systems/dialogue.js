@@ -1,5 +1,47 @@
 // src/systems/dialogue.js
 import { State } from "../state.js";
+
+const DIALOGUE_TEXT_TRANSLATIONS = {
+  en: {
+    "Lioran… Kael… Vous n’auriez jamais dû venir ici.": "Lioran… Kael… You should never have come here.",
+    "Princesse Aelya ! Que voulez-vous dire ?!": "Princess Aelya! What do you mean?!",
+    "Le Cœur d’Éphéria est en ma possession. Il permet de repousser, ou de contrôler, les ténèbres qui envahissent le royaume.": "The Heart of Éphéria is in my keeping. It can push back or harness the shadows consuming the kingdom.",
+    "Mais il corrompt également l’âme de ceux qui le portent. Je me suis exilée ici pour supporter ce fardeau seule… Vous n’auriez pas dû venir.": "But it also corrupts the soul of whoever bears it. I exiled myself here to shoulder this burden alone… You shouldn't have followed.",
+    "Lioran… les voix… Je…": "Lioran… the voices… I…",
+    "Les voix ? De quoi parles-tu ?": "The voices? What are you talking about?",
+    "Elles sont dans ma tête depuis notre arrivée ici. Elles me parlent… elles m’ordonnent.": "They've been in my head since we arrived. They speak to me… they whisper.",
+    "Je suis désolé, Aelya… Je dois prendre ce Cœur.": "I'm sorry, Aelya… I must take the Heart.",
+    "Quoi ? Non !": "What? No!",
+    "Kael s’empare de force du Cœur d’Éphéria.": "Kael snatches the Heart of Éphéria by force.",
+    "Aaaah !": "Aaaah!",
+    "Princesse !": "Princess!",
+    "Kael ! Tu as perdu la raison ?!": "Kael! Have you lost your mind?!",
+  },
+};
+
+const DIALOGUE_SPEAKER_TRANSLATIONS = {
+  en: {
+    Princesse: "Princess",
+    Moi: "Lioran",
+    Kael: "Kael",
+  },
+};
+
+function translateDialogueText(text) {
+  if (!text) return text;
+  const lang = State.language ?? "fr";
+  const dict = DIALOGUE_TEXT_TRANSLATIONS[lang];
+  if (!dict) return text;
+  return dict[text] ?? text;
+}
+
+function translateDialogueSpeaker(name) {
+  if (!name) return name;
+  const lang = State.language ?? "fr";
+  const dict = DIALOGUE_SPEAKER_TRANSLATIONS[lang];
+  if (!dict) return name;
+  return dict[name] ?? name;
+}
 class DialogueUI {
   constructor() {
     this.active = false;
@@ -53,10 +95,11 @@ class DialogueUI {
       } else {
         text = String(entry ?? "");
       }
+      speaker = translateDialogueSpeaker(speaker);
       if (typeof text !== "string") text = String(text ?? "");
       const trimmedText = text.replace(/\s+/g, " ").trim();
       if (trimmedText.length === 0) continue;
-      result.push({ speaker, text: trimmedText });
+      result.push({ speaker, text: translateDialogueText(trimmedText) });
     }
     return result;
   }

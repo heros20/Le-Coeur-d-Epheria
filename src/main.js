@@ -15,6 +15,319 @@ import { vignette, strokeText } from "./utils/draw.js";
 import { Animator } from "./utils/animator.js";
 import { createHUD } from "./ui/hud.js";
 console.log("### VERSION CURSOR OK ###");
+const TRANSLATIONS = {
+  fr: {
+    bootTitle: "Le Cœur d’Éphéria",
+    bootTag1:
+      "Dans un monde oublié, où les ombres semblent respirer et où les couloirs murmurent d’anciens serments, s’élève un labyrinthe immense : Éphéria, une prison vivante qui dévore les faibles et éprouve les braves.",
+    bootTag2:
+      "Au centre de ce dédale bat un artefact mythique : le Cœur, une source de magie pure, capable d’effacer les ténèbres… ou de les déchaîner. Et c’est là que ton histoire commence.",
+    heroLore1: "On raconte que Lioran connaît les murmures des pierres d’Éphéria.",
+    heroLore2: "Il marche, lampe à la main, pour ceux qui n’ont plus la force d’avancer.",
+    heroStatRoleLabel: "Rôle :",
+    heroStatRoleValue: "Protecteur",
+    heroStatForcesLabel: "Forces :",
+    heroStatForcesValue: "Attaque Simple, Dash, Sprint",
+    heroStatWeaknessLabel: "Failles :",
+    heroStatWeaknessValue: "Trop confiant",
+    menuModesTitle: "Modes de jeu",
+    menuModesSub: "Choisis ton destin au cœur d’Éphéria.",
+    newGameLabel: "Nouvelle partie",
+    newGameHint: "Histoire principale",
+    goldChallengeLabel: "Défi doré",
+    goldChallengeHint: "Épreuve spéciale",
+    goldScoreTitle: "Record défi",
+    goldScoreSub: "Meilleur temps enregistré",
+    goldBestScoreNone: "Aucun record",
+    goldBestScoreOnlineNone: "Aucun record en ligne",
+    goldBestScoreOnlineRecord: "Record en ligne : {time}",
+    orbKeyRedLabel: "Clé rouge",
+    orbKeyGoldLabel: "Clé dorée",
+    orbKeyGreenLabel: "Clé verte",
+    orbKeyBlueLabel: "Clé bleue",
+    orbRealmRedLabel: "Orbe rouge",
+    orbRealmRedStatus: "Exploration rouge",
+    orbRealmGoldLabel: "Orbes d'Éphéria",
+    orbRealmGoldStatus: "Exploration dorée",
+    orbRealmGreenLabel: "Orbe verte",
+    orbRealmGreenStatus: "Exploration verdoyante",
+    orbRealmBlueLabel: "Orbe bleue",
+    orbRealmBlueStatus: "Exploration bleue",
+    goldRecordNew: "Nouveau record doré !",
+    menuSettingsTitle: "Paramètres rapides",
+    menuSoundLabel: "Musique menu : On",
+    menuGameSoundLabel: "Son du jeu : On",
+    menuCreditsTitle: "Crédits",
+    menuCreditsBtn: "Lancer les crédits",
+    langTitle: "Langue",
+    langFr: "Français",
+    langEn: "English",
+    langButtonFr: "FR",
+    langButtonEn: "EN",
+    commandsTitle: "Commandes",
+    commandsNote: "Sur mobile : utilise les boutons tactiles pour explorer Éphéria.",
+    cmdMovementLabel: "Déplacement",
+    cmdMovementDesc: "Se déplacer dans le labyrinthe",
+    cmdPadLabel: "Pad numérique",
+    cmdPadAttack: "Attaquer",
+    cmdPadSprint: "Sprint",
+    cmdPadRange: "Attaque distance",
+    cmdPadItem: "Objet rapide",
+    cmdKeyboardLabel: "Clavier",
+    cmdKeyboardAttack: "Attaquer",
+    cmdKeyboardSprint: "Sprint",
+    cmdKeyboardRange: "Attaque distance",
+    cmdKeyboardItem: "Objet rapide",
+    cmdInteractionLabel: "Interaction",
+    cmdInteractionPrimary: "Parler / Interagir",
+    cmdInteractionDesc: "NPC,orbes, mystères…",
+    cmdInteractionDash: "Dash",
+    introParagraph1:
+      "Dans les entrailles d'Éphéria, un labyrinthe ancien né d'une magie oubliée, le jeune héros Lioran s'avance, porté par l'espoir et l'inquiétude. À ses côtés, Kael, son compagnon d'armes, marche comme son ombre.",
+    introParagraph2:
+      "Ils sont venus pour retrouver Aelya, la princesse qui porte un Cœur mystérieux, une relique vivante capable de guérir un royaume ou de le réduire en poussière. Disparue dans les profondeurs du labyrinthe, elle semble appeler Lioran à travers des échos, des murmures et des traces dispersées comme des lucioles dans l'obscurité.",
+    introParagraph3:
+      "Mais Éphéria n'est pas qu'un dédale : c'est un esprit, un piège, un cimetière d'anciens voyageurs dont les voix hantent chaque orbe, chaque pierre, chaque recoin. Lioran et Kael avancent, percés par des énigmes sibyllines et des avertissements menaçants, tandis que quelque chose, dans les ténèbres, observe, grignote et s'insinue.",
+    "speaker.princesse": "Princesse",
+    "speaker.me": "Moi",
+    "speaker.kael": "Kael",
+    "dialogue.princessIntro.princessWarn": "Lioran… Kael… Vous n'auriez jamais dû venir ici.",
+    "dialogue.princessIntro.meSurprise": "Princesse Aelya ! Que voulez-vous dire ?!",
+    "dialogue.princessIntro.princessHeart": "Le Cœur d'Éphéria est en ma possession. Il permet de repousser, ou de contrôler, les ténèbres qui envahissent le royaume.",
+    "dialogue.princessIntro.princessBurden": "Mais il corrompt également l'âme de ceux qui le portent. Je me suis exilée ici pour supporter ce fardeau seule… Vous n'auriez pas dû venir.",
+    "dialogue.princessIntro.kaelVoices": "Lioran… les voix… Je…",
+    "dialogue.princessIntro.meQuestion": "Les voix ? De quoi parles-tu ?",
+    "dialogue.princessIntro.kaelWhispers": "Elles sont dans ma tête depuis notre arrivée ici. Elles me parlent… elles me murmurent.",
+    "dialogue.princessIntro.kaelApology": "Je suis désolé, Aelya… Je dois prendre ce Cœur.",
+    "dialogue.princessIntro.princessNo": "Quoi ? Non !",
+    "dialogue.princessIntro.narrationKaelGrabs": "Kael s'empare de force du Cœur d'Éphéria.",
+    "dialogue.princessIntro.princessCry": "Aaaah !",
+    "dialogue.princessIntro.mePrincess": "Princesse !",
+    "dialogue.princessIntro.meKael": "Kael ! Tu as perdu la raison ?!",
+    introParagraph1:
+      "Dans les entrailles d'Éphéria, un labyrinthe ancien né d'une magie oubliée, le jeune héros Lioran s'avance, porté par l'espoir et l'inquiétude. À ses côtés, Kael, son compagnon d'armes, marche comme son ombre.",
+    introParagraph2:
+      "Ils sont venus pour retrouver Aelya, la princesse qui porte un Cœur mystérieux, une relique vivante capable de guérir un royaume ou de le réduire en poussière. Disparue dans les profondeurs du labyrinthe, elle semble appeler Lioran à travers des échos, des murmures et des traces dispersées comme des lucioles dans l'obscurité.",
+    introParagraph3:
+      "Mais Éphéria n'est pas qu'un dédale : c'est un esprit, un piège, un cimetière d'anciens voyageurs dont les voix hantent chaque orbe, chaque pierre, chaque recoin. Lioran et Kael avancent, percés par des énigmes sibyllines et des avertissements menaçants, tandis que quelque chose, dans les ténèbres, observe, grignote et s'insinue.",
+  },
+  en: {
+    bootTitle: "The Heart of Éphéria",
+    bootTag1:
+      "In a forgotten world where shadows breathe and corridors whisper forgotten vows, Éphéria rises as a living labyrinth that devours the weak and tests the brave.",
+    bootTag2:
+      "At the center of this maze beats a mythical artifact: the Heart, a source of pure magic that can banish darkness… or unleash it. This is where your story begins.",
+    heroLore1: "Legends say Lioran hears the whispers of Éphéria’s stones.",
+    heroLore2: "He walks, lantern in hand, for those who no longer find the strength to move.",
+    heroStatRoleLabel: "Role :",
+    heroStatRoleValue: "Protector",
+    heroStatForcesLabel: "Strengths :",
+    heroStatForcesValue: "Basic Attack, Dash, Sprint",
+    heroStatWeaknessLabel: "Weaknesses :",
+    heroStatWeaknessValue: "Overly confident",
+    menuModesTitle: "Game Modes",
+    menuModesSub: "Choose your destiny in the heart of Éphéria.",
+    newGameLabel: "New Game",
+    newGameHint: "Story Mode",
+    goldChallengeLabel: "Golden Challenge",
+    goldChallengeHint: "Special trial",
+    goldScoreTitle: "Challenge Record",
+    goldScoreSub: "Best recorded time",
+    goldBestScoreNone: "No record yet",
+    goldBestScoreOnlineNone: "No online record yet",
+    goldBestScoreOnlineRecord: "Online record: {time}",
+    orbKeyRedLabel: "Red key",
+    orbKeyGoldLabel: "Golden key",
+    orbKeyGreenLabel: "Green key",
+    orbKeyBlueLabel: "Blue key",
+    orbRealmRedLabel: "Red orb",
+    orbRealmRedStatus: "Red exploration",
+    orbRealmGoldLabel: "Orbs of Éphéria",
+    orbRealmGoldStatus: "Golden exploration",
+    orbRealmGreenLabel: "Green orb",
+    orbRealmGreenStatus: "Green exploration",
+    orbRealmBlueLabel: "Blue orb",
+    orbRealmBlueStatus: "Blue exploration",
+    goldRecordNew: "New golden record!",
+    menuSettingsTitle: "Quick Settings",
+    menuSoundLabel: "Menu Music: On",
+    menuGameSoundLabel: "Game Sound: On",
+    menuCreditsTitle: "Credits",
+    menuCreditsBtn: "Play Credits",
+    langTitle: "Language",
+    langFr: "Français",
+    langEn: "English",
+    langButtonFr: "FR",
+    langButtonEn: "EN",
+    commandsTitle: "Controls",
+    commandsNote: "On mobile: use the touch buttons to roam Éphéria.",
+    cmdMovementLabel: "Movement",
+    cmdMovementDesc: "Move through the labyrinth",
+    cmdPadLabel: "Numeric pad",
+    cmdPadAttack: "Attack",
+    cmdPadSprint: "Sprint",
+    cmdPadRange: "Ranged attack",
+    cmdPadItem: "Quick item",
+    cmdKeyboardLabel: "Keyboard",
+    cmdKeyboardAttack: "Attack",
+    cmdKeyboardSprint: "Sprint",
+    cmdKeyboardRange: "Ranged attack",
+    cmdKeyboardItem: "Quick item",
+    cmdInteractionLabel: "Interaction",
+    cmdInteractionPrimary: "Talk / Interact",
+    cmdInteractionDesc: "NPCs, orbs, mysteries…",
+    cmdInteractionDash: "Dash",
+    "speaker.princesse": "Princess",
+    "speaker.me": "Lioran",
+    "speaker.kael": "Kael",
+    "dialogue.princessIntro.princessWarn": "Lioran… Kael… You should never have come here.",
+    "dialogue.princessIntro.meSurprise": "Princess Aelya! What do you mean?!",
+    "dialogue.princessIntro.princessHeart": "The Heart of Éphéria is in my keeping. It can push back or harness the shadows consuming the kingdom.",
+    "dialogue.princessIntro.princessBurden": "But it also corrupts the soul of whoever bears it. I exiled myself here to shoulder this burden alone… You shouldn't have followed.",
+    "dialogue.princessIntro.kaelVoices": "Lioran… the voices… I…",
+    "dialogue.princessIntro.meQuestion": "The voices? What are you talking about?",
+    "dialogue.princessIntro.kaelWhispers": "They've been in my head since we arrived. They speak to me… they whisper.",
+    "dialogue.princessIntro.kaelApology": "I'm sorry, Aelya… I must take the Heart.",
+    "dialogue.princessIntro.princessNo": "What? No!",
+    "dialogue.princessIntro.narrationKaelGrabs": "Kael snatches the Heart of Éphéria by force.",
+    "dialogue.princessIntro.princessCry": "Aaaah!",
+    "dialogue.princessIntro.mePrincess": "Princess!",
+    "dialogue.princessIntro.meKael": "Kael! Have you lost your mind?!",
+    introParagraph1:
+      "Deep within Éphéria, an ancient labyrinth born of forgotten magic, young hero Lioran moves forward, buoyed by hope and unease. Beside him walks Kael, his battle-brother, ever like a shadow.",
+    introParagraph2:
+      "They came seeking Aelya, the princess who carries a mysterious Heart, a living relic that can heal a kingdom or tear it apart. Lost in the maze's depths, she seems to call to Lioran through echoes, whispers, and traces scattered like fireflies in the dark.",
+    introParagraph3:
+      "But Éphéria is more than a maze; it is a spirit, a trap, a graveyard of travelers whose voices haunt every orb, every stone, every corner. Lioran and Kael press onward, pierced by riddles and ominous warnings, while something in the shadows watches, gnaws, and creeps closer.",
+  },
+};
+const LANGUAGE_STORAGE_KEY = "gameLanguage";
+const INTRO_CRAWL_KEYS = ["introParagraph1", "introParagraph2", "introParagraph3"];
+
+function loadStoredLanguage() {
+  if (typeof localStorage === "undefined") {
+    return null;
+  }
+  try {
+    const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
+    if (stored && TRANSLATIONS[stored]) {
+      return stored;
+    }
+  } catch {
+    // ignore storage errors
+  }
+  return null;
+}
+
+function saveLanguage(lang) {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+  try {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+  } catch {
+    // ignore storage errors
+  }
+}
+
+State.language = State.language ?? loadStoredLanguage() ?? "fr";
+
+function t(key) {
+  const lang = State.language ?? "fr";
+  return (
+    TRANSLATIONS[lang]?.[key] ??
+    TRANSLATIONS.fr?.[key] ??
+    key
+  );
+}
+
+function getIntroCrawlText() {
+  return INTRO_CRAWL_KEYS.map((key) => t(key)).join("\n\n");
+}
+
+function tFmt(key, replacements = {}) {
+  let text = t(key);
+  for (const [name, value] of Object.entries(replacements)) {
+    const placeholder = `{${name}}`;
+    text = text.split(placeholder).join(value ?? "");
+  }
+  return text;
+}
+
+function applyTranslations() {
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const label = el.getAttribute("data-i18n");
+    if (!label) return;
+    el.textContent = t(label);
+  });
+}
+
+function updateLanguageButtons() {
+  document.querySelectorAll("[data-lang]").forEach((btn) => {
+    const lang = btn.getAttribute("data-lang");
+    if (!lang) return;
+    btn.classList.toggle("menu-btn-active", lang === State.language);
+    btn.setAttribute("aria-pressed", lang === State.language ? "true" : "false");
+    const labelKey = lang === "fr" ? "langButtonFr" : "langButtonEn";
+    btn.textContent = t(labelKey);
+  });
+}
+
+function setLanguage(lang) {
+  if (!TRANSLATIONS[lang]) {
+    lang = "fr";
+  }
+  saveLanguage(lang);
+  if (State.language === lang) {
+    updateLanguageButtons();
+    return;
+  }
+  State.language = lang;
+  applyTranslations();
+  updateLanguageButtons();
+}
+
+window.GameLanguage = {
+  setLanguage,
+  getLanguage: () => State.language,
+};
+
+function setupLanguageControls() {
+  document.querySelectorAll("[data-lang]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const lang = btn.getAttribute("data-lang");
+      if (lang) {
+        setLanguage(lang);
+      }
+    });
+  });
+  applyTranslations();
+  updateLanguageButtons();
+}
+
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", setupLanguageControls);
+} else {
+  setupLanguageControls();
+}
+
+function getOrbRealmLabelText(config) {
+  if (!config) return "";
+  const key = config.labelKey;
+  if (key) {
+    return t(key);
+  }
+  return config.label ?? "";
+}
+
+function getOrbRealmStatusText(config) {
+  if (!config) return "";
+  const key = config.statusKey;
+  if (key) {
+    return t(key);
+  }
+  return config.statusMessage ?? "";
+}
 let heroAnimations = null;
 let heroGoldAnimations = null;
 let goldAnimActive = false;
@@ -61,11 +374,6 @@ const $introScroll = document.getElementById("introScroll");
 const $introScrollContent = document.querySelector("[data-intro-content]");
 const $introScrollSkip = document.querySelector("[data-intro-skip]");
 const $goldOrbPortal = document.getElementById("goldOrbPortal");
-const INTRO_CRAWL_TEXT = [
-"Dans les entrailles d’Éphéria, un labyrinthe ancien né d’une magie oubliée, le jeune héros Lioran s’avance, porté par l’espoir et l’inquiétude. À ses côtés, marchant comme son ombre, se tient Kael, son compagnon d’armes, son frère d’âme… ", 
-  "Ils sont venus pour retrouver Aëlya, la princesse qui porte le mystérieux Cœur, une relique vivante capable de guérir un royaume… ou de le réduire en poussière. Disparue dans les profondeurs du labyrinthe, elle semble appeler Lioran à travers des échos, des murmures, des traces d’elle éparpillées comme des lucioles dans l’obscurité.", 
-  "Mais Éphéria n’est pas qu’un dédale, c est un esprit, un piège, un cimetière d anciens voyageurs dont les voix hantent chaque orbe, chaque pierre, chaque recoin. Lioran et Kael avancent, percés par des énigmes sibyllines et des avertissements menaçants, tandis que quelque chose, dans les ténèbres, observe… grignote… s insinue.", 
-].join("\n\n");
 const INTRO_CRAWL_DURATION = 40000;
 const INTRO_FADE_DURATION = 450;
 const GOLD_PORTAL_FADE_DURATION = 450;
@@ -142,7 +450,7 @@ function showIntroCrawl() {
         }
       }, INTRO_FADE_DURATION);
     };
-    $introScrollContent.textContent = INTRO_CRAWL_TEXT;
+    $introScrollContent.textContent = getIntroCrawlText();
     $introScroll.style.setProperty("--intro-duration", `${INTRO_CRAWL_DURATION}ms`);
     $introScroll.classList.remove("hidden");
     requestAnimationFrame(() => {
@@ -245,12 +553,21 @@ const ORB_KEY_ASSET_PATHS = {
   green: "./assets/key/green.png",
   blue: "./assets/key/blue.png",
 };
-const ORB_KEY_LABELS = {
-  red: "Clé rouge",
-  gold: "Clé dorée",
-  green: "Clé verte",
-  blue: "Clé bleue",
+const ORB_KEY_LABEL_KEYS = {
+  red: "orbKeyRedLabel",
+  gold: "orbKeyGoldLabel",
+  green: "orbKeyGreenLabel",
+  blue: "orbKeyBlueLabel",
 };
+function getOrbKeyLabel(color) {
+  if (!color) return "Key";
+  const key = ORB_KEY_LABEL_KEYS[color];
+  const translated = key ? t(key) : null;
+  if (translated && !translated.includes("orbKey")) {
+    return translated;
+  }
+  return `${color[0].toUpperCase() + color.slice(1)} key`;
+}
 const ORB_KEY_COLORS = Object.keys(ORB_KEY_ASSET_PATHS);
 const ORB_KEY_ITEM_PREFIX = "orb-key-";
 function getOrbKeyItemId(color) {
@@ -273,10 +590,26 @@ const BOSS_MAP_BOTTOM_WALL_HEIGHT = 330;
 let bossMapResource = null;
 const ORB_KEY_MISSING_TEXT = "Cette orbe semble attendre quelque chose...";
 const ORB_REALM_CONFIG = {
-  0: { label: "Orbe rouge", mapSrc: "./assets/map/Red_orb.png", statusMessage: "Exploration rouge" },
-  1: { label: "Orbes d'Éphéria", mapSrc: "./assets/map/Gold_orb.png", statusMessage: "Exploration dorée" },
-  2: { label: "Orbe verte", mapSrc: "./assets/map/Green-orb.png", statusMessage: "Exploration verdoyante" },
-  3: { label: "Orbe bleue", mapSrc: "./assets/map/Blue_orb.png", statusMessage: "Exploration bleue" },
+  0: {
+    labelKey: "orbRealmRedLabel",
+    mapSrc: "./assets/map/Red_orb.png",
+    statusKey: "orbRealmRedStatus",
+  },
+  1: {
+    labelKey: "orbRealmGoldLabel",
+    mapSrc: "./assets/map/Gold_orb.png",
+    statusKey: "orbRealmGoldStatus",
+  },
+  2: {
+    labelKey: "orbRealmGreenLabel",
+    mapSrc: "./assets/map/Green-orb.png",
+    statusKey: "orbRealmGreenStatus",
+  },
+  3: {
+    labelKey: "orbRealmBlueLabel",
+    mapSrc: "./assets/map/Blue_orb.png",
+    statusKey: "orbRealmBlueStatus",
+  },
 };
 const DESKTOP_ATTACK_KEYS = ["1", "&", "k"];
 const ORB_MESSAGES = [
@@ -474,7 +807,7 @@ function updateGoldChallengeBestDisplay() {
   const el = document.getElementById("goldChallengeBestScore");
   if (!el) return;
   const best = readGoldChallengeBestTime();
-  el.textContent = best ? formatChallengeTime(best) : "Aucun record";
+  el.textContent = best ? formatChallengeTime(best) : t("goldBestScoreNone");
 }
 async function syncGoldChallengeBestFromSupabase() {
   const el = document.getElementById("goldChallengeBestScore");
@@ -500,17 +833,19 @@ async function syncGoldChallengeBestFromSupabase() {
     }
 
     if (!data || data.length === 0) {
-      el.textContent = "Aucun record en ligne";
+      el.textContent = t("goldBestScoreOnlineNone");
       return;
     }
 
     const best = Number(data[0].score_seconds);
     if (!Number.isFinite(best) || best <= 0) {
-      el.textContent = "Aucun record en ligne";
+      el.textContent = t("goldBestScoreOnlineNone");
       return;
     }
 
-    el.textContent = `Record en ligne : ${formatChallengeTime(best)}`;
+    el.textContent = tFmt("goldBestScoreOnlineRecord", {
+      time: formatChallengeTime(best),
+    });
   } catch (err) {
     console.error("[SUPABASE] Exception fetch best score:", err);
     updateGoldChallengeBestDisplay();
@@ -2069,7 +2404,7 @@ function syncDialogueOverlay() {
       itemId,
       () => ({
         id: itemId,
-        name: ORB_KEY_LABELS[color] ?? `Clé ${color}`,
+          name: getOrbKeyLabel(color),
         iconSrc: ORB_KEY_ASSET_PATHS[color],
         orbOnly: true,
         inventory: "orb",
@@ -2330,7 +2665,7 @@ function drawPreQuestShrubSprites(ctx) {
       type: "orb-key",
       itemId: getOrbKeyItemId(color),
       color,
-      name: ORB_KEY_LABELS[color],
+      name: getOrbKeyLabel(color),
       x,
       y,
       radius,
@@ -3125,7 +3460,7 @@ function drawPreQuestShrubSprites(ctx) {
       if (!color) return false;
       spawnOrbKeyAt(color, pickup.x, pickup.y);
       pickup.collected = true;
-      const label = ORB_KEY_LABELS[color] ?? "Clé";
+      const label = getOrbKeyLabel(color);
       pushStatus(`${label} révélée`);
       handlePickups();
       return true;
@@ -3756,7 +4091,7 @@ async function enterOrbRealm(orbId, options = {}) {
     hpMax: player.maxHp ?? 100,
     stamina: player.stamina,
     staminaMax: player.staminaMax ?? 100,
-    status: entry.config.statusMessage ?? "Exploration dorée",
+    status: getOrbRealmStatusText(entry.config),
     dashCooldown: player.getDashCooldown?.() ?? 0,
     dashCooldownMax: player.dashCooldown ?? 1,
   });
@@ -5979,7 +6314,7 @@ function finalizeGoldChallengeRecord(storm) {
     { speaker: "Fantome", text: `Tu as tenu ${formatChallengeTime(elapsed)}.` },
   ];
   if (isNewBest) {
-    lines.push({ speaker: "Fantome", text: "Nouveau record doré !" });
+    lines.push({ speaker: "Fantome", text: t("goldRecordNew") });
   }
   State.flags = State.flags ?? {};
   State.flags.goldChallengeDefeatDialogActive = true;
@@ -7657,7 +7992,7 @@ function createOrbBossGhost(orbId, x, y) {
   ghost.orbTimers = {};
   ghost.shieldActive = false;
   ghost.surgeTimer = 0;
-  ghost.realmLabel = config.label;
+  ghost.realmLabel = getOrbRealmLabelText(config);
   ghost.realmColor = config.color;
   ghost.orbCount = config.orbCount ?? 3;
   return ghost;

@@ -450,6 +450,31 @@
         border-style: dashed;
       }
 
+      .language-switch {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+      }
+
+      .language-switch-buttons {
+        display: flex;
+        gap: 0.4rem;
+      }
+
+      .language-switch-buttons .menu-btn {
+        padding: 0.4rem 0.8rem;
+        min-width: 48px;
+        text-align: center;
+        font-size: 0.75rem;
+      }
+
+      .language-switch-buttons .menu-btn-active {
+        border-color: rgba(255, 203, 112, 0.9);
+        box-shadow: 0 0 12px rgba(255, 203, 112, 0.6);
+      }
+
       .menu-btn-launching {
         --launch-duration: 1.6s;
         animation: menu-launch-pulse var(--launch-duration) ease-in-out infinite;
@@ -862,10 +887,10 @@
                 <img src="./favicon.ico" alt="coeur d'epheria" />
               </div>
               <div class="boot-title">
-                <h1>Le Cœur d’Éphéria</h1>
-                <p class="tag">
+                <h1 data-i18n="bootTitle">Le Cœur d’Éphéria</h1>
+                <p class="tag" data-i18n="bootTag1">
                 Dans un monde oublié, où les ombres semblent respirer et où les couloirs murmurent d’anciens serments, s’élève un labyrinthe immense : Éphéria, une prison vivante qui dévore les faibles et éprouve les braves.                </p>
-                  <p class="tag"> 
+                  <p class="tag" data-i18n="bootTag2"> 
                   Au centre de ce dédale bat un artefact mythique : le Cœur, une source de magie pure, capable d’effacer les ténèbres… ou de les déchaîner.
                   Et c’est là que ton histoire commence.                  </p>
               </div>
@@ -884,43 +909,50 @@
                   </button>
                 </div>
 
-                <p class="hero-lore">
+                <p class="hero-lore" data-i18n="heroLore1">
                   On raconte que Lioran connaît les murmures des pierres
                   d’Éphéria.
                 </p>
-                <p class="hero-lore">
+                <p class="hero-lore" data-i18n="heroLore2">
                   Il marche, lampe à la main, pour ceux qui n’ont plus la force
                   d’avancer.
                 </p>
 
                 <div class="hero-stats">
-                  <div class="hero-stat">
-                    <span>Rôle :</span><span>Protecteur</span>
-                  </div>
-                  <div class="hero-stat">
-                    <span>Forces :</span
-                    ><span>Attaque Simple, Dash, Sprint</span>
-                  </div>
-                  <div class="hero-stat">
-                    <span>Failles :</span><span>Trop confiant</span>
-                  </div>
+                <div class="hero-stat">
+                  <span data-i18n="heroStatRoleLabel">Rôle :</span><span data-i18n="heroStatRoleValue">Protecteur</span>
+                </div>
+                <div class="hero-stat">
+                  <span data-i18n="heroStatForcesLabel">Forces :</span
+                    ><span data-i18n="heroStatForcesValue">Attaque Simple, Dash, Sprint</span>
+                </div>
+                <div class="hero-stat">
+                  <span data-i18n="heroStatWeaknessLabel">Failles :</span><span data-i18n="heroStatWeaknessValue">Trop confiant</span>
+                </div>
                 </div>
               </div>
 
               <!-- PANNEAU MENU PRINCIPAL RESTRUCTURÉ -->
               <div class="menu-panel">
+                <div class="language-switch">
+                  <span data-i18n="langTitle">Langue</span>
+                  <div class="language-switch-buttons">
+                    <button type="button" class="menu-btn secondary" data-lang="fr"></button>
+                    <button type="button" class="menu-btn secondary" data-lang="en"></button>
+                  </div>
+                </div>
 
                 <!-- SECTION : MODES DE JEU -->
                 <div class="menu-section menu-section-main">
-                  <div class="menu-title">Modes de jeu</div>
-                  <div class="menu-sub">
+                  <div class="menu-title" data-i18n="menuModesTitle">Modes de jeu</div>
+                  <div class="menu-sub" data-i18n="menuModesSub">
                     Choisis ton destin au cœur d’Éphéria.
                   </div>
 
                   <!-- Garder le même id pour la logique JS -->
                   <button id="startBtn" class="menu-btn primary" disabled>
-                    <span class="label">Nouvelle partie</span>
-                    <span class="hint">Histoire principale</span>
+                    <span class="label" data-i18n="newGameLabel">Nouvelle partie</span>
+                    <span class="hint" data-i18n="newGameHint">Histoire principale</span>
                   </button>
 
                   <button
@@ -928,21 +960,23 @@
                     class="menu-btn secondary menu-btn-gold"
                     type="button"
                   >
-                    <span class="label">Défi doré</span>
-                    <span class="hint">Épreuve spéciale</span>
+                    <span class="label" data-i18n="goldChallengeLabel">Défi doré</span>
+                    <span class="hint" data-i18n="goldChallengeHint">Épreuve spéciale</span>
                   </button>
 
                   <div class="gold-score-card">
   <div class="gold-score-label">
-    <span class="gold-score-title">Record défi</span>
-    <span class="gold-score-sub">Meilleur temps enregistré</span>
+    <span class="gold-score-title" data-i18n="goldScoreTitle">Record défi</span>
+    <span class="gold-score-sub" data-i18n="goldScoreSub">Meilleur temps enregistré</span>
   </div>
 
   <div class="gold-score-value">
     <span class="gold-score-pill">
-      <span id="goldChallengeBestScore" class="gold-score-number">
-        Aucun record
-      </span>
+    <span
+      id="goldChallengeBestScore"
+      class="gold-score-number"
+      data-i18n="goldBestScoreNone"
+    ></span>
     </span>
   </div>
 </div>
@@ -951,7 +985,7 @@
 
                 <!-- SECTION : PARAMÈTRES RAPIDES -->
                 <div class="menu-section menu-section-settings">
-                  <div class="menu-title">Paramètres rapides</div>
+                  <div class="menu-title" data-i18n="menuSettingsTitle">Paramètres rapides</div>
 
                   <div class="menu-options">
                     <button
@@ -959,7 +993,7 @@
                       class="menu-btn secondary"
                       type="button"
                     >
-                      <span class="label">Musique menu : On</span>
+                      <span class="label" data-i18n="menuSoundLabel">Musique menu : On</span>
                     </button>
 
                     <button
@@ -967,19 +1001,19 @@
                       class="menu-btn secondary"
                       type="button"
                    >
-                     <span class="label">Son du jeu : On</span>
+                     <span class="label" data-i18n="menuGameSoundLabel">Son du jeu : On</span>
                    </button>
                  </div>
                 <div class="menu-credits-callout">
                   <div class="menu-credits-info">
-                    <span class="menu-credits-title">Crédits</span>
+                    <span class="menu-credits-title" data-i18n="menuCreditsTitle">Crédits</span>
                   </div>
                   <button
                     id="creditsBtn"
                     class="menu-btn tertiary"
                     type="button"
                   >
-                    <span class="label">Lancer les crédits</span>
+                    <span class="label" data-i18n="menuCreditsBtn">Lancer les crédits</span>
                   </button>
                 </div>
               </div>
@@ -990,82 +1024,88 @@
 
            <section class="help">
   <div class="boot-commands-wrapper">
-    <h4 class="boot-commands-title">Commandes</h4>
+    <h4 class="boot-commands-title" data-i18n="commandsTitle">Commandes</h4>
 
     <div class="boot-commands-grid">
 
       <div class="boot-command-group">
-        <div class="boot-command-label">Déplacement</div>
+        <div class="boot-command-label" data-i18n="cmdMovementLabel">Déplacement</div>
         <div class="boot-command-keys">
           <span class="boot-command-key">Z</span>
           <span class="boot-command-key">Q</span>
           <span class="boot-command-key">S</span>
           <span class="boot-command-key">D</span>
         </div>
-        <div class="boot-command-desc">Se déplacer dans le labyrinthe</div>
+        <div class="boot-command-desc" data-i18n="cmdMovementDesc">
+          Se déplacer dans le labyrinthe
+        </div>
       </div>
 
       <div class="boot-command-group">
-        <div class="boot-command-label">Pad numérique</div>
+        <div class="boot-command-label" data-i18n="cmdPadLabel">Pad numérique</div>
 
         <div class="boot-command-keys">
           <span class="boot-command-key">1</span>
-          <span class="boot-command-desc-inline">Attaquer</span>
+          <span class="boot-command-desc-inline" data-i18n="cmdPadAttack">Attaquer</span>
         </div>
 
         <div class="boot-command-keys">
           <span class="boot-command-key">5</span>
-          <span class="boot-command-desc-inline">Sprint</span>
+          <span class="boot-command-desc-inline" data-i18n="cmdPadSprint">Sprint</span>
         </div>
 
         <div class="boot-command-keys">
           <span class="boot-command-key">3</span>
-          <span class="boot-command-desc-inline">Attaque distance</span>
+          <span class="boot-command-desc-inline" data-i18n="cmdPadRange">Attaque distance</span>
         </div>
 
         <div class="boot-command-keys">
           <span class="boot-command-key">2</span>
-          <span class="boot-command-desc-inline">Objet rapide</span>
+          <span class="boot-command-desc-inline" data-i18n="cmdPadItem">Objet rapide</span>
         </div>
 
       </div> <div class="boot-command-group">
-        <div class="boot-command-label">Clavier</div>
+        <div class="boot-command-label" data-i18n="cmdKeyboardLabel">Clavier</div>
 
         <div class="boot-command-keys">
           <span class="boot-command-key">K</span>
-          <span class="boot-command-desc-inline">Attaquer</span>
+          <span class="boot-command-desc-inline" data-i18n="cmdKeyboardAttack">Attaquer</span>
         </div>
 
         <div class="boot-command-keys">
           <span class="boot-command-key">O</span>
-          <span class="boot-command-desc-inline">Sprint</span>
+          <span class="boot-command-desc-inline" data-i18n="cmdKeyboardSprint">Sprint</span>
         </div>
 
         <div class="boot-command-keys">
           <span class="boot-command-key">M</span>
-          <span class="boot-command-desc-inline">Attaque distance</span>
+          <span class="boot-command-desc-inline" data-i18n="cmdKeyboardRange">Attaque distance</span>
         </div>
         <div class="boot-command-keys">
           <span class="boot-command-key">L</span>
-          <span class="boot-command-desc-inline">Objet rapide</span>
+          <span class="boot-command-desc-inline" data-i18n="cmdKeyboardItem">Objet rapide</span>
         </div>
 
       </div>
           <div class="boot-command-group">
-        <div class="boot-command-label">Interaction</div>
+        <div class="boot-command-label" data-i18n="cmdInteractionLabel">Interaction</div>
         <div class="boot-command-keys">
           <span class="boot-command-key">E</span>
-          <span class="boot-command-desc-inline">Parler / Interagir</span>
+          <span class="boot-command-desc-inline" data-i18n="cmdInteractionPrimary">
+            Parler / Interagir
+          </span>
         </div>
-        <div class="boot-command-desc">NPC,orbes, mystères…</div>
+        <div class="boot-command-desc" data-i18n="cmdInteractionDesc">
+          NPC,orbes, mystères…
+        </div>
           <div class="boot-command-keys">
           <span class="boot-command-key">Space</span>
-          <span class="boot-command-desc-inline">Dash</span>
+          <span class="boot-command-desc-inline" data-i18n="cmdInteractionDash">Dash</span>
         </div>
       </div>
     </div>
 
-    <p class="boot-commands-note">
+    <p class="boot-commands-note" data-i18n="commandsNote">
       Sur mobile : utilise les boutons tactiles pour explorer Éphéria.
     </p>
   </div>
