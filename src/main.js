@@ -1207,10 +1207,14 @@ function detectTouchDevice() {
 
 function resetTouchControlState() {
   touchControlState.moveVector = null;
+
   touchControlState.dashQueued = false;
+  touchControlState.dashHeld = false;
+
   touchControlState.attack.justPressed = false;
   touchControlState.attack.held = false;
 }
+
 
 function setupTouchControls() {
   const wantsTouch = detectTouchDevice();
@@ -1338,6 +1342,54 @@ function setupTouchControls() {
       },
     });
   }
+  const interactBtn = root.querySelector("[data-touch-interact]");
+if (interactBtn) {
+  bindTouchButton(interactBtn, {
+    onPress: () => {
+      // Simule un appui sur E
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "e",
+          code: "KeyE",
+          bubbles: true,
+        })
+      );
+    },
+    onRelease: () => {
+      window.dispatchEvent(
+        new KeyboardEvent("keyup", {
+          key: "e",
+          code: "KeyE",
+          bubbles: true,
+        })
+      );
+    },
+  });
+}
+const sprintBtn = root.querySelector("[data-touch-sprint]");
+if (sprintBtn) {
+  bindTouchButton(sprintBtn, {
+    onPress: () => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "o",
+          code: "KeyO",
+          bubbles: true,
+        })
+      );
+    },
+    onRelease: () => {
+      window.dispatchEvent(
+        new KeyboardEvent("keyup", {
+          key: "o",
+          code: "KeyO",
+          bubbles: true,
+        })
+      );
+    },
+  });
+}
+
 }
 
 function bindTouchButton(el, { onPress, onRelease } = {}) {

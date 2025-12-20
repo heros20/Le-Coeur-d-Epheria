@@ -503,6 +503,7 @@ function bindAttackButton(el) {
     e.stopPropagation();
     el.classList.add("btn-active");
     simulateCanvasAttack();
+    setVirtualKey("1", true, true);
     const touchControls = State.touchControls;
     if (touchControls) {
       touchControls.attack.justPressed = true;
@@ -517,10 +518,12 @@ function bindAttackButton(el) {
     el.addEventListener("pointerup", () => {
       const touchControls = State.touchControls;
       if (touchControls) touchControls.attack.held = false;
+      setVirtualKey("1", false);
     });
     el.addEventListener("pointercancel", () => {
       const touchControls = State.touchControls;
       if (touchControls) touchControls.attack.held = false;
+      setVirtualKey("1", false);
     });
   } else {
     el.addEventListener("touchstart", trigger, { passive: false });
@@ -528,6 +531,7 @@ function bindAttackButton(el) {
     const release = () => {
       const touchControls = State.touchControls;
       if (touchControls) touchControls.attack.held = false;
+      setVirtualKey("1", false);
     };
     el.addEventListener("touchend", release);
     el.addEventListener("touchcancel", release);
@@ -688,5 +692,5 @@ function setupMobileControls() {
       State.dialogue.next?.();
     }
   });
-  bindHoldButton(btnSprint, ["2"]);
+  bindHoldButton(btnSprint, ["5", "o"]);
 }

@@ -197,60 +197,46 @@
                 ></div>
 
                 <!-- CONTRÔLES MOBILES DANS LA ZONE DE JEU -->
-                <div id="mobile-controls" class="touch-controls">
-                  <!-- D-Pad en croix, sans cercle central -->
-                  <div class="touch-dpad">
-                    <button
-                      id="btn-up"
-                      class="touch-btn dpad-btn dpad-up"
-                    ></button>
-                    <button
-                      id="btn-left"
-                      class="touch-btn dpad-btn dpad-left"
-                    ></button>
-                    <button
-                      id="btn-right"
-                      class="touch-btn dpad-btn dpad-right"
-                    ></button>
-                    <button
-                      id="btn-down"
-                      class="touch-btn dpad-btn dpad-down"
-                    ></button>
-                  </div>
+<!-- CONTRÔLES MOBILES DANS LA ZONE DE JEU -->
+<div id="touchControls" class="touch-controls hidden">
+  <!-- Joystick -->
+  <div class="touch-joystick" aria-label="Joystick">
+    <div class="joystick-base" data-joystick-base>
+      <div class="joystick-thumb" data-joystick-thumb></div>
+    </div>
+  </div>
 
-                  <!-- Boutons d’action -->
-                  <div class="touch-buttons actions-pad">
-                    <button
-                      id="btn-interact"
-                      class="touch-btn touch-interact action-btn action-top"
-                    >
-                      <span class="btn-label">Interagir</span>
-                    </button>
+  <!-- Boutons d’action -->
+  <div class="touch-buttons actions-pad">
+    <button id="btn-interact" class="touch-btn touch-interact action-btn action-top">
+      <span class="btn-label">Interagir</span>
+    </button>
 
-                    <button
-                      id="btn-attack"
-                      class="touch-btn touch-attack action-btn action-left"
-                    >
-                      <span class="btn-label">Attaque</span>
-                    </button>
+    <!-- IMPORTANT : ton main.js écoute data-touch-attack -->
+    <button
+      id="btn-attack"
+      class="touch-btn touch-attack action-btn action-left"
+      data-touch-attack
+    >
+      <span class="btn-label">Attaque</span>
+    </button>
 
-                    <button
-                      id="btn-dash"
-                      class="touch-btn touch-dash action-btn action-right"
-                    >
-                      <span class="btn-label">Dash</span>
-                      <span class="cooldown-text" aria-hidden="true"></span>
-                    </button>
+    <!-- IMPORTANT : ton main.js écoute data-touch-dash -->
+    <button
+      id="btn-dash"
+      class="touch-btn touch-dash action-btn action-right"
+      data-touch-dash
+    >
+      <span class="btn-label">Dash</span>
+      <span class="cooldown-text" aria-hidden="true"></span>
+    </button>
 
-                    <button
-                      id="btn-sprint"
-                      class="touch-btn touch-sprint action-btn action-bottom"
-                    >
-                      <span class="btn-label">Sprint</span>
-                    </button>
-                  </div>
-                  <!-- Fin Boutons d’action -->
-                </div>
+    <button id="btn-sprint" class="touch-btn touch-sprint action-btn action-bottom">
+      <span class="btn-label">Sprint</span>
+    </button>
+  </div>
+</div>
+
               </div>
 
               <!-- HUD sur le côté (desktop) / en dessous (mobile) -->
