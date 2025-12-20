@@ -7075,7 +7075,7 @@ function promptAelyaBossIntro() {
 const baseHp = boss.maxHp ?? 200;
 const targetHp = Math.max(900, baseHp * 3);
 // Boss final = grosse barre de vie (doublee)
-boss.hp = boss.maxHp = Math.round(targetHp);
+boss.hp = boss.maxHp = Math.round(targetHp * 1.5);
 
 boss.attackDamage = 34;        // punition
 boss.attackCooldown = 0.85;    // elle tape plus souvent
