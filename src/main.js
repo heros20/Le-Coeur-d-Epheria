@@ -118,6 +118,17 @@ const TRANSLATIONS = {
       "La princesse t'implore de lui remettre le Cœur d'Éphéria. Que lui réponds-tu ?",
     "finalChoiceAgree": "Oui",
     "finalChoiceDecline": "Non",
+    "gameOverTitle": "Game Over",
+    "gameOverKaelAllyText": "Kael n'a pas survécu. Le labyrinthe reprend sa colère.",
+    "gameOverBossText": "Kael t'a vaincu. Relance le duel et reprends le dessus.",
+    "gameOverAelyaText": "Aelya t'a repoussé. Relance le duel !",
+    "gameOverRetryFight": "Retenter le combat",
+    "gameOverRetryTrial": "Retenter l'épreuve",
+    "gameOverRetryStart": "Recommencer",
+    "gameOverAbandon": "Abandonner",
+    "gameOverReturnTitle": "Les âmes défuntes t'emportent.",
+    "gameOverReturnText": "Ton dernier souvenir disparaît dans la poussière d'Éphéria.",
+    "gameOverReturnHome": "Retour à l'accueil",
     menuSettingsTitle: "Paramètres rapides",
     menuSoundLabel: "Musique menu : On",
     menuGameSoundLabel: "Son du jeu : On",
@@ -276,6 +287,17 @@ const TRANSLATIONS = {
       "The princess begs you to return the Heart of Epheria. How do you answer her?",
     finalChoiceAgree: "Yes",
     finalChoiceDecline: "No",
+    gameOverTitle: "Game Over",
+    gameOverKaelAllyText: "Kael did not survive. The labyrinth answers with wrath.",
+    gameOverBossText: "Kael defeated you. Restart the duel and take the upper hand.",
+    gameOverAelyaText: "Aelya drove you back. Restart the duel!",
+    gameOverRetryFight: "Retry the fight",
+    gameOverRetryTrial: "Retry the trial",
+    gameOverRetryStart: "Restart",
+    gameOverAbandon: "Abandon",
+    gameOverReturnTitle: "The dead souls carry you away.",
+    gameOverReturnText: "Your last memory fades into the dust of Epheria.",
+    gameOverReturnHome: "Back to title",
     goldRecordNew: "New golden record!",
     menuSettingsTitle: "Quick Settings",
     menuSoundLabel: "Menu Music: On",
@@ -2117,7 +2139,8 @@ function startKaelEpicTheme() {
   const audio = State.sounds?.kaelEpic;
   if (!audio) return;
   if (!audio.paused) {
-    audio.currentTime = 0;
+    kaelEpicActive = true;
+    return;
   }
   audio.loop = true;
   audio.volume = 0.65;
@@ -2131,6 +2154,19 @@ function stopKaelEpicTheme() {
   audio.pause();
   audio.currentTime = 0;
   kaelEpicActive = false;
+}
+
+function fadeKaelEpicVolume(targetVolume, duration = 1200) {
+  const audio = State.sounds?.kaelEpic;
+  if (!audio) return;
+  if (audio.paused) {
+    audio.play().catch(() => {});
+  }
+  fadeAudio(audio, targetVolume, duration);
+}
+
+function restoreKaelEpicVolume() {
+  fadeKaelEpicVolume(0.65, 1200);
 }
 
 async function loadAnimations(sourceMap) {
@@ -3494,10 +3530,6 @@ function drawPreQuestShrubSprites(ctx) {
     maybeAutoAcceptKaelQuest();
     updateBossObjective(dt);
 
-    if (State.boss?.alive === false && kaelEpicActive) {
-      stopKaelEpicTheme();
-    }
-
     // Camera & fog
     clampCameraToPlayer(player.x, player.y);
     State.fog.reveal(player.x, player.y, 170);
@@ -3521,7 +3553,6 @@ function drawPreQuestShrubSprites(ctx) {
       }
       if (!State.boss.alive && !State.flags.kaelDefeated) {
         State.flags.kaelDefeated = true;
-        stopKaelEpicTheme();
         State.bossObjectiveReminderActive = false;
         updateBossObjectiveBanner();
         State.bossObjective = null;
@@ -3544,6 +3575,9 @@ function drawPreQuestShrubSprites(ctx) {
           State.flags.kaelPhaseTwoDefeated = true;
           State.flags.kaelCorpseVisible = true;
           preparePrincessForPhaseTwo();
+          fadeKaelEpicVolume(0.1, 1200);
+        } else {
+          fadeKaelEpicVolume(0.1, 1200);
         }
         if (!State.flags.kaelPhaseTwoStarted) {
           State.flags.phaseTwoDialoguePending = true;
@@ -6749,6 +6783,7 @@ async function saveGoldChallengeScoreToSupabase(seconds) {
     State.bossMusicPending = false;
     restoreBossMusicVolume();
     startKaelEpicTheme();
+    restoreKaelEpicVolume();
     State.princessMechanics = null;
   }
 
@@ -6840,6 +6875,7 @@ async function saveGoldChallengeScoreToSupabase(seconds) {
     State.bossMusicPending = false;
     restoreBossMusicVolume();
     startKaelEpicTheme();
+    restoreKaelEpicVolume();
     State.princessMechanics = null;
   }
 
@@ -7038,8 +7074,8 @@ function promptAelyaBossIntro() {
     };
 const baseHp = boss.maxHp ?? 200;
 const targetHp = Math.max(900, baseHp * 3);
-// Boss final = grosse barre de vie (réduite de moitié)
-boss.hp = boss.maxHp = Math.max(450, Math.round(targetHp / 2));
+// Boss final = grosse barre de vie (doublee)
+boss.hp = boss.maxHp = Math.round(targetHp);
 
 boss.attackDamage = 34;        // punition
 boss.attackCooldown = 0.85;    // elle tape plus souvent
@@ -9952,10 +9988,10 @@ function resetGameOverSound() {
       isOrbRealmActive() && !goldChallengeModeActive && !Boolean(State.flags?.goldChallengeActive);
     el.innerHTML = `
       <div class="card">
-        <h2>Game Over</h2>
-        <p>Kael n'a pas survécu. Le labyrinthe reprend sa colère.</p>
+        <h2>${t("gameOverTitle")}</h2>
+        <p>${t("gameOverKaelAllyText")}</p>
         <div class="choices">
-          <button data-retry-kael>Recommencer</button>
+          <button data-retry-kael>${t("gameOverRetryStart")}</button>
         </div>
       </div>`;
     el.querySelector("[data-retry-kael]")?.addEventListener(
@@ -9986,15 +10022,15 @@ function resetGameOverSound() {
     el.classList.remove("hidden");
     const ghostButton = bossMapActive
       ? ""
-      : `<button data-retry-ghost>Retenter l'épreuve</button>`;
+      : `<button data-retry-ghost>${t("gameOverRetryTrial")}</button>`;
     el.innerHTML = `
       <div class="card">
-        <h2>Game Over</h2>
-        <p>Kael t'a vaincu. Relance le duel et reprends le dessus.</p>
+        <h2>${t("gameOverTitle")}</h2>
+        <p>${t("gameOverBossText")}</p>
         <div class="choices">
-          <button data-retry-boss>Retenter le combat</button>
+          <button data-retry-boss>${t("gameOverRetryFight")}</button>
           ${ghostButton}
-          <button data-abandon>Abandonner</button>
+          <button data-abandon>${t("gameOverAbandon")}</button>
         </div>
       </div>`;
     el.querySelector("[data-retry-boss]")?.addEventListener("click", () => {
@@ -10032,11 +10068,11 @@ function resetGameOverSound() {
     el.classList.remove("hidden");
     el.innerHTML = `
       <div class="card">
-        <h2>Game Over</h2>
-        <p>Aelya t'a repoussé. Relance le duel !</p>
+        <h2>${t("gameOverTitle")}</h2>
+        <p>${t("gameOverAelyaText")}</p>
         <div class="choices">
-          <button data-retry-aelya>Retenter le combat</button>
-          <button data-abandon>Abandonner</button>
+          <button data-retry-aelya>${t("gameOverRetryFight")}</button>
+          <button data-abandon>${t("gameOverAbandon")}</button>
         </div>
       </div>`;
     const retryBtn = el.querySelector("[data-retry-aelya]");
@@ -10158,11 +10194,11 @@ function renderDeath() {
       isOrbRealmActive() && !challengeDefeat && !isGoldChallengeActive;
     el.innerHTML = `
       <div class="card">
-        <h2>Les âmes défuntes t'emporte.</h2>
-        <p>Ton dernier souvenir disparais dans la poussière d'Ephéria.</p>
+        <h2>${t("gameOverReturnTitle")}</h2>
+        <p>${t("gameOverReturnText")}</p>
         <div class="choices">
-        ${showRetryButton ? `<button data-retry>Retenter l'épreuve</button>` : ""}
-          <button data-abandon>Retour à l'accueil</button>
+        ${showRetryButton ? `<button data-retry>${t("gameOverRetryTrial")}</button>` : ""}
+          <button data-abandon>${t("gameOverReturnHome")}</button>
         </div>
       </div>`;
     const retryBtn = el.querySelector("[data-retry]");

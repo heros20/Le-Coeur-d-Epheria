@@ -148,6 +148,122 @@ ne se ferment jamais vraiment.
 MERCI D’AVOIR JOUÉ
 `;
 
+const CREDITS_HEADINGS_EN = new Set([
+  "CREDITS",
+  "Universe & World of Epheria",
+  "Scenario, narration & multiple endings",
+  "Game development",
+  "Gameplay programming & systems",
+  "Mechanics, riddles & challenges",
+  "Art direction",
+  "Visual creation & asset integration",
+  "Atmospheres, effects & staging",
+  "Sound direction & music integration",
+  "Testing, balancing & iteration",
+  "Optimization & stability",
+  "Inspirations",
+  "Thanks",
+  "Author's note",
+  "Epilogue",
+]);
+
+const CREDITS_TEXT_EN = `
+CREDITS
+The Heart of Epheria
+
+ A work born of silence and perseverance
+
+ Original concept
+
+Kevin Bigoni
+
+ Universe & World of Epheria
+
+Kevin Bigoni
+
+Scenario, narration & multiple endings
+
+Kevin Bigoni
+
+Game development
+
+Kevin Bigoni
+
+Gameplay programming & systems
+
+Kevin Bigoni
+
+Mechanics, riddles & challenges
+
+Kevin Bigoni
+
+Art direction
+
+Kevin Bigoni
+
+Visual creation & asset integration
+
+Kevin Bigoni
+
+Atmospheres, effects & staging
+
+Kevin Bigoni
+
+Sound direction & music integration
+
+Kevin Bigoni
+
+Testing, balancing & iteration
+
+Kevin Bigoni
+
+Optimization & stability
+
+Kevin Bigoni
+
+Inspirations
+
+Ancient myths  
+Forgotten labyrinths  
+Stories where the hero can fall  
+And worlds that do not judge your choices,  
+but accept their consequences.
+
+Thanks
+
+To those who followed development,  
+To those who played, explored, doubted, failed, started again,  
+To those who understood that sometimes,  
+the greatest danger is not the shadow...  
+but what we make of it.
+
+Author's note
+
+The Heart of Epheria is neither good nor evil.  
+It only amplifies what you already carry within.
+
+Epilogue
+
+A world has been saved...  
+or condemned.
+
+The labyrinth closes.  
+But some doors  
+never truly close.
+
+THANK YOU FOR PLAYING
+`;
+
+const CREDITS_SKIP_LABEL = {
+  fr: "Passer les crédits (E)",
+  en: "Skip credits (E)",
+};
+
+const CREDITS_THANK_YOU_REGEX = {
+  fr: /merci/i,
+  en: /thank/i,
+};
+
 const MULTILINGUAL_EPILOGUES = {
   release: {
     agree: {
@@ -448,10 +564,13 @@ function showCreditsSequence(theme) {
     creditsTrack.style.transform = "translateY(90%)";
     creditsTrack.style.willChange = "transform";
 
-      const headings = CREDITS_HEADINGS;
+      const lang = State.language ?? "fr";
+      const headings = lang === "en" ? CREDITS_HEADINGS_EN : CREDITS_HEADINGS;
       let thankYouLine = null;
-      const THANK_YOU_REGEX = /merci/i;
-      CREDITS_TEXT.split("\n").forEach((line) => {
+      const THANK_YOU_REGEX =
+        CREDITS_THANK_YOU_REGEX[lang] ?? CREDITS_THANK_YOU_REGEX.fr;
+      const creditsText = lang === "en" ? CREDITS_TEXT_EN : CREDITS_TEXT;
+      creditsText.split("\n").forEach((line) => {
         const trimmed = line.trim();
         const paragraph = document.createElement("p");
       paragraph.style.margin = "0";
@@ -538,7 +657,7 @@ function showCreditsSequence(theme) {
       if (skipButton) return;
       skipButton = document.createElement("button");
       skipButton.type = "button";
-      skipButton.textContent = "Passer les crédits (E)";
+      skipButton.textContent = CREDITS_SKIP_LABEL[lang] ?? CREDITS_SKIP_LABEL.fr;
       skipButton.style.position = "absolute";
       skipButton.style.top = "18px";
       skipButton.style.right = "18px";
