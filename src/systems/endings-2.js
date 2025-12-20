@@ -1,3 +1,5 @@
+import { State } from "../state.js";
+
 export function showEndings({ onPick }) {
   const root = document.getElementById("ending");
   if (!root) return;
@@ -145,6 +147,119 @@ ne se ferment jamais vraiment.
 
 MERCI D’AVOIR JOUÉ
 `;
+
+const MULTILINGUAL_EPILOGUES = {
+  release: {
+    agree: {
+      fr: `Lorsque le Cœur d'Éphéria retrouva enfin les mains d'Aelya, le labyrinthe sembla retenir son souffle.
+Les murs, témoins de siècles de murmures et de souffrances, se turent.
+
+Aelya et Lioran quittèrent ensemble cet entrelacs de pierres et d'ombres, laissant derrière eux les mystères anciens et les voix obscures qui hantaient les profondeurs.
+Kael, vaincu au terme du combat, disparut dans les salles noyées de ténèbres. Nul ne sut jamais s'il y trouva la mort... ou s'il devint autre chose.
+
+Mais une chose était certaine.
+
+Le Cœur avait retrouvé une âme digne de le porter.
+Sous l'influence d'un cœur pur, sa puissance ne serait plus un poison, mais une lumière — une arme contre les ténèbres qui rongeaient le monde d'Éphéria.
+
+Car si une paix fragile s'installait, le danger, lui, n'avait pas disparu.
+De nouvelles menaces se profilaient déjà à l'horizon.
+
+Lioran et Aelya le savaient. Leur combat ne faisait que commencer.
+
+Mais ceci...
+est une autre histoire.
+Une histoire encore voilée par le temps,
+écrite dans les brumes d'un avenir incertain.`,
+      en: `When the Heart of Epheria finally returned to Aelya's hands, the labyrinth held its breath.
+The walls, witnesses to centuries of whispers and pain, fell silent.
+
+Aelya and Lioran left the maze of stones and shadows together, leaving behind the old mysteries and the dark voices that haunted the depths.
+Kael, defeated at the end of the fight, vanished into the rooms drowned in darkness. No one ever knew if he found death there... or became something else.
+
+But one thing was certain.
+
+The Heart had found a soul worthy of bearing it.
+Under the influence of a pure heart, its power would no longer be poison, but light — a weapon against the shadows eating at the world of Epheria.
+
+Because even if a fragile peace settled, danger had not disappeared.
+New threats already loomed on the horizon.
+
+Lioran and Aelya knew it. Their fight had only just begun.
+
+But this...
+is another story.
+A tale still veiled by time,
+written in the mists of an uncertain tomorrow.`,
+    },
+    refuse: {
+      fr: `Après la chute de Kael, Lioran fit son choix.
+
+Au lieu de rendre le Cœur d'Éphéria, il le garda pour lui.
+Sa puissance afflua aussitôt, brûlante, infinie... et profondément corruptrice. Les ombres qu'il avait combattues trouvèrent en lui un nouvel hôte.
+
+Aelya tenta de l'arrêter.
+De le raisonner.
+De le sauver.
+
+Mais déjà, Lioran ne voyait plus qu'à travers le voile des ténèbres.
+Dans un instant de folie aveugle, il la frappa.
+La lumière s'éteignit avec elle.
+
+Seul, désormais, il quitta le labyrinthe.
+
+Et le héros devint monstre.
+
+Là où il passait, la terre se fendait, les royaumes brûlaient, et la peur précédait son nom. Le monde d'Éphéria ne gagna pas un sauveur... mais un fléau. Un être plus terrible encore que ceux qu'il avait juré de détruire.
+
+Un jour, quelqu'un devra l'arrêter.
+Un jour, peut-être.
+
+Mais pour l'heure, le Cœur d'Éphéria bat en lui, déchaîné.
+Et tant que sa pulsation résonnera,
+Lioran sera... inarrêtable.`,
+      en: `After Kael's fall, Lioran made his choice.
+
+Instead of returning the Heart of Epheria, he kept it.
+Its power surged through him at once—blazing, endless... and deeply corrupting. The shadows he had fought found in him a new host.
+
+Aelya tried to stop him.
+To reason with him.
+To save him.
+
+But by then, Lioran saw only through the veil of darkness.
+In a moment of blind madness, he struck her.
+The light went out with her.
+
+Alone now, he left the labyrinth.
+
+And the hero became a monster.
+
+Wherever he passed, the earth cracked, kingdoms burned, and fear preceded his name. The world of Epheria did not gain a savior... but a scourge. A being more terrible than any he once swore to destroy.
+
+One day, someone will have to stop him.
+One day, maybe.
+
+But for now, the Heart of Epheria beats within him, unleashed.
+And as long as its pulse echoes,
+Lioran will be... unstoppable.`,
+    },
+    default: {
+      fr: "Un avenir incertain s'ouvre selon les choix que vous avez faits.",
+      en: "An uncertain future unfolds based on the choices you made.",
+    },
+  },
+};
+
+function getEpilogueText(id, choice) {
+  const lang = State.language ?? "fr";
+  const entry = MULTILINGUAL_EPILOGUES[id] ?? MULTILINGUAL_EPILOGUES.release;
+  const narrative = entry[choice];
+  if (narrative) {
+    return narrative[lang] ?? narrative.fr;
+  }
+  return entry.default[lang] ?? entry.default.fr;
+}
 function escapeHtml(value = "") {
   return value
     .replace(/&/g, "&amp;")
@@ -503,62 +618,9 @@ export async function renderEpilogue(id, { choice } = {}) {
     release: "",
   }[id];
 
-  const epilogueNarratives = {
-  release: {
-    agree: `Lorsque le Cœur d’Éphéria retrouva enfin les mains d’Aelya, le labyrinthe sembla retenir son souffle.
-Les murs, témoins de siècles de murmures et de souffrances, se turent.
-
-Aelya et Lioran quittèrent ensemble cet entrelacs de pierres et d’ombres, laissant derrière eux les mystères anciens et les voix obscures qui hantaient les profondeurs.
-Kael, vaincu au terme du combat, disparut dans les salles noyées de ténèbres. Nul ne sut jamais s’il y trouva la mort… ou s’il devint autre chose.
-
-Mais une chose était certaine.
-
-Le Cœur avait retrouvé une âme digne de le porter.
-Sous l’influence d’un cœur pur, sa puissance ne serait plus un poison, mais une lumière — une arme contre les ténèbres qui rongeaient le monde d’Éphéria.
-
-Car si une paix fragile s’installait, le danger, lui, n’avait pas disparu.
-De nouvelles menaces se profilaient déjà à l’horizon.
-
-Lioran et Aelya le savaient. Leur combat ne faisait que commencer.
-
-Mais ceci…
-est une autre histoire.
-Une histoire encore voilée par le temps,
-écrite dans les brumes d’un avenir incertain.`.trim(),
-    refuse: `Après la chute de Kael, Lioran fit son choix.
-
-Au lieu de rendre le Cœur d’Éphéria, il le garda pour lui.
-Sa puissance afflua aussitôt, brûlante, infinie… et profondément corruptrice. Les ombres qu’il avait combattues trouvèrent en lui un nouvel hôte.
-
-Aelya tenta de l’arrêter.
-De le raisonner.
-De le sauver.
-
-Mais déjà, Lioran ne voyait plus qu’à travers le voile des ténèbres.
-Dans un instant de folie aveugle, il la frappa.
-La lumière s’éteignit avec elle.
-
-Seul, désormais, il quitta le labyrinthe.
-
-Et le héros devint monstre.
-
-Là où il passait, la terre se fendait, les royaumes brûlaient, et la peur précédait son nom. Le monde d’Éphéria ne gagna pas un sauveur… mais un fléau. Un être plus terrible encore que ceux qu’il avait juré de détruire.
-
-Un jour, quelqu’un devra l’arrêter.
-Un jour, peut-être.
-
-Mais pour l’heure, le Cœur d’Éphéria bat en lui, déchaîné.
-Et tant que sa pulsation résonnera,
-Lioran sera… inarrêtable.`.trim(),
-    default:
-      "Un avenir incertain s’ouvre selon les choix que vous avez faits.",
-  },
-};
-const resolvedChoice = choice ?? "agree";
-  const epilogueText =
-    epilogueNarratives[id]?.[resolvedChoice] ??
-    epilogueNarratives[id]?.default ??
-    "Un avenir incertain s'ouvre selon les choix que vous avez faits.";
+  const resolvedChoice = choice ?? "agree";
+  const targetId = id ?? "release";
+  const epilogueText = getEpilogueText(targetId, resolvedChoice);
 
   const scrollText = [resultText, epilogueText].filter(Boolean).join("\n\n");
   const theme = EPILOGUE_THEMES[resolvedChoice] ?? EPILOGUE_THEMES.agree;

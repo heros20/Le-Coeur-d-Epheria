@@ -5,6 +5,72 @@ import { State } from "../state.js";
 const SUPPORTS_POINTER_EVENTS = typeof window !== "undefined" && "PointerEvent" in window;
 const POINTER_MOUSE_ID = "mouse";
 
+const HUD_TRANSLATIONS = {
+  fr: {
+    labelHealth: "Santé",
+    labelStamina: "Endurance",
+    dashReady: "Dash : prêt",
+    dashCooldown: "Dash : {time}s",
+    comboWindow: "Fenêtre de combo",
+    comboReady: "Combo prêt",
+    inventoryTitle: "Inventaire",
+    inventoryEmpty: "Vide",
+    orbInventoryTitle: "Clés",
+    orbStatusSome: "Objets d'orbe : {count}/{capacity}",
+    orbStatusEmpty: "Aucun objet d'orbe",
+    helperTitle: "Commandes",
+    helperMovementLabel: "Déplacement",
+    helperMovementDesc: "Se déplacer dans le labyrinthe",
+    helperKeyboardLabel: "Clavier",
+    helperAttackDesc: "Attaquer",
+    helperSprintDesc: "Sprint",
+    helperRangeDesc: "Attaque à distance",
+    helperQuickItemDesc: "Objet rapide",
+    helperDashDesc: "Dash",
+    helperInteractionLabel: "Interaction",
+    helperInteractionDesc: "Parler / Interagir",
+    helperInteractionDetail: "NPC, leviers, orbes et autres idées douteuses",
+    statusAllClear: "Tout est clair",
+    chargeLabel: "Charge",
+  },
+  en: {
+    labelHealth: "Health",
+    labelStamina: "Stamina",
+    dashReady: "Dash: ready",
+    dashCooldown: "Dash: {time}s",
+    comboWindow: "Combo window",
+    comboReady: "Combo ready",
+    inventoryTitle: "Inventory",
+    inventoryEmpty: "Empty",
+    orbInventoryTitle: "Keys",
+    orbStatusSome: "Orb items: {count}/{capacity}",
+    orbStatusEmpty: "No orb items",
+    helperTitle: "Commands",
+    helperMovementLabel: "Movement",
+    helperMovementDesc: "Move through the labyrinth",
+    helperKeyboardLabel: "Keyboard",
+    helperAttackDesc: "Attack",
+    helperSprintDesc: "Sprint",
+    helperRangeDesc: "Ranged attack",
+    helperQuickItemDesc: "Quick item",
+    helperDashDesc: "Dash",
+    helperInteractionLabel: "Interaction",
+    helperInteractionDesc: "Talk / Interact",
+    helperInteractionDetail: "NPCs, levers, orbs and other questionable ideas",
+    statusAllClear: "All clear",
+    chargeLabel: "Charge",
+  },
+};
+
+function hudTranslate(key, replacements = {}) {
+  const lang = State.language ?? "fr";
+  let text = HUD_TRANSLATIONS[lang]?.[key] ?? HUD_TRANSLATIONS.fr?.[key] ?? key;
+  for (const [name, value] of Object.entries(replacements)) {
+    text = text.split(`{${name}}`).join(value ?? "");
+  }
+  return text;
+}
+
 function escapeHtml(text = "") {
   return text
     .replace(/&/g, "&amp;")
@@ -86,23 +152,23 @@ export function createHUD() {
     const stamPct = (stamina / Math.max(1, staminaMax)) * 100;
     const dashReady = dashCooldown <= 0.05;
     const dashText = dashReady
-      ? "Dash: ready"
-      : `Dash: ${dashCooldown.toFixed(1)}s`;
+      ? hudTranslate("dashReady")
+      : hudTranslate("dashCooldown", { time: dashCooldown.toFixed(1) });
 
     vitals.innerHTML = `
       <div class="vital-row">
-        <span class="label">Health</span>
+        <span class="label">${hudTranslate("labelHealth")}</span>
         <span class="value">${Math.round(hp)}/${Math.round(hpMax)}</span>
       </div>
       ${bar(hpPct, "health")}
       <div class="vital-row">
-        <span class="label">Stamina</span>
+        <span class="label">${hudTranslate("labelStamina")}</span>
         <span class="value">${Math.round(stamina)}/${Math.round(staminaMax)}</span>
       </div>
       ${bar(stamPct, "stamina")}
       <div class="chips">
         <span class="chip">${dashText}</span>
-        ${combo > 0 ? '<span class="chip chip-alert">Combo window</span>' : ""}
+        ${combo > 0 ? `<span class="chip chip-alert">${hudTranslate("comboWindow")}</span>` : ""}
       </div>
     `;
 
@@ -122,17 +188,22 @@ export function createHUD() {
           </div>`
         );
       } else {
-        slots.push(`<div class="inventory-slot"><span>Vide</span></div>`);
+        slots.push(`<div class="inventory-slot"><span>${hudTranslate("inventoryEmpty")}</span></div>`);
       }
     }
 
     const indicators = [];
-    if (charge > 0.01) indicators.push(`Charge ${Math.round(charge * 100)}%`);
-    if (combo > 0.01) indicators.push("Combo ready");
-    const statusText = status || indicators.join(" • ") || "All clear";
+    if (charge > 0.01) {
+      indicators.push(
+        `${hudTranslate("chargeLabel")} ${Math.round(charge * 100)}%`
+      );
+    }
+    if (combo > 0.01) indicators.push(hudTranslate("comboReady"));
+    const statusText =
+      status || indicators.join(" • ") || hudTranslate("statusAllClear");
 
     inventory.innerHTML = `
-      <div class="inventory-title">Inventaire</div>
+      <div class="inventory-title">${hudTranslate("inventoryTitle")}</div>
       <div class="inventory-grid">${slots.join("")}</div>
       <div class="status-line">${escapeHtml(statusText)}</div>
     `;
@@ -154,72 +225,79 @@ export function createHUD() {
           </div>`
         );
       } else {
-        orbSlotsArr.push(`<div class="inventory-slot"><span>Vide</span></div>`);
+        orbSlotsArr.push(
+          `<div class="inventory-slot"><span>${hudTranslate("inventoryEmpty")}</span></div>`
+        );
       }
     }
     const orbStatus =
-      orbItems.length > 0 ? `Objets d'orbe : ${orbItems.length}/${orbCapacity}` : "Aucun objet d'orbe";
+      orbItems.length > 0
+        ? hudTranslate("orbStatusSome", {
+            count: orbItems.length,
+            capacity: orbCapacity,
+          })
+        : hudTranslate("orbStatusEmpty");
     orbInventoryCard.innerHTML = `
-      <div class="inventory-title">Clés</div>
+      <div class="inventory-title">${hudTranslate("orbInventoryTitle")}</div>
       <div class="inventory-grid">${orbSlotsArr.join("")}</div>
       <div class="status-line">${escapeHtml(orbStatus)}</div>
     `;
 
     helper.innerHTML = `
-      <div class="helper-title">Commandes</div>
+      <div class="helper-title">${hudTranslate("helperTitle")}</div>
       <div class="helper-grid helper-grid-rpg">
         <div class="helper-group">
-          <div class="helper-group-label">Déplacement</div>
+          <div class="helper-group-label">${hudTranslate("helperMovementLabel")}</div>
           <div class="helper-keys">
             <span class="key">Z</span>
             <span class="key">Q</span>
             <span class="key">S</span>
             <span class="key">D</span>
           </div>
-          <div class="helper-desc">Se déplacer dans le labyrinthe</div>
+          <div class="helper-desc">${hudTranslate("helperMovementDesc")}</div>
         </div>
 
         <div class="helper-group">
-          <div class="helper-group-label">Clavier</div>
+          <div class="helper-group-label">${hudTranslate("helperKeyboardLabel")}</div>
           <div class="helper-keys">
             <span class="key">1</span>
             <span> - </span>
             <span class="key">K</span>
-            <span class="helper-desc-inline">Attaquer</span>
+            <span class="helper-desc-inline">${hudTranslate("helperAttackDesc")}</span>
           </div>
           <div class="helper-keys">
             <span class="key">5</span>
             <span> - </span>
             <span class="key">O</span>
-            <span class="helper-desc-inline">Sprint</span>
+            <span class="helper-desc-inline">${hudTranslate("helperSprintDesc")}</span>
           </div>
           <div class="helper-keys">
             <span class="key">3</span>
             <span> - </span>
             <span class="key">M</span>
-            <span class="helper-desc-inline">Attaque \u00e0 distance</span>
+            <span class="helper-desc-inline">${hudTranslate("helperRangeDesc")}</span>
           </div>
           <div class="helper-keys">
           <span class="key">2</span>
           <span> - </span>
             <span class="key">L</span>
             
-            <span class="helper-desc-inline">Objet rapide</span>
+            <span class="helper-desc-inline">${hudTranslate("helperQuickItemDesc")}</span>
           </div>
           
           <div class="helper-keys">
             <span class="key">Space</span>
-            <span class="helper-desc-inline">Dash</span>
+            <span class="helper-desc-inline">${hudTranslate("helperDashDesc")}</span>
           </div>
         </div>
 
         <div class="helper-group">
-          <div class="helper-group-label">Interaction</div>
+          <div class="helper-group-label">${hudTranslate("helperInteractionLabel")}</div>
           <div class="helper-keys">
             <span class="key">E</span>
-            <span class="helper-desc-inline">Parler / Interagir</span>
+            <span class="helper-desc-inline">${hudTranslate("helperInteractionDesc")}</span>
           </div>
-          <div class="helper-desc">NPC, leviers, orbes et autres mauvaises idées</div>
+          <div class="helper-desc">${hudTranslate("helperInteractionDetail")}</div>
         </div>
       </div>
     `;

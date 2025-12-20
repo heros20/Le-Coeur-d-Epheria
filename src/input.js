@@ -2,6 +2,7 @@
 
 // --- Clavier ---
 export const Keys = new Set();
+export const KeyCodes = new Set();
 let _just = new Set();
 
 // --- Pointeur (souris / tactile) ---
@@ -53,10 +54,16 @@ export function setupKeyboard() {
     if (HANDLED.has(k)) e.preventDefault();
     Keys.add(k);
     _just.add(k);
+    if (e.code) {
+      KeyCodes.add(e.code);
+    }
   };
 
   const onUp = (e) => {
     Keys.delete(norm(e));
+    if (e.code) {
+      KeyCodes.delete(e.code);
+    }
   };
 
   window.addEventListener("keydown", onDown, { passive: false });

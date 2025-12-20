@@ -1,5 +1,5 @@
 import { CONFIG } from "../config.js";
-import { Keys } from "../input.js";
+import { Keys, KeyCodes } from "../input.js";
 import { Animator } from "../utils/animator.js";
 
 const SPRINT_KEYS = ["5", "\u00E9", "o"];
@@ -107,12 +107,28 @@ export class Player {
     let vx = 0;
     let vy = 0;
     let usingMouseMove = false;
-    const keyboardX =
-      (Keys.has("d") || Keys.has("arrowright") ? 1 : 0) -
-      (Keys.has("q") || Keys.has("arrowleft") ? 1 : 0);
-    const keyboardY =
-      (Keys.has("s") || Keys.has("arrowdown") ? 1 : 0) -
-      (Keys.has("z") || Keys.has("arrowup") ? 1 : 0);
+    const moveRight =
+      KeyCodes.has("KeyD") ||
+      KeyCodes.has("ArrowRight") ||
+      Keys.has("d") ||
+      Keys.has("arrowright");
+    const moveLeft =
+      KeyCodes.has("KeyA") ||
+      KeyCodes.has("ArrowLeft") ||
+      Keys.has("q") ||
+      Keys.has("arrowleft");
+    const moveDown =
+      KeyCodes.has("KeyS") ||
+      KeyCodes.has("ArrowDown") ||
+      Keys.has("s") ||
+      Keys.has("arrowdown");
+    const moveUp =
+      KeyCodes.has("KeyW") ||
+      KeyCodes.has("ArrowUp") ||
+      Keys.has("z") ||
+      Keys.has("arrowup");
+    const keyboardX = (moveRight ? 1 : 0) - (moveLeft ? 1 : 0);
+    const keyboardY = (moveDown ? 1 : 0) - (moveUp ? 1 : 0);
     const pointerDeadzone = inputs.pointerDeadzone ?? CONFIG.playerMouseDeadzone ?? 18;
     if (pointerMove && moveVector.dist > pointerDeadzone) {
       usingMouseMove = true;
