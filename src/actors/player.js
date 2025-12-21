@@ -73,7 +73,8 @@ export class Player {
     const colliders = Array.isArray(inputs.colliders) ? inputs.colliders : [];
     const moveVectorSource = inputs.moveVectorSource ?? moveVector?.source ?? null;
     const hasMoveVector = moveVector && Number.isFinite(moveVector.x) && Number.isFinite(moveVector.y);
-    const pointerMove = Boolean(hasMoveVector && moveVectorSource !== "keyboard");
+    const pointerMove =
+      Boolean(hasMoveVector && (moveVectorSource === "mouse" || moveVectorSource === "pointer"));
     const analogMove = Boolean(hasMoveVector && !pointerMove);
     const attackHeld = Boolean(inputs.attackHeld);
     const attackReleased = Boolean(inputs.attackReleased);

@@ -338,6 +338,8 @@ function setKeys(keys, down) {
 function bindHoldButton(el, keys) {
   if (!el) return;
   const activePointers = new Set();
+  let pointerPrimaryActive = false;
+  let lastPointerTime = 0;
 
   const press = () => {
     if (activePointers.size === 1) {
@@ -362,6 +364,8 @@ function bindHoldButton(el, keys) {
       (e) => {
         e.preventDefault();
         e.stopPropagation();
+        pointerPrimaryActive = true;
+        lastPointerTime = Date.now();
         const id = getPointerId(e.pointerId);
         if (!activePointers.has(id)) {
           activePointers.add(id);
@@ -390,6 +394,7 @@ function bindHoldButton(el, keys) {
         e.preventDefault();
         e.stopPropagation();
         release(getPointerId(e.pointerId));
+        pointerPrimaryActive = activePointers.size > 0;
       },
       { passive: false }
     );
@@ -399,6 +404,7 @@ function bindHoldButton(el, keys) {
         e.preventDefault();
         e.stopPropagation();
         release(getPointerId(e.pointerId));
+        pointerPrimaryActive = activePointers.size > 0;
       },
       { passive: false }
     );
@@ -408,32 +414,38 @@ function bindHoldButton(el, keys) {
         e.preventDefault();
         e.stopPropagation();
         release(getPointerId(e.pointerId));
+        pointerPrimaryActive = activePointers.size > 0;
       },
       { passive: false }
     );
-  } else {
-    const down = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const id = typeof e.identifier === "number" ? e.identifier : MOUSE_ID;
-      if (!activePointers.has(id)) {
-        activePointers.add(id);
-        press();
-      }
-    };
-    const up = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const id = typeof e.identifier === "number" ? e.identifier : MOUSE_ID;
-      release(id);
-    };
-    el.addEventListener("mousedown", down);
-    el.addEventListener("mouseup", up);
-    el.addEventListener("mouseleave", up);
-    el.addEventListener("touchstart", down, { passive: false });
-    el.addEventListener("touchend", up, { passive: false });
-    el.addEventListener("touchcancel", up, { passive: false });
   }
+
+  const shouldIgnoreFallback = () =>
+    pointerPrimaryActive || (Date.now() - lastPointerTime < 400);
+
+  const down = (e) => {
+    if (shouldIgnoreFallback()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const id = typeof e.identifier === "number" ? e.identifier : POINTER_MOUSE_ID;
+    if (!activePointers.has(id)) {
+      activePointers.add(id);
+      press();
+    }
+  };
+  const up = (e) => {
+    if (shouldIgnoreFallback()) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const id = typeof e.identifier === "number" ? e.identifier : POINTER_MOUSE_ID;
+    release(id);
+  };
+  el.addEventListener("mousedown", down);
+  el.addEventListener("mouseup", up);
+  el.addEventListener("mouseleave", up);
+  el.addEventListener("touchstart", down, { passive: false });
+  el.addEventListener("touchend", up, { passive: false });
+  el.addEventListener("touchcancel", up, { passive: false });
 
   el.style.userSelect = "none";
   el.style.webkitUserSelect = "none";
@@ -442,6 +454,7 @@ function bindHoldButton(el, keys) {
 
 function bindTapButton(el, key, onTap) {
   if (!el) return;
+  let lastPointerTime = 0;
 
   const tap = (e) => {
     e.preventDefault();
@@ -457,12 +470,40 @@ function bindTapButton(el, key, onTap) {
     if (typeof onTap === "function") onTap();
   };
 
+  const release = (e) => {
+    if (e?.preventDefault) e.preventDefault();
+    if (e?.stopPropagation) e.stopPropagation();
+    setVirtualKey(key, false);
+  };
+
+  if ("PointerEvent" in window) {
+    el.addEventListener("pointerdown", (e) => {
+      lastPointerTime = Date.now();
+      tap(e);
+    }, { passive: false });
+    el.addEventListener("pointerup", release, { passive: false });
+    el.addEventListener("pointercancel", release, { passive: false });
+  }
+  const shouldIgnoreFallback = () => Date.now() - lastPointerTime < 400;
+  const tapFallback = (e) => {
+    if (shouldIgnoreFallback()) return;
+    tap(e);
+  };
+  const releaseFallback = (e) => {
+    if (shouldIgnoreFallback()) return;
+    release(e);
+  };
+
   // Souris
-  el.addEventListener("click", tap);
-  el.addEventListener("mousedown", tap);
+  el.addEventListener("click", tapFallback);
+  el.addEventListener("mousedown", tapFallback);
+  el.addEventListener("mouseup", releaseFallback);
+  el.addEventListener("mouseleave", releaseFallback);
 
   // Touch
-  el.addEventListener("touchstart", tap, { passive: false });
+  el.addEventListener("touchstart", tapFallback, { passive: false });
+  el.addEventListener("touchend", releaseFallback, { passive: false });
+  el.addEventListener("touchcancel", releaseFallback, { passive: false });
 
   el.style.userSelect = "none";
   el.style.webkitUserSelect = "none";

@@ -1363,6 +1363,15 @@ body.orb-disturbance::after {
 
 #mobile-controls .touch-btn {
   pointer-events: auto;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-appearance: none;
+}
+
+.touch-controls .touch-btn {
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-appearance: none;
 }
 
 /* ====== D-PAD GAUCHE (GROS + COLLÉ, STYLE MANETTE) ====== */
